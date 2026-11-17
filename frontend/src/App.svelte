@@ -202,11 +202,13 @@
   {#if !meta}
     <!-- Nothing to show until the server answered. -->
   {:else if meta.login_required}
-    <div class="lede">
-      <h1>{t("app.name")}</h1>
-      <p class="muted">{t("app.tagline")}</p>
+    <div class="login-area">
+      <div class="lede">
+        <h1>{t("app.name")}</h1>
+        <p class="muted">{t("app.tagline")}</p>
+      </div>
+      <Login demoAvailable={meta.demo_available} ondone={boot} />
     </div>
-    <Login demoAvailable={meta.demo_available} ondone={boot} />
   {:else}
     {#if !showArchive}
       <section class="lede">
@@ -288,18 +290,22 @@
     {/snippet}
 
     {#if showArchive}
-      {#each visible as shipment (shipment.id)}
-        {@render card(shipment)}
-      {/each}
+      <div class="cards">
+        {#each visible as shipment (shipment.id)}
+          {@render card(shipment)}
+        {/each}
+      </div>
     {:else}
       {#each groups as { group, items } (group)}
         <section class="group">
           <h2 class="eyebrow">
             {t(`group.${group}`)} <span class="count">{items.length}</span>
           </h2>
-          {#each items as shipment (shipment.id)}
-            {@render card(shipment)}
-          {/each}
+          <div class="cards">
+            {#each items as shipment (shipment.id)}
+              {@render card(shipment)}
+            {/each}
+          </div>
         </section>
       {/each}
     {/if}
@@ -398,6 +404,23 @@
   .group > h2 {
     margin-bottom: 10px;
     font-weight: 400;
+  }
+
+  /* Cards sit side by side where there is room, each as tall as its own content. */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  .cards :global(.card) {
+    margin-bottom: 0;
+  }
+
+  .login-area {
+    max-width: 720px;
+    margin: 0 auto;
   }
 
   .count {

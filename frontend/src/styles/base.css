@@ -30,8 +30,9 @@ body {
   line-height: 1.45;
 }
 
+/* Wide enough for two columns of cards on a desktop; one column below that. */
 .wrap {
-  max-width: 720px;
+  max-width: 1200px;
   margin: 0 auto;
 }
 
