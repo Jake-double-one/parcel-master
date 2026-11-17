@@ -3,6 +3,7 @@
   import { api, ApiError } from "../lib/api";
   import { ago, until } from "../lib/format";
   import { i18n, t, tOr } from "../lib/i18n.svelte";
+  import { install } from "../lib/install.svelte";
   import {
     disablePush,
     enablePush,
@@ -296,6 +297,18 @@
         </select>
         <span class="note">{t("settings.language_help")}</span>
       </label>
+
+      <div class="field">
+        <span class="eyebrow">{t("settings.app")}</span>
+        {#if install.state === "ready"}
+          <div class="row">
+            <button type="button" class="chip primary" onclick={() => install.run()}>
+              {t("settings.app_install")}
+            </button>
+          </div>
+        {/if}
+        <span class="note">{t(`settings.app_${install.state}`)}</span>
+      </div>
 
       <div class="field" role="radiogroup" aria-labelledby="skin-label">
         <span class="eyebrow" id="skin-label">{t("settings.skin")}</span>

@@ -203,7 +203,13 @@
     "test_push_failed": "Browser: fehlgeschlagen ({reason})",
     "test_apprise_ok": "Apprise: ✓",
     "test_apprise_failed": "Apprise: fehlgeschlagen, prüf die Adressen",
-    "push_failed": "Der Browser konnte sich nicht für Benachrichtigungen anmelden. {reason}"
+    "push_failed": "Der Browser konnte sich nicht für Benachrichtigungen anmelden. {reason}",
+    "app": "App",
+    "app_install": "App installieren",
+    "app_ready": "Legt Parcel Master auf den Startbildschirm, mit eigenem Fenster und Benachrichtigungen.",
+    "app_installed": "Läuft als installierte App.",
+    "app_ios": "Auf iPhone und iPad: Seite in Safari öffnen, auf Teilen tippen, dann „Zum Home-Bildschirm“.",
+    "app_manual": "Öffne das Browser-Menü und wähl „App installieren“ oder „Zum Startbildschirm hinzufügen“. Ist sie schon installiert, öffne sie von dort."
   },
   "login": {
     "password": "Passwort",

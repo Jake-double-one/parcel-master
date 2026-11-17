@@ -137,6 +137,13 @@
     return shared;
   }
 
+  /** The app icon's "Add shipment" shortcut opens the dialog right away. */
+  function wantsAdd(): boolean {
+    const wanted = new URLSearchParams(location.search).has("add");
+    if (wanted) history.replaceState(null, "", location.pathname);
+    return wanted;
+  }
+
   function replace(updated: Shipment) {
     const index = shipments.findIndex((s) => s.id === updated.id);
     if (index >= 0) shipments[index] = updated;
@@ -202,8 +209,11 @@
 
   onMount(() => {
     boot().then(() => {
+      const add = wantsAdd();
       const shared = sharedText();
-      if (shared && meta && !meta.login_required) editing = { shipment: null, prefill: shared };
+      if ((shared || add) && meta && !meta.login_required) {
+        editing = { shipment: null, prefill: shared };
+      }
     });
     const onVisible = () => {
       if (document.visibilityState === "visible" && meta && !meta.login_required) {

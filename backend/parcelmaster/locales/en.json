@@ -203,7 +203,13 @@
     "test_push_failed": "Browser: failed ({reason})",
     "test_apprise_ok": "Apprise: ✓",
     "test_apprise_failed": "Apprise: failed, check the addresses",
-    "push_failed": "The browser could not sign up for notifications. {reason}"
+    "push_failed": "The browser could not sign up for notifications. {reason}",
+    "app": "App",
+    "app_install": "Install app",
+    "app_ready": "Puts Parcel Master on the home screen, with its own window and notifications.",
+    "app_installed": "Running as an installed app.",
+    "app_ios": "On iPhone and iPad: open this page in Safari, tap Share, then \"Add to Home Screen\".",
+    "app_manual": "Open the browser menu and choose \"Install app\" or \"Add to home screen\". If it is already installed, open it from there."
   },
   "login": {
     "password": "Password",

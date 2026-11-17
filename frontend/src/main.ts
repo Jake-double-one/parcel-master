@@ -9,10 +9,12 @@ import "./styles/base.css";
 
 import { mount } from "svelte";
 import App from "./App.svelte";
+import { watchInstall } from "./lib/install.svelte";
 import { installAutoSkin, syncThemeColor } from "./lib/skins";
 
 installAutoSkin();
 syncThemeColor();
+watchInstall();
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   navigator.serviceWorker.register("/sw.js").catch(() => {
