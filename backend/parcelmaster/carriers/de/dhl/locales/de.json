@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "api_key": {
+      "label": "API-Schlüssel",
+      "help": "Leg auf developer.dhl.com eine App mit der API „Shipment Tracking - Unified“ an und füg ihren Schlüssel hier ein."
+    }
+  },
+  "parcel": {
+    "postal_code": {
+      "label": "Postleitzahl des Empfängers",
+      "help": "Optional. Nur damit zeigt DHL Zustelldetails."
+    }
+  }
+}

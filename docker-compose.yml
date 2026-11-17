@@ -1,0 +1,19 @@
+services:
+  parcelmaster:
+    image: ghcr.io/jake-double-one/parcel-master:latest
+    # build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - parcelmaster-data:/data
+    environment:
+      # Leave PM_PASSWORD empty when a reverse proxy (Authentik, ...) handles login.
+      PM_PASSWORD: "${PM_PASSWORD:-}"
+      # Offer a public demo mode next to the login.
+      PM_DEMO: "${PM_DEMO:-false}"
+      # Contact for browser push services: a mailto: or https: address of yours.
+      PM_PUSH_CONTACT: "${PM_PUSH_CONTACT:-mailto:parcelmaster@localhost}"
+
+volumes:
+  parcelmaster-data:

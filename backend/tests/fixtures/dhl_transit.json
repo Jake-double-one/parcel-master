@@ -1,0 +1,41 @@
+{
+  "shipments": [
+    {
+      "id": "00340434161094042557",
+      "service": "parcel-de",
+      "origin": { "address": { "countryCode": "DE" } },
+      "destination": { "address": { "countryCode": "DE" } },
+      "status": {
+        "timestamp": "2026-11-16T08:12:00",
+        "location": { "address": { "addressLocality": "Köln" } },
+        "statusCode": "transit",
+        "status": "Die Sendung wurde in das Zustellfahrzeug geladen.",
+        "description": "Die Sendung wurde in das Zustellfahrzeug geladen. Die Zustellung erfolgt voraussichtlich heute."
+      },
+      "estimatedTimeOfDelivery": "2026-11-16T00:00:00",
+      "estimatedDeliveryTimeFrame": {
+        "estimatedFrom": "2026-11-16T11:30:00",
+        "estimatedThrough": "2026-11-16T13:30:00"
+      },
+      "events": [
+        {
+          "timestamp": "2026-11-16T08:12:00",
+          "location": { "address": { "addressLocality": "Köln" } },
+          "statusCode": "transit",
+          "description": "Die Sendung wurde in das Zustellfahrzeug geladen."
+        },
+        {
+          "timestamp": "2026-11-15T21:40:00",
+          "location": { "address": { "addressLocality": "Hagen" } },
+          "statusCode": "transit",
+          "description": "Die Sendung wurde im Start-Paketzentrum bearbeitet."
+        },
+        {
+          "timestamp": "2026-11-14T16:02:00",
+          "statusCode": "pre-transit",
+          "description": "Die Sendung wurde elektronisch angekündigt."
+        }
+      ]
+    }
+  ]
+}
