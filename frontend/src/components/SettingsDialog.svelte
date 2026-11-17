@@ -556,9 +556,9 @@
             >
               {push === "on" ? t("settings.push_on") : t("settings.push_off")}
             </button>
-            {#if push === "on"}
-              <button type="button" class="chip" onclick={testDevice}>{t("settings.push_test")}</button>
-            {/if}
+            <button type="button" class="chip" disabled={push !== "on"} onclick={testDevice}>
+              {t("settings.push_test")}
+            </button>
           </div>
           {#if deviceTest}
             <span class="note" role="status">{deviceTest}</span>

@@ -134,7 +134,7 @@
     "apprise_help": "One per line, for example gotify://host/token or ntfy://topic. Covers Gotify, ntfy, Telegram, e-mail and many more.",
     "push": "Browser notifications",
     "push_on": "On for this device",
-    "push_off": "Off for this device",
+    "push_off": "Switch on for this device",
     "push_blocked": "Notifications are blocked for this site. Allow them in the browser settings.",
     "push_unsupported": "This browser cannot receive notifications here. On iPhone, add the app to the home screen first.",
     "events": "Notify me when",

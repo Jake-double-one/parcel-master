@@ -134,7 +134,7 @@
     "apprise_help": "Eine pro Zeile, zum Beispiel gotify://host/token oder ntfy://thema. Deckt Gotify, ntfy, Telegram, E-Mail und viele weitere ab.",
     "push": "Browser-Benachrichtigungen",
     "push_on": "An für dieses Gerät",
-    "push_off": "Aus für dieses Gerät",
+    "push_off": "Für dieses Gerät einschalten",
     "push_blocked": "Meldungen sind für diese Seite blockiert. Erlaub sie in den Browser-Einstellungen.",
     "push_unsupported": "Dieser Browser kann hier keine Meldungen empfangen. Auf dem iPhone musst du die App zuerst zum Home-Bildschirm hinzufügen.",
     "events": "Melde dich, wenn",
