@@ -48,6 +48,12 @@
   let importState = $state("");
   let error = $state("");
   let working = $state("");
+  // Carrier sections start folded; the heading already tells whether one is set up.
+  let unfolded = $state<string[]>([]);
+
+  function toggleModule(id: string) {
+    unfolded = unfolded.includes(id) ? unfolded.filter((x) => x !== id) : [...unfolded, id];
+  }
   let drafts = $state<Record<string, Record<string, string>>>({});
   let connectError = $state<Record<string, { text: string; detail: string }>>({});
 
@@ -323,17 +329,28 @@
       {#each carriers as carrier}
         {@const own = settings.carriers[carrier.id] ?? {}}
         {@const ready = carrier.kind === "importer" ? !!carrier.sync?.account : carrier.configured}
-        <section class="module">
-          <div class="row module-head">
+        {@const open = unfolded.includes(carrier.id)}
+        <section class="module" class:folded={!open}>
+          <!-- The heading stays visible with its state; the rest folds away. -->
+          <button
+            type="button"
+            class="row module-head fold-toggle"
+            aria-expanded={open}
+            onclick={() => toggleModule(carrier.id)}
+          >
+            <svg class="chev" class:open width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+              <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
+            </svg>
             <h3>{carrier.name}{carrier.country ? ` · ${carrier.country.toUpperCase()}` : ""}</h3>
-            <span class="micro" class:ready>
+            <span class="micro state" class:ready>
               {carrier.settings_fields.length === 0
                 ? t("settings.no_settings")
                 : ready
                   ? t("settings.configured")
                   : t("settings.not_configured")}
             </span>
-          </div>
+          </button>
+          {#if open}
           {#if carrier.kind === "importer"}
             {@const account = carrier.sync?.account}
             {#if account}
@@ -463,6 +480,7 @@
                   : t("settings.budget_unlimited", { used: carrier.used_today })}
               </span>
             </label>
+          {/if}
           {/if}
         </section>
       {/each}
@@ -707,8 +725,45 @@
     letter-spacing: 0.04em;
   }
 
-  .ready {
-    color: var(--dusk);
+  /* "Ready" is the one place for green. Mixing in the skin's text colour makes it
+     darker on light skins and lighter on dark ones, so it stays readable on all. */
+  .micro.ready {
+    color: color-mix(in oklab, #2fa862 70%, var(--ink));
+  }
+
+  .fold-toggle {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+    text-align: left;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 36px;
+  }
+
+  .fold-toggle .state {
+    margin-left: auto;
+  }
+
+  .fold-toggle .chev {
+    flex: 0 0 auto;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+
+  .fold-toggle .chev.open {
+    transform: rotate(90deg);
+  }
+
+  .module.folded {
+    padding-bottom: 0;
+    margin-bottom: 8px;
+  }
+
+  .module.folded .module-head {
+    margin-bottom: 8px;
   }
 
   .module .stats {
