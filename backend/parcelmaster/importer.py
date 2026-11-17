@@ -93,9 +93,17 @@ def carrier_for(
 
 
 def apply(
-    store: Store, registry: Registry, module: ImporterModule, found: list[ImportedShipment]
+    store: Store,
+    registry: Registry,
+    module: ImporterModule,
+    found: list[ImportedShipment],
+    wanted: bool = False,
 ) -> list[Notice]:
-    """Bring the stored shipments in line with what the service reports."""
+    """Bring the stored shipments in line with what the service reports.
+
+    ``wanted`` means the user asked for exactly these orders: they are filed
+    whatever their state, and come back from the archive.
+    """
     settings = store.get_settings()
     zone = timezone(settings)
     base = int(settings["polling"]["interval_minutes"])
@@ -108,14 +116,17 @@ def apply(
     for item in found:
         shipment = store.find_by_reference(module.name, item.reference)
         if shipment and shipment["archived_at"]:
-            continue  # the user is done with this order
+            if not wanted:
+                continue  # the user is done with this order
+            store.set_archived(shipment["id"], False)
         if shipment is None:
-            if [module.name, item.reference] in dismissed:
-                continue  # the user deleted this order here
-            if all(parcel.status in FINAL for parcel in item.parcels) and not _just_arrived(
-                item, now, zone, recent_days
-            ):
-                continue  # arrived a while ago; no need to list old orders
+            if not wanted:
+                if [module.name, item.reference] in dismissed:
+                    continue  # the user deleted this order here
+                if all(parcel.status in FINAL for parcel in item.parcels) and not _just_arrived(
+                    item, now, zone, recent_days
+                ):
+                    continue  # arrived a while ago; no need to list old orders
             shipment_id = store.save_shipment(
                 None,
                 {
@@ -189,7 +200,10 @@ def apply(
                         )
                         for e in store.parcel_events(parcel_id)
                     ]
-                    if not events or events[-1].description != imported.description:
+                    # A status without words adds nothing to the history.
+                    if imported.description and (
+                        not events or events[-1].description != imported.description
+                    ):
                         events.append(
                             TrackingEvent(
                                 imported.status_time or now, imported.status, imported.description
@@ -267,6 +281,35 @@ async def connect(
             found=len(found),
         )
         return None
+
+
+async def fetch_one(
+    store: Store, registry: Registry, module: ImporterModule, data_dir: Path, reference: str
+) -> int:
+    """Import a single order the user asked for by its reference.
+
+    Returns the id of its shipment; raises CarrierError if it cannot be read.
+    """
+    settings = store.get_settings()
+    own = settings["carriers"].get(module.id, {})
+    if not get_state(store, module.id).get("connected") or not module.is_configured(own):
+        raise CarrierError("not_connected")
+    lock = _locks.setdefault(module.id, asyncio.Lock())
+    async with lock:
+        request = SyncRequest(own, settings["language"], data_dir / "modules" / module.id)
+        try:
+            found = await asyncio.to_thread(module.fetch, request, reference)
+        except CarrierError:
+            raise
+        except Exception as error:
+            log.exception("importer %s failed", module.id)
+            raise CarrierError("module_error", describe(error)) from error
+        dismissed = store.get_value(DISMISSED_KEY) or []
+        if [module.name, found.reference] in dismissed:
+            dismissed.remove([module.name, found.reference])
+            store.set_value(DISMISSED_KEY, dismissed)
+        apply(store, registry, module, [found], wanted=True)
+        return store.find_by_reference(module.name, found.reference)["id"]
 
 
 def disconnect(store: Store, module: ImporterModule, data_dir: Path) -> None:

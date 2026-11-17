@@ -448,3 +448,64 @@ def test_a_deleted_import_does_not_come_back_with_the_next_sync(client, monkeypa
     client.app.state.pm.store.set_value("importers", states)
     client.post("/api/importers/de.amazon/sync")
     assert [s["reference"] for s in client.get("/api/shipments").json()] == ["302-2"]
+
+
+def test_an_amazon_order_can_be_added_by_its_number_whatever_its_state(client, monkeypatch):
+    from parcelmaster.carriers.base import CarrierError, ImportedParcel, ImportedShipment
+    from parcelmaster.carriers.de.amazon import MODULE
+    from parcelmaster.status import Status
+
+    number = "028-0001289-9273121"
+    amazon = next(c for c in client.get("/api/carriers").json() if c["id"] == "de.amazon")
+    assert amazon["by_reference"] is True
+
+    def detect(text):
+        return client.post("/api/detect", json={"text": text}).json()["matches"]
+
+    wanted = [{"carrier": "de.amazon", "tracking_number": number}]
+    assert detect(number) == wanted
+    assert detect(f"Your order {number} has shipped") == wanted
+    assert detect(f"https://www.amazon.de/gp/your-account/order-details?orderID={number}") == wanted
+
+    def import_order(reference=number):
+        return client.post("/api/importers/de.amazon/import", json={"reference": reference})
+
+    assert import_order("12345").json()["detail"]["error"] == "invalid_reference"
+    not_connected = import_order().json()["detail"]
+    assert (not_connected["error"], not_connected["reason"]) == ("import_failed", "not_connected")
+
+    monkeypatch.setattr(MODULE, "sync", lambda request: [])
+    client.post(
+        "/api/importers/de.amazon/connect", json={"email": "a@example.org", "password": "x"}
+    )
+
+    def fetch(request, reference):
+        if reference != number:
+            raise CarrierError("not_found")
+        # Delivered weeks ago: the regular sync would never list it.
+        return ImportedShipment(
+            number,
+            "Kettle",
+            [ImportedParcel(f"{number}/1", Status.DELIVERED, "", items=["Kettle"])],
+        )
+
+    monkeypatch.setattr(MODULE, "fetch", fetch)
+    assert import_order("028-0000000-0000000").json()["detail"]["reason"] == "not_found"
+
+    created = import_order()
+    assert created.status_code == 201
+    shipment = created.json()
+    assert (shipment["reference"], shipment["status"], shipment["source"]) == (
+        number,
+        "delivered",
+        "Amazon",
+    )
+    assert shipment["parcels"][0]["contents"] == ["Kettle"]
+
+    # Asking again returns the same shipment, also after it was archived or deleted.
+    client.post(f"/api/shipments/{shipment['id']}/archive", json={"archived": True})
+    again = import_order().json()
+    assert again["id"] == shipment["id"] and again["archived_at"] is None
+    client.delete(f"/api/shipments/{shipment['id']}")
+    assert import_order().status_code == 201
+    assert len(client.get("/api/shipments").json()) == 1

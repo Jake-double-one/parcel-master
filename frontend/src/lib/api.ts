@@ -76,6 +76,8 @@ export const api = {
   syncImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/sync`),
   connectImporter: (id: string, credentials: Record<string, string>) =>
     request<SyncState>("POST", `/api/importers/${id}/connect`, credentials),
+  importOrder: (id: string, reference: string) =>
+    request<Shipment>("POST", `/api/importers/${id}/import`, { reference }),
   disconnectImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/disconnect`),
   exportData: () => request<unknown>("GET", "/api/export"),
   importData: (data: unknown) =>

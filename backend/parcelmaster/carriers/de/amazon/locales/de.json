@@ -66,5 +66,8 @@
     "month11": "November",
     "month12": "Dezember",
     "date_plain": "{day}. {month}"
+  },
+  "reference": {
+    "label": "Bestellnummer"
   }
 }

@@ -27,6 +27,7 @@ from parcelmaster.carriers.base import (
 from parcelmaster.status import Status
 
 DOMAIN = "amazon.de"
+ORDER_NUMBER = re.compile(r"\d{3}-\d{7}-\d{7}")
 #: Upper limit of tracking pages read per sync, to stay a polite visitor.
 MAX_TRACKING_PAGES = 40
 
@@ -357,7 +358,12 @@ def describe_item(item: Any) -> str:
     return f"{quantity} × {title}" if isinstance(quantity, int) and quantity > 1 else title
 
 
-def to_shipments(orders: list[Any], tracking: dict[tuple[str, str], Any], today: date):
+def to_shipments(
+    orders: list[Any],
+    tracking: dict[tuple[str, str], Any],
+    today: date,
+    keep_empty: bool = False,
+):
     """Turn the library's orders into what Parcel Master files.
 
     ``tracking`` maps (order number, shipment id) to the library's Tracking
@@ -399,13 +405,23 @@ def to_shipments(orders: list[Any], tracking: dict[tuple[str, str], Any], today:
                     events=parse_events(getattr(found, "parsed", None), today),
                 )
             )
-        if not parcels:
-            continue
         if not titles:
             titles = [item.title for item in getattr(order, "items", []) if item.title]
         title = titles[0] if titles else ""
         if len(title) > 80:
             title = title[:77].rstrip() + "…"
+        if not parcels:
+            if not keep_empty:
+                continue
+            # Amazon shows no parcel for an old order any more: it arrived long ago.
+            parcels.append(
+                ImportedParcel(
+                    key=f"{number}/1",
+                    status=Status.DELIVERED,
+                    url=f"https://www.{DOMAIN}/gp/your-account/order-details?orderID={number}",
+                    items=[describe_item(i) for i in getattr(order, "items", []) if i.title],
+                )
+            )
         shipments.append(ImportedShipment(reference=number, title=title, parcels=parcels))
     return shipments
 
@@ -420,11 +436,39 @@ class AmazonDe(ImporterModule):
         Field("otp_secret", type="secret"),
     )
     sync_interval_minutes = 180
+    reference_pattern = ORDER_NUMBER
 
     def localize(self, text: str, phrase: Any) -> str:
         return translate(text, phrase)
 
+    def extract_from_url(self, url: str) -> str | None:
+        parsed = urlparse(url)
+        if not (parsed.hostname or "").endswith(DOMAIN):
+            return None
+        match = ORDER_NUMBER.search(parsed.query) or ORDER_NUMBER.search(parsed.path)
+        return match.group(0) if match else None
+
     def sync(self, request: SyncRequest) -> list[ImportedShipment]:
+        def work(client: Any, errors: Any) -> list[Any]:
+            return client.get_orders(time_filter="last30")
+
+        return self._read(request, work)
+
+    def fetch(self, request: SyncRequest, reference: str) -> ImportedShipment:
+        def work(client: Any, errors: Any) -> list[Any]:
+            try:
+                return [client.get_order(reference)]
+            except errors.AmazonOrdersNotFoundError as error:
+                raise CarrierError("not_found") from error
+
+        # Asked for by number, an order is wanted even if Amazon shows no parcel for it any more.
+        found = self._read(request, work, keep_empty=True)
+        if not found:
+            raise CarrierError("not_found")
+        return found[0]
+
+    def _read(self, request: SyncRequest, work: Any, keep_empty: bool = False):
+        """Sign in, let ``work`` fetch orders, and add each parcel's tracking page."""
         # Imported here so that a missing or broken library only affects this module.
         from amazonauth.exception import (
             AmazonAuthChallengeUnsolvedError,
@@ -432,6 +476,7 @@ class AmazonDe(ImporterModule):
             AmazonAuthSignInError,
         )
         from amazonauth.session import AmazonSession, IODefault
+        from amazonorders import exception as order_errors
         from amazonorders.conf import AmazonOrdersConfig
         from amazonorders.exception import AmazonOrdersError
         from amazonorders.orders import AmazonOrders
@@ -484,7 +529,7 @@ class AmazonDe(ImporterModule):
         try:
             session.login()
             client = AmazonOrders(session)
-            orders = client.get_orders(time_filter="last30")
+            orders = work(client, order_errors)
             tracking: dict[tuple[str, str], Any] = {}
             for order in orders:
                 for shipment in order.shipments or []:
@@ -511,7 +556,7 @@ class AmazonDe(ImporterModule):
             if type(error).__module__.startswith("playwright"):
                 raise CarrierError("browser_failed", _first_line(error)) from error
             raise
-        return to_shipments(orders, tracking, date.today())
+        return to_shipments(orders, tracking, date.today(), keep_empty)
 
 
 MODULE = AmazonDe()

@@ -100,7 +100,8 @@
     "detected": "Als {carrier} erkannt.",
     "not_detected": "Kein Paketdienst erkannt. Wähl einen aus.",
     "not_configured": "{carrier} hat noch keinen Schlüssel. Trag ihn in den Einstellungen ein, dann lädt der Status.",
-    "group_hint": "Mehrere Pakete einer Sendung bleiben in der Übersicht zusammen."
+    "group_hint": "Mehrere Pakete einer Sendung bleiben in der Übersicht zusammen.",
+    "importing": "Hole Bestellung"
   },
   "settings": {
     "title": "Einstellungen",
@@ -212,12 +213,14 @@
     "invalid_quiet_hours": "Gib die Ruhezeiten als hh:mm ein.",
     "not_found": "Diese Sendung gibt es nicht mehr.",
     "too_soon": "Gerade erst versucht. Warte einen Moment.",
-    "missing_credentials": "Trag E-Mail und Passwort ein."
+    "missing_credentials": "Trag E-Mail und Passwort ein.",
+    "order_alone": "Leg eine Bestellung einzeln an; ihre Pakete kommen von selbst mit.",
+    "invalid_reference": "Das sieht nicht nach einer Bestellnummer aus."
   },
   "carrier_error": {
     "not_configured": "Für diesen Paketdienst ist kein Schlüssel eingerichtet.",
     "unauthorized": "Der Paketdienst hat den Schlüssel abgelehnt.",
-    "not_found": "Der Paketdienst kennt diese Nummer noch nicht.",
+    "not_found": "Diese Nummer ist dort nicht bekannt.",
     "rate_limited": "Der Paketdienst bremst gerade die Anfragen.",
     "budget_exhausted": "Die Abrufe für heute sind verbraucht. Nächster Abruf morgen.",
     "unavailable": "Der Paketdienst hat nicht geantwortet.",
@@ -228,7 +231,8 @@
     "needs_person": "Der Dienst verlangt eine Prüfung, die nur ein Mensch besteht (Captcha oder Freigabe). Melde dich einmal im Browser an und gleich dann noch einmal ab.",
     "sign_in_failed": "Die Anmeldung ist nicht durchgegangen. Prüf E-Mail und Passwort; darunter steht die Meldung des Dienstes.",
     "browser_failed": "Der Browser für die Anmeldeprüfung ist gescheitert.",
-    "invalid_otp_secret": "Das ist kein Geheimschlüssel der Zwei-Schritt-Verifizierung. Gemeint ist der lange Schlüssel aus Buchstaben A–Z und Ziffern 2–7, den Amazon beim Hinzufügen einer Authenticator-App zeigt, nicht der sechsstellige Code."
+    "invalid_otp_secret": "Das ist kein Geheimschlüssel der Zwei-Schritt-Verifizierung. Gemeint ist der lange Schlüssel aus Buchstaben A–Z und Ziffern 2–7, den Amazon beim Hinzufügen einer Authenticator-App zeigt, nicht der sechsstellige Code.",
+    "not_connected": "Verbinde zuerst das Konto in den Einstellungen."
   },
   "notify": {
     "title": "{title}",

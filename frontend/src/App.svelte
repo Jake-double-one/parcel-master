@@ -251,7 +251,11 @@
         <button
           type="button"
           class="chip primary"
-          onclick={() => (editing = { shipment: null, prefill: "" })}
+          onclick={() => {
+            // Whoever typed a number into the search most likely wants to add it.
+            editing = { shipment: null, prefill: query.trim() };
+            query = "";
+          }}
         >
           + {t("overview.add")}
         </button>

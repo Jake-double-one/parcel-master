@@ -77,14 +77,6 @@
     </p>
   {/if}
 
-  {#if parcel.contents.length}
-    <ul class="contents" aria-label={t("shipment.contents")}>
-      {#each parcel.contents as item}
-        <li>{item}</li>
-      {/each}
-    </ul>
-  {/if}
-
   {#if errorText}
     <p class="hint alert">{errorText}</p>
   {/if}
@@ -95,7 +87,23 @@
         {t("shipment.open_carrier", { carrier: parcel.site_name })} ↗
       </a>
     {/if}
-    <details class="history">
+    {#if parcel.contents.length}
+      <details class="fold">
+        <summary>
+          <svg class="chev" width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+            <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          {t("shipment.contents")}
+          <span class="count">{parcel.contents.length}</span>
+        </summary>
+        <ul class="contents">
+          {#each parcel.contents as item}
+            <li>{item}</li>
+          {/each}
+        </ul>
+      </details>
+    {/if}
+    <details class="fold history">
       <summary>
         <svg class="chev" width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
           <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
@@ -171,9 +179,13 @@
     font-size: 0.92rem;
   }
 
+  .count {
+    color: var(--ink);
+  }
+
   .contents {
     list-style: none;
-    margin: 8px 0 0;
+    margin: 6px 0 4px;
     padding: 0;
     font-size: 0.88rem;
     color: var(--muted);
@@ -205,11 +217,11 @@
   }
 
   /* Closed, the history is just a link in the row; open, it takes the full width. */
-  .history[open] {
+  .fold[open] {
     flex: 1 1 100%;
   }
 
-  .history > summary {
+  .fold > summary {
     min-height: 36px;
     width: fit-content;
     padding: 0 4px;

@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, importer
-from .carriers.base import CarrierModule
+from .carriers.base import CarrierError, CarrierModule
 from .carriers.registry import Registry, discover
 from .config import Config
 from .db import Store, merge, now_iso
@@ -331,6 +331,23 @@ def create_app(config: Config) -> FastAPI:
             raise fail(400, "sign_in", reason=error.code, message=error.detail)
         return sync_state(ctx, module)
 
+    @app.post("/api/importers/{module_id}/import", status_code=201)
+    async def import_by_reference(
+        ctx: RealContext, module_id: str, reference: Annotated[str, Body(embed=True, max_length=80)]
+    ) -> dict[str, Any]:
+        """File one order the user names, whatever its state."""
+        module = importer_module(ctx, module_id)
+        reference = reference.strip()
+        if not module.reference_pattern or not module.reference_pattern.fullmatch(reference):
+            raise fail(422, "invalid_reference")
+        try:
+            shipment_id = await importer.fetch_one(
+                ctx.store, ctx.state.registry, module, ctx.state.config.data_dir, reference
+            )
+        except CarrierError as error:
+            raise fail(400, "import_failed", reason=error.code, message=error.detail) from error
+        return present(ctx, ctx.store.get_shipment(shipment_id), language_of(ctx))
+
     @app.post("/api/importers/{module_id}/disconnect")
     def disconnect_importer(ctx: RealContext, module_id: str) -> dict[str, Any]:
         module = importer_module(ctx, module_id)
@@ -361,6 +378,8 @@ def create_app(config: Config) -> FastAPI:
                     "country": module.country,
                     "kind": module.kind,
                     "sync": sync_state(ctx, module),
+                    # Whether a single order can be added by its number.
+                    "by_reference": bool(getattr(module, "reference_pattern", None)),
                     "configured": module.is_configured(own),
                     "settings_fields": [vars(f) for f in module.settings_fields],
                     "parcel_fields": [vars(f) for f in module.parcel_fields],
@@ -389,10 +408,17 @@ def create_app(config: Config) -> FastAPI:
             tokens = [
                 text,
                 *re.findall(r"[A-Za-z0-9]{8,40}", text),
+                *re.findall(r"\d[\d\-]{8,30}\d", text),
                 *re.findall(r"\d[\d ]{6,40}\d", text),
             ]
             for token in tokens:
                 for module in ctx.modules():
+                    pattern = getattr(module, "reference_pattern", None)
+                    if pattern and pattern.fullmatch(token.strip()):
+                        match = {"carrier": module.id, "tracking_number": token.strip()}
+                        if match not in matches:
+                            matches.append(match)
+                        continue
                     if module.matches(token):
                         match = {"carrier": module.id, "tracking_number": module.normalize(token)}
                         if match not in matches:

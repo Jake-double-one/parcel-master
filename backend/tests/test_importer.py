@@ -555,3 +555,19 @@ def test_orders_that_arrived_recently_are_listed_too(world):
     assert parse_delivery_day("Delivered today", date(2026, 11, 17)) == datetime(2026, 11, 17)
     assert parse_delivery_day("Delivered 14 November", date(2026, 11, 17)) == datetime(2026, 11, 14)
     assert parse_delivery_day("Arriving today", date(2026, 11, 17)) is None
+
+
+def test_an_old_amazon_order_without_parcels_is_kept_when_asked_for():
+    item = SimpleNamespace(title="Kettle", quantity=1)
+    old = SimpleNamespace(order_number="302-1", cancelled=False, items=[item], shipments=[])
+    assert to_shipments([old], {}, date(2026, 11, 17)) == []
+    (shipment,) = to_shipments([old], {}, date(2026, 11, 17), keep_empty=True)
+    assert shipment.title == "Kettle"
+    assert [(p.status, p.items) for p in shipment.parcels] == [(Status.DELIVERED, ["Kettle"])]
+    assert (
+        AMAZON.extract_from_url(
+            "https://www.amazon.de/gp/your-account/order-details?orderID=302-1234567-7654321"
+        )
+        == "302-1234567-7654321"
+    )
+    assert AMAZON.extract_from_url("https://example.com/?orderID=302-1234567-7654321") is None

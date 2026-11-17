@@ -100,7 +100,8 @@
     "detected": "Recognised as {carrier}.",
     "not_detected": "No carrier recognised. Choose one.",
     "not_configured": "{carrier} has no key yet. Add it in the settings, then the status loads.",
-    "group_hint": "Several parcels in one shipment stay together in the overview."
+    "group_hint": "Several parcels in one shipment stay together in the overview.",
+    "importing": "Fetching order"
   },
   "settings": {
     "title": "Settings",
@@ -212,7 +213,9 @@
     "invalid_quiet_hours": "Enter quiet hours as hh:mm.",
     "not_found": "This shipment no longer exists.",
     "too_soon": "Just tried. Wait a moment.",
-    "missing_credentials": "Enter e-mail and password."
+    "missing_credentials": "Enter e-mail and password.",
+    "order_alone": "Add an order on its own; its parcels come with it.",
+    "invalid_reference": "That does not look like an order number."
   },
   "carrier_error": {
     "not_configured": "No key set up for this carrier.",
@@ -228,7 +231,8 @@
     "needs_person": "The service wants a check only a person can pass (captcha or approval). Sign in once in a browser, then sync again.",
     "sign_in_failed": "The sign-in did not go through. Check e-mail and password; the service's own message is below.",
     "browser_failed": "The browser needed for the sign-in check failed.",
-    "invalid_otp_secret": "That is not a two-step secret key. It is the long key of letters A–Z and digits 2–7 that Amazon shows when you add an authenticator app, not the six-digit code."
+    "invalid_otp_secret": "That is not a two-step secret key. It is the long key of letters A–Z and digits 2–7 that Amazon shows when you add an authenticator app, not the six-digit code.",
+    "not_connected": "Connect the account in the settings first."
   },
   "notify": {
     "title": "{title}",

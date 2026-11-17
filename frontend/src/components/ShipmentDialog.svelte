@@ -43,12 +43,26 @@
   let hints = $state<Record<number, string>>({});
   let error = $state("");
   let saving = $state(false);
+  let importing = $state(false);
 
-  // Only trackers can be added by number; importers bring their parcels themselves.
-  const trackers = $derived(carriers.filter((c) => c.kind === "tracker"));
+  /** Trackers take a tracking number; a connected importer may take an order number. */
+  function canAdd(carrier: Carrier): boolean {
+    return carrier.kind === "tracker" || (carrier.by_reference && !!carrier.sync?.account);
+  }
+  const selectable = $derived(carriers.filter(canAdd));
+
+  /** A parcel the importing service created: shown, but not edited by hand. */
+  function isImported(parcel: ParcelDraft): boolean {
+    return parcel.id !== undefined && carrierOf(parcel.carrier)?.kind === "importer";
+  }
+
+  /** A new entry that names an order of an importing service instead of a parcel. */
+  function isOrder(parcel: ParcelDraft): boolean {
+    return parcel.id === undefined && carrierOf(parcel.carrier)?.kind === "importer";
+  }
 
   function emptyParcel(): ParcelDraft {
-    const selectable = carriers.filter((c) => c.kind === "tracker");
+    const selectable = carriers.filter(canAdd);
     // With a single carrier there is nothing to choose.
     return { carrier: selectable.length === 1 ? selectable[0].id : "", tracking_number: "", extra: {} };
   }
@@ -124,12 +138,39 @@
       error = t("error.unknown_carrier");
       return;
     }
+    const orders = draft.parcels.filter(isOrder);
+    if (orders.length && (shipment || draft.parcels.length > 1)) {
+      error = t("error.order_alone");
+      return;
+    }
     saving = true;
+    importing = orders.length > 0;
     try {
-      onsaved(shipment ? await api.update(shipment.id, draft) : await api.create(draft));
+      if (orders.length) {
+        // The service fills in parcels, contents and status; name and note are the user's.
+        let saved = await api.importOrder(orders[0].carrier, orders[0].tracking_number);
+        if (title.trim() || note.trim() || direction !== saved.direction) {
+          saved = await api.update(saved.id, {
+            title: title.trim() || saved.title,
+            direction,
+            note,
+            parcels: saved.parcels.map((p) => ({
+              id: p.id,
+              carrier: p.carrier,
+              tracking_number: p.tracking_number,
+              extra: p.extra,
+            })),
+          });
+        }
+        onsaved(saved);
+      } else {
+        onsaved(shipment ? await api.update(shipment.id, draft) : await api.create(draft));
+      }
     } catch (caught) {
       const failure = caught instanceof ApiError ? caught : new ApiError(0, "generic");
-      if (failure.code === "duplicate") {
+      if (failure.code === "import_failed") {
+        error = tOr(`carrier_error.${failure.details.reason}`, t("carrier_error.unavailable"));
+      } else if (failure.code === "duplicate") {
         const existing = String(failure.details.title ?? "");
         const number = String(failure.details.tracking_number ?? "");
         error = existing
@@ -140,6 +181,7 @@
       }
     } finally {
       saving = false;
+      importing = false;
     }
   }
 
@@ -169,14 +211,16 @@
             {parcels.length > 1 ? t("dialog.parcel_n", { n: index + 1 }) : t("dialog.parcel")}
           </legend>
 
-          {#if carrier?.kind === "importer"}
+          {#if isImported(parcel)}
             <p class="imported">
-              <span class="eyebrow">{carrier.name}</span>
+              <span class="eyebrow">{carrier?.name}</span>
               <span class="mono">{parcel.tracking_number}</span>
             </p>
           {:else}
             <label class="field">
-              <span class="eyebrow">{t("dialog.paste")}</span>
+              <span class="eyebrow">
+                {isOrder(parcel) ? t(`carrier.${parcel.carrier}.reference.label`) : t("dialog.paste")}
+              </span>
               <!-- svelte-ignore a11y_autofocus -->
               <input
                 type="text"
@@ -199,12 +243,12 @@
               <span class="note">{hints[index] ?? (index === 0 ? t("dialog.paste_hint") : "")}</span>
             </label>
 
-            {#if trackers.length > 1}
+            {#if selectable.length > 0}
               <label class="field">
                 <span class="eyebrow">{t("dialog.carrier")}</span>
                 <select bind:value={parcel.carrier} onchange={applyDefaults}>
                   <option value="">{t("dialog.carrier_choose")}</option>
-                  {#each trackers as option}
+                  {#each selectable as option}
                     <option value={option.id}>
                       {option.name}{option.country ? ` (${option.country.toUpperCase()})` : ""}
                     </option>
@@ -289,7 +333,7 @@
     <div class="dialog-foot">
       <button type="button" class="chip" onclick={() => dialog.close()}>{t("dialog.cancel")}</button>
       <button type="submit" class="chip primary" disabled={saving}>
-        {shipment ? t("dialog.save") : t("dialog.create")}
+        {importing ? t("dialog.importing") : shipment ? t("dialog.save") : t("dialog.create")}
       </button>
     </div>
   </form>

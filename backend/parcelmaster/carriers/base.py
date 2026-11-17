@@ -176,6 +176,9 @@ class ImporterModule(CarrierModule):
     kind = "importer"
     #: The settings field that names the account, shown once it is connected.
     account_field: str = "email"
+    #: Shape of a reference (an order number) that can be imported on its own,
+    #: or None if the service cannot be asked for a single order.
+    reference_pattern: re.Pattern[str] | None = None
     #: Minutes between two syncs.
     sync_interval_minutes: int = 180
 
@@ -184,4 +187,8 @@ class ImporterModule(CarrierModule):
 
     def sync(self, request: SyncRequest) -> list[ImportedShipment]:
         """Fetch the open shipments. Runs in a worker thread and may block."""
+        raise NotImplementedError
+
+    def fetch(self, request: SyncRequest, reference: str) -> ImportedShipment:
+        """Fetch one order by its reference, whatever its state. May block."""
         raise NotImplementedError

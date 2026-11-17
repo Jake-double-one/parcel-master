@@ -83,6 +83,8 @@ export interface Carrier {
   /** "tracker": added by number. "importer": finds its shipments itself. */
   kind: "tracker" | "importer";
   sync: SyncState | null;
+  /** An importer whose orders can also be added one by one, by their number. */
+  by_reference: boolean;
   configured: boolean;
   settings_fields: FieldSpec[];
   parcel_fields: FieldSpec[];
