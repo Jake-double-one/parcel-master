@@ -158,6 +158,16 @@ def apply(
                 extra["items"] = json.dumps(imported.items, ensure_ascii=False)
             parcel = known.get(imported.key)
             if taker:
+                number = taker.normalize(imported.tracking_number)
+                already_there = parcel is not None and (
+                    parcel["carrier"],
+                    parcel["tracking_number"],
+                ) == (taker.id, number)
+                if not already_there and store.find_duplicate(taker.id, number, shipment["id"]):
+                    # The carrier is already asked about this number, by hand or for
+                    # another order in the same box. The service keeps this entry.
+                    taker = None
+            if taker:
                 carrier, number = taker.id, taker.normalize(imported.tracking_number)
                 # The carrier's own fields: what the user entered wins, then their defaults.
                 own_fields = {f.key for f in taker.parcel_fields}
@@ -178,8 +188,6 @@ def apply(
                 carrier,
                 number,
             )
-            if (parcel is None or moved) and store.find_duplicate(carrier, number, shipment["id"]):
-                continue  # the user already tracks this number by hand
             if parcel is None:
                 parcel_id = store.add_parcel(shipment["id"], carrier, number, extra)
             else:

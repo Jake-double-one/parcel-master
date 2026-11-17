@@ -172,7 +172,7 @@ def test_archived_and_renamed_shipments_are_left_alone(world):
     assert len(store.list_shipments(True)) == 1
 
 
-def test_a_number_the_user_already_tracks_is_not_added_twice(world):
+def test_a_number_the_user_already_tracks_is_not_looked_up_twice(world):
     store = world[0]
     configure_post(store)
     store.save_shipment(
@@ -181,8 +181,29 @@ def test_a_number_the_user_already_tracks_is_not_added_twice(world):
         [{"carrier": "test.post", "tracking_number": "PO123456"}],
     )
     sync(world, order(carrier_name="Post", tracking_number="PO123456"))
-    numbers = [p["tracking_number"] for s in store.list_shipments(False) for p in s["parcels"]]
-    assert numbers.count("PO123456") == 1
+    by_title = {s["title"]: s["parcels"] for s in store.list_shipments(False)}
+    # The order still shows up, but its parcel stays with the shop instead of
+    # asking the carrier a second time.
+    assert [(p["carrier"], p["tracking_number"]) for p in by_title["Kettle"]] == [
+        ("test.shop", "PO123456")
+    ]
+    assert [p["carrier"] for p in by_title["By hand"]] == ["test.post"]
+
+
+def test_two_orders_in_one_box_both_show_their_parcel(world):
+    store = world[0]
+    box = {"status": Status.IN_TRANSIT, "carrier_name": "Post", "tracking_number": "PO123456"}
+    sync(world, order("302-1", "Kettle", key="a", **box), order("302-2", "Cable", key="b", **box))
+    shipments = {s["reference"]: s["parcels"] for s in store.list_shipments(False)}
+    assert len(shipments["302-1"]) == 1 and len(shipments["302-2"]) == 1
+
+    # Once the carrier is set up, one of them is handed over; the other stays visible.
+    configure_post(store)
+    sync(world, order("302-1", "Kettle", key="a", **box), order("302-2", "Cable", key="b", **box))
+    shipments = {s["reference"]: s["parcels"] for s in store.list_shipments(False)}
+    assert [p["carrier"] for p in shipments["302-1"]] == ["test.post"]
+    assert [p["carrier"] for p in shipments["302-2"]] == ["test.shop"]
+    assert all(p[0]["tracking_number"] == "PO123456" for p in shipments.values())
 
 
 CREDENTIALS = {"email": "me@example.org", "password": "pw"}

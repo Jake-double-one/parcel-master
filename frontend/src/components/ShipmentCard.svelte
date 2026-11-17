@@ -26,7 +26,10 @@
 
   const grouped = $derived(shipment.parcels.length > 1);
   const archived = $derived(shipment.archived_at !== null);
-  const finished = $derived(shipment.finished_count === shipment.parcel_count);
+  // A shipment without parcels is not finished: something is still missing.
+  const finished = $derived(
+    shipment.parcel_count > 0 && shipment.finished_count === shipment.parcel_count,
+  );
   // An imported order names where it came from, so its parcels read "Shop via DHL".
   const origin = $derived(
     shipment.source !== "manual" && shipment.source !== "import" && shipment.source !== "demo"

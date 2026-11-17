@@ -556,7 +556,11 @@ def create_app(config: Config) -> FastAPI:
             raise fail(404, "not_found")
         open_parcels = [p for p in shipment["parcels"] if Status(p["status"]) not in FINAL]
         # Parcels that an importer still tracks get their news from a sync of that service.
-        for module_id in {p["carrier"] for p in open_parcels}:
+        carriers_to_ask = {p["carrier"] for p in open_parcels}
+        if not shipment["parcels"]:
+            # An imported order that lost its parcels is repaired by asking its service again.
+            carriers_to_ask |= {m.id for m in ctx.modules() if m.name == shipment["source"]}
+        for module_id in carriers_to_ask:
             module = ctx.module(module_id)
             if (
                 isinstance(module, importer.ImporterModule)
