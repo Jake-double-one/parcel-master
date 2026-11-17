@@ -108,8 +108,13 @@
 
   async function refresh(shipment: Shipment) {
     busy.push(shipment.id);
+    // What would look different on the card if the carrier had news.
+    const picture = (item: Shipment) =>
+      JSON.stringify(item.parcels.map((p) => [p.status, p.description, p.eta_from, p.last_error?.code]));
     try {
-      replace(await api.refresh(shipment.id));
+      const updated = await api.refresh(shipment.id);
+      notify(picture(updated) === picture(shipment) ? t("shipment.refresh_same") : t("shipment.refresh_new"));
+      replace(updated);
     } catch (caught) {
       report(caught);
     } finally {

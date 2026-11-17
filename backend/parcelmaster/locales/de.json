@@ -73,7 +73,9 @@
     "copied": "Kopiert ✓",
     "archived_toast": "Archiviert.",
     "deleted_toast": "Gelöscht.",
-    "undo": "Rückgängig"
+    "undo": "Rückgängig",
+    "refresh_same": "Abgerufen. Kein neuer Stand.",
+    "refresh_new": "Abgerufen. Es gibt Neues."
   },
   "dialog": {
     "create_title": "Sendung anlegen",

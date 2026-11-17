@@ -356,3 +356,48 @@ def test_editing_an_imported_shipment_keeps_what_the_importer_noted(client):
     assert edited["title"] == "My kettle"
     assert edited["source"] == "Amazon" and edited["reference"] == "302-1"
     assert [p["extra"].get("import_key") for p in edited["parcels"]] == ["SHIP1", "SHIP2"]
+
+
+def test_refreshing_a_shipment_syncs_the_service_that_still_tracks_it(client, monkeypatch):
+    from parcelmaster.carriers.base import ImportedParcel, ImportedShipment
+    from parcelmaster.carriers.de.amazon import MODULE
+    from parcelmaster.status import Status
+
+    answers = [
+        [
+            ImportedShipment(
+                "302-1", "Kettle", [ImportedParcel("S1", Status.IN_TRANSIT, "Dispatched")]
+            )
+        ],
+        [
+            ImportedShipment(
+                "302-1",
+                "Kettle",
+                [ImportedParcel("S1", Status.OUT_FOR_DELIVERY, "Out for delivery")],
+            )
+        ],
+    ]
+    calls = []
+
+    def sync(request):
+        calls.append(1)
+        return answers[min(len(calls), len(answers)) - 1]
+
+    monkeypatch.setattr(MODULE, "sync", sync)
+    client.post(
+        "/api/importers/de.amazon/connect", json={"email": "a@example.org", "password": "x"}
+    )
+    shipment = client.get("/api/shipments").json()[0]
+    assert shipment["status"] == "in_transit"
+
+    # Right after a sync the service is not asked again.
+    same = client.post(f"/api/shipments/{shipment['id']}/refresh").json()
+    assert same["status"] == "in_transit" and len(calls) == 1
+
+    states = client.app.state.pm.store.get_value("importers")
+    states["de.amazon"]["last_attempt_at"] = "2020-01-01T00:00:00+00:00"
+    client.app.state.pm.store.set_value("importers", states)
+    fresh = client.post(f"/api/shipments/{shipment['id']}/refresh").json()
+    assert len(calls) == 2
+    assert fresh["status"] == "out_for_delivery"
+    assert fresh["parcels"][0]["description"] == "Out for delivery"

@@ -505,9 +505,21 @@ def create_app(config: Config) -> FastAPI:
         shipment = ctx.store.get_shipment(shipment_id)
         if shipment is None:
             raise fail(404, "not_found")
-        await refresh(
-            ctx, [p["id"] for p in shipment["parcels"] if Status(p["status"]) not in FINAL]
-        )
+        open_parcels = [p for p in shipment["parcels"] if Status(p["status"]) not in FINAL]
+        # Parcels that an importer still tracks get their news from a sync of that service.
+        for module_id in {p["carrier"] for p in open_parcels}:
+            module = ctx.module(module_id)
+            if (
+                isinstance(module, importer.ImporterModule)
+                and not ctx.demo
+                and importer.get_state(ctx.store, module.id).get("connected")
+                and not importer.too_soon(ctx.store, module)
+            ):
+                notices = await importer.run(
+                    ctx.store, ctx.state.registry, module, ctx.state.config.data_dir
+                )
+                await ctx.state.notifier.handle(notices)
+        await refresh(ctx, [p["id"] for p in open_parcels])
         return present(ctx, ctx.store.get_shipment(shipment_id), language_of(ctx))
 
     # -- settings ---------------------------------------------------------

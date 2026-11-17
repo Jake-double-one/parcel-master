@@ -73,7 +73,9 @@
     "copied": "Copied ✓",
     "archived_toast": "Archived.",
     "deleted_toast": "Deleted.",
-    "undo": "Undo"
+    "undo": "Undo",
+    "refresh_same": "Checked. Nothing new.",
+    "refresh_new": "Checked. There is news."
   },
   "dialog": {
     "create_title": "Add shipment",
