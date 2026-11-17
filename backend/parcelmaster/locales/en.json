@@ -191,7 +191,7 @@
     "saver_on": "Saver on",
     "saver_off": "Saver off",
     "saver_night": "night rest from",
-    "saver_help": "Asks carriers less without missing the delivery day: nothing at night, announced parcels every six hours, parcels still days away twice a day, and Amazon parcels go to DHL only once they are out for delivery. Refresh by hand always works.",
+    "saver_help": "Asks carriers less without missing the delivery day: nothing during the night rest set above, announced parcels every six hours, parcels still days away twice a day, and Amazon parcels go to DHL only once they are out for delivery. Refresh by hand always works.",
     "saver_status": "Saver on: no lookups between {from} and {to}.",
     "event_delivery_window": "a carrier names a delivery window"
   },

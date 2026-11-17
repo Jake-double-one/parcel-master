@@ -191,7 +191,7 @@
     "saver_on": "Sparmodus an",
     "saver_off": "Sparmodus aus",
     "saver_night": "Nachtruhe von",
-    "saver_help": "Fragt die Paketdienste seltener, ohne den Zustelltag zu verpassen: nachts gar nicht, angekündigte Pakete alle sechs Stunden, Pakete, die noch Tage entfernt sind, zweimal täglich, und Amazon-Pakete gehen erst an DHL, wenn sie in Zustellung sind. Aktualisieren von Hand geht immer.",
+    "saver_help": "Fragt die Paketdienste seltener, ohne den Zustelltag zu verpassen: während der oben eingestellten Nachtruhe gar nicht, angekündigte Pakete alle sechs Stunden, Pakete, die noch Tage entfernt sind, zweimal täglich, und Amazon-Pakete gehen erst an DHL, wenn sie in Zustellung sind. Aktualisieren von Hand geht immer.",
     "saver_status": "Sparmodus an: zwischen {from} und {to} keine Abrufe.",
     "event_delivery_window": "ein Paketdienst ein Zustellfenster nennt"
   },
