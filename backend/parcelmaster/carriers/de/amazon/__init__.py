@@ -78,9 +78,32 @@ _RULES: tuple[tuple[re.Pattern[str], Status], ...] = (
 )
 
 
+def _prepare_browser() -> None:
+    """Make the library's browser start reliably inside a container.
+
+    Containers give Chromium a tiny /dev/shm by default, and pages crash once
+    it is full. The library offers no setting for launch arguments, so the
+    one place where it builds them is wrapped.
+    """
+    from amazonauth.contrib.browser.playwright import PlaywrightBrowserLauncher
+
+    if getattr(PlaywrightBrowserLauncher, "_parcelmaster_prepared", False):
+        return
+    original = PlaywrightBrowserLauncher._launch_options
+
+    def launch_options(headless: bool, args: Any, env: Any) -> dict[str, Any]:
+        options = original(headless, args, env)
+        options["args"] = [*(options.get("args") or []), "--disable-dev-shm-usage"]
+        return options
+
+    PlaywrightBrowserLauncher._launch_options = staticmethod(launch_options)
+    PlaywrightBrowserLauncher._parcelmaster_prepared = True
+
+
 def _first_line(error: Exception) -> str:
     """The library's message without its hints for people at a terminal."""
-    return str(error).split("\n-->")[0].strip()[:300]
+    text = str(error).split("\n-->")[0].strip()
+    return (text.splitlines()[0] if text else type(error).__name__)[:300]
 
 
 def parse_status(text: str | None) -> Status:
@@ -213,6 +236,7 @@ class AmazonDe(ImporterModule):
             # Amazon sometimes answers the sign-in with a JavaScript check that a
             # plain HTTP client cannot run. The library then runs it in a headless
             # browser and carries the cookies back.
+            _prepare_browser()
             data = {
                 "browser": "chromium",
                 "auth_forms_classes": [
@@ -265,6 +289,11 @@ class AmazonDe(ImporterModule):
             raise CarrierError("sign_in_failed", _first_line(error)) from error
         except (AmazonAuthError, AmazonOrdersError) as error:
             raise CarrierError("unavailable", _first_line(error)) from error
+        except Exception as error:
+            # Playwright raises its own error type when the browser or a page fails.
+            if type(error).__module__.startswith("playwright"):
+                raise CarrierError("browser_failed", _first_line(error)) from error
+            raise
         return to_shipments(orders, tracking, date.today())
 
 

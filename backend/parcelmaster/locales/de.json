@@ -223,7 +223,8 @@
     "module_error": "Das Modul des Paketdienstes ist abgestürzt.",
     "needs_code": "Der Dienst hat einen Zwei-Schritt-Code verlangt. Trag den Geheimschlüssel ein und gleich dann noch einmal ab.",
     "needs_person": "Der Dienst verlangt eine Prüfung, die nur ein Mensch besteht (Captcha oder Freigabe). Melde dich einmal im Browser an und gleich dann noch einmal ab.",
-    "sign_in_failed": "Die Anmeldung ist nicht durchgegangen. Prüf E-Mail und Passwort; darunter steht die Meldung des Dienstes."
+    "sign_in_failed": "Die Anmeldung ist nicht durchgegangen. Prüf E-Mail und Passwort; darunter steht die Meldung des Dienstes.",
+    "browser_failed": "Der Browser für die Anmeldeprüfung ist gescheitert."
   },
   "notify": {
     "title": "{title}",

@@ -34,6 +34,12 @@ MIN_MANUAL_GAP = timedelta(seconds=60)
 _locks: dict[str, asyncio.Lock] = {}
 
 
+def describe(error: Exception) -> str:
+    """An unexpected error in one line, enough to tell what went wrong."""
+    lines = str(error).strip().splitlines()
+    return f"{type(error).__name__}: {lines[0] if lines else ''}"[:300]
+
+
 def importers(registry: Registry) -> list[ImporterModule]:
     return [module for module in registry.all() if isinstance(module, ImporterModule)]
 
@@ -197,7 +203,7 @@ async def connect(
             return error
         except Exception as error:  # a broken module must not take the request down
             log.exception("importer %s failed", module.id)
-            return CarrierError("module_error", type(error).__name__)
+            return CarrierError("module_error", describe(error))
         settings["carriers"][module.id] = credentials
         store.save_settings(settings)
         apply(store, registry, module, found)
@@ -259,7 +265,7 @@ async def run(
             _set_state(
                 store,
                 module.id,
-                last_error={"code": "module_error", "detail": type(error).__name__},
+                last_error={"code": "module_error", "detail": describe(error)},
             )
             return []
         notices = apply(store, registry, module, found)
