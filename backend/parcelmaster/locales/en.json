@@ -216,7 +216,8 @@
     "unknown_carrier": "The module for this carrier is missing.",
     "module_error": "The carrier module failed.",
     "needs_code": "The service asked for a two-step code. Add the two-step secret key, then sync again.",
-    "needs_person": "The service wants a check only a person can pass (captcha or approval). Sign in once in a browser, then sync again."
+    "needs_person": "The service wants a check only a person can pass (captcha or approval). Sign in once in a browser, then sync again.",
+    "sign_in_failed": "The sign-in did not go through. Check e-mail and password; the service's own message is below."
   },
   "notify": {
     "title": "{title}",

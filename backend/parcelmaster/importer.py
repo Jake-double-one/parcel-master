@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 STATE_KEY = "importers"
 #: Errors that mean "the sign-in itself is the problem". Trying again with the
 #: same credentials would only make the service suspicious of the account.
-SIGN_IN_ERRORS = frozenset({"unauthorized", "needs_code", "needs_person"})
+SIGN_IN_ERRORS = frozenset({"unauthorized", "sign_in_failed", "needs_code", "needs_person"})
 MIN_MANUAL_GAP = timedelta(seconds=60)
 
 _locks: dict[str, asyncio.Lock] = {}

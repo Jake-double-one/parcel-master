@@ -77,6 +77,11 @@ _RULES: tuple[tuple[re.Pattern[str], Status], ...] = (
 )
 
 
+def _first_line(error: Exception) -> str:
+    """The library's message without its hints for people at a terminal."""
+    return str(error).split("\n-->")[0].strip()[:300]
+
+
 def parse_status(text: str | None) -> Status:
     """Map Amazon's one-line delivery status onto the shared statuses."""
     if not text:
@@ -209,7 +214,6 @@ class AmazonDe(ImporterModule):
                 "cookie_jar_path": str(request.state_dir / "cookies.json"),
                 "output_dir": str(request.state_dir / "output"),
                 "request_timeout": 30,
-                "max_auth_attempts": 3,
             },
         )
         session = AmazonSession(
@@ -242,9 +246,11 @@ class AmazonDe(ImporterModule):
         except AmazonAuthChallengeUnsolvedError as error:
             raise CarrierError("needs_person", type(error).__name__) from error
         except AmazonAuthSignInError as error:
-            raise CarrierError("unauthorized", str(error)[:200]) from error
+            # Wrong password, an unexpected page, a blocked address: Amazon's own
+            # words are the only clue, so they are passed on.
+            raise CarrierError("sign_in_failed", _first_line(error)) from error
         except (AmazonAuthError, AmazonOrdersError) as error:
-            raise CarrierError("unavailable", str(error)[:200]) from error
+            raise CarrierError("unavailable", _first_line(error)) from error
         return to_shipments(orders, tracking, date.today())
 
 

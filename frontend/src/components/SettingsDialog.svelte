@@ -290,7 +290,12 @@
             </div>
             {#if carrier.sync?.last_error}
               <p class="hint alert">
-                {tOr(`carrier_error.${carrier.sync.last_error.code}`, t("carrier_error.unavailable"))}
+                <span>
+                  {tOr(`carrier_error.${carrier.sync.last_error.code}`, t("carrier_error.unavailable"))}
+                  {#if carrier.sync.last_error.detail}
+                    <span class="detail mono">{carrier.sync.last_error.detail}</span>
+                  {/if}
+                </span>
               </p>
             {/if}
           {:else}
@@ -544,6 +549,13 @@
 
   .sync {
     margin-bottom: 16px;
+  }
+
+  .detail {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.74rem;
+    overflow-wrap: anywhere;
   }
 
   .time {
