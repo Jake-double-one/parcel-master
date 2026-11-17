@@ -43,6 +43,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+export interface TestReport {
+  apprise: { ok: boolean } | null;
+  push: { ok: boolean; sent: number; subscriptions: number; error: string } | null;
+}
+
 export const api = {
   meta: () => request<Meta>("GET", "/api/meta"),
   texts: (language: string) => request<Record<string, string>>("GET", `/api/i18n/${language}`),
@@ -63,11 +68,8 @@ export const api = {
   refresh: (id: number) => request<Shipment>("POST", `/api/shipments/${id}/refresh`),
   settings: () => request<Settings>("GET", "/api/settings"),
   saveSettings: (settings: Partial<Settings>) => request<Settings>("PUT", "/api/settings", settings),
-  testNotification: () =>
-    request<{ apprise: { ok: boolean } | null; push: { ok: boolean } | null }>(
-      "POST",
-      "/api/notifications/test",
-    ),
+  testNotification: (endpoint?: string) =>
+    request<TestReport>("POST", "/api/notifications/test", endpoint ? { endpoint } : undefined),
   pushKey: () => request<{ public_key: string }>("GET", "/api/push/key"),
   pushSubscribe: (subscription: PushSubscriptionJSON) =>
     request<void>("POST", "/api/push/subscriptions", subscription),

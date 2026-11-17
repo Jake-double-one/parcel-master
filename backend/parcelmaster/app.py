@@ -706,7 +706,9 @@ def create_app(config: Config) -> FastAPI:
     # -- notifications ----------------------------------------------------
 
     @app.post("/api/notifications/test")
-    async def test_notification(ctx: RealContext) -> dict[str, Any]:
+    async def test_notification(
+        ctx: RealContext, endpoint: Annotated[str | None, Body(embed=True)] = None
+    ) -> dict[str, Any]:
         settings = ctx.store.get_settings()
         t = ctx.state.translations.t
         language = language_of(ctx)
@@ -716,6 +718,8 @@ def create_app(config: Config) -> FastAPI:
             "body": t(language, "notify.test.body"),
             "shipment_id": None,
         }
+        if endpoint:
+            return await ctx.state.notifier.send_to_device(message, endpoint)
         return await ctx.state.notifier.send(message, settings)
 
     @app.get("/api/push/key")

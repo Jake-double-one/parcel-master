@@ -575,3 +575,36 @@ def test_automatic_archiving_is_reported_once(client):
     assert client.post("/api/notices/take").json() == {"auto_archived": 2}
     assert client.post("/api/notices/take").json() == {"auto_archived": 0}
     assert len(client.get("/api/shipments").json()) == 1
+
+
+def test_device_test_only_reaches_that_browser(client, monkeypatch):
+    import pywebpush
+
+    reached = []
+
+    def webpush(**kwargs):
+        reached.append(kwargs["subscription_info"]["endpoint"])
+
+    monkeypatch.setattr(pywebpush, "webpush", webpush)
+    for name in ("one", "two"):
+        subscription = {
+            "endpoint": f"https://push.example/{name}",
+            "keys": {"p256dh": "k", "auth": "a"},
+        }
+        assert client.post("/api/push/subscriptions", json=subscription).status_code == 204
+
+    report = client.post(
+        "/api/notifications/test", json={"endpoint": "https://push.example/two"}
+    ).json()
+    assert reached == ["https://push.example/two"]
+    assert report["push"] == {"ok": True, "sent": 1, "subscriptions": 1, "error": ""}
+
+    reached.clear()
+    report = client.post("/api/notifications/test").json()
+    assert sorted(reached) == ["https://push.example/one", "https://push.example/two"]
+    assert report["push"]["sent"] == 2
+
+    unknown = client.post(
+        "/api/notifications/test", json={"endpoint": "https://push.example/none"}
+    ).json()
+    assert unknown["push"] is None

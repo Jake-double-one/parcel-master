@@ -3,7 +3,7 @@
   import { api, ApiError } from "../lib/api";
   import { ago, until } from "../lib/format";
   import { i18n, t, tOr } from "../lib/i18n.svelte";
-  import { disablePush, enablePush, pushState, type PushState } from "../lib/push";
+  import { disablePush, enablePush, pushEndpoint, pushState, type PushState } from "../lib/push";
   import { currentSkin, setSkin, SKINS } from "../lib/skins";
   import type { Carrier, Meta, Settings, SystemStatus } from "../lib/types";
 
@@ -45,6 +45,7 @@
   let push = $state<PushState>("off");
   let saveState = $state<"idle" | "saving" | "saved">("idle");
   let testState = $state("");
+  let deviceTest = $state("");
   let importState = $state("");
   let error = $state("");
   let working = $state("");
@@ -163,8 +164,26 @@
 
   async function togglePush() {
     error = "";
+    deviceTest = "";
     try {
       push = push === "on" ? await disablePush() : await enablePush();
+      status = await api.status();
+    } catch (caught) {
+      fail(caught);
+    }
+  }
+
+  async function testDevice() {
+    error = "";
+    deviceTest = "";
+    try {
+      const endpoint = await pushEndpoint();
+      const report = endpoint ? await api.testNotification(endpoint) : null;
+      if (!report?.push || report.push.error === "gone") {
+        deviceTest = t("settings.push_test_gone");
+        push = await pushState();
+      } else if (report.push.ok) deviceTest = t("settings.push_test_sent");
+      else deviceTest = t("settings.push_test_failed", { reason: report.push.error });
     } catch (caught) {
       fail(caught);
     }
@@ -175,10 +194,18 @@
     if (!(await save())) return;
     try {
       const report = await api.testNotification();
-      const channels = [report.apprise, report.push].filter((channel) => channel !== null);
-      if (!channels.length) testState = t("settings.test_none");
-      else if (channels.some((channel) => channel.ok)) testState = t("settings.test_sent");
-      else testState = t("settings.test_failed");
+      const parts: string[] = [];
+      if (report.push) {
+        parts.push(
+          report.push.ok
+            ? t("settings.test_push_ok", { sent: report.push.sent, total: report.push.subscriptions })
+            : t("settings.test_push_failed", { reason: report.push.error }),
+        );
+      }
+      if (report.apprise) {
+        parts.push(t(report.apprise.ok ? "settings.test_apprise_ok" : "settings.test_apprise_failed"));
+      }
+      testState = parts.length ? parts.join(" · ") : t("settings.test_none");
     } catch (caught) {
       fail(caught);
     }
@@ -500,11 +527,28 @@
             >
               {push === "on" ? t("settings.push_on") : t("settings.push_off")}
             </button>
+            {#if push === "on"}
+              <button type="button" class="chip" onclick={testDevice}>{t("settings.push_test")}</button>
+            {/if}
           </div>
+          {#if deviceTest}
+            <span class="note" role="status">{deviceTest}</span>
+          {/if}
           {#if push === "blocked"}
             <span class="note">{t("settings.push_blocked")}</span>
           {:else if push === "unsupported"}
             <span class="note">{t("settings.push_unsupported")}</span>
+          {:else}
+            <span class="note">
+              {t("settings.push_help")}
+              {#if status}
+                {status.push_subscriptions === 0
+                  ? t("settings.push_devices_0")
+                  : status.push_subscriptions === 1
+                    ? t("settings.push_devices_1")
+                    : t("settings.push_devices_n", { count: status.push_subscriptions })}
+              {/if}
+            </span>
           {/if}
         </div>
 

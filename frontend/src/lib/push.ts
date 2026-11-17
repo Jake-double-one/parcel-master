@@ -44,3 +44,11 @@ export async function disablePush(): Promise<PushState> {
   }
   return "off";
 }
+
+/** The address the push service gave this browser, if it is signed up. */
+export async function pushEndpoint(): Promise<string | null> {
+  if (!supported()) return null;
+  const registration = await navigator.serviceWorker.getRegistration();
+  const subscription = await registration?.pushManager.getSubscription();
+  return subscription?.endpoint ?? null;
+}

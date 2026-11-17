@@ -106,6 +106,14 @@ class Notifier:
         for message in self.store.take_held_notifications():
             await self.send(message, settings)
 
+    async def send_to_device(self, message: dict[str, Any], endpoint: str) -> dict[str, Any]:
+        """Push to one subscribed browser only, to try that device out."""
+        chosen = [s for s in self.store.push_subscriptions() if s.get("endpoint") == endpoint]
+        report: dict[str, Any] = {"apprise": None, "push": None}
+        if chosen:
+            report["push"] = await asyncio.to_thread(self._push, chosen, message)
+        return report
+
     async def send(self, message: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
         """Deliver on every configured channel; returns what happened per channel."""
         notifications = settings["notifications"]
@@ -132,6 +140,7 @@ class Notifier:
 
         keys = vapid_keys(self.store)
         sent = 0
+        problem = ""
         for subscription in subscriptions:
             try:
                 webpush(
@@ -146,6 +155,16 @@ class Notifier:
                 status = getattr(error.response, "status_code", None)
                 if status in (404, 410):  # the browser dropped this subscription
                     self.store.remove_push_subscription(subscription["endpoint"])
+                    problem = problem or "gone"
                 else:
                     log.warning("web push failed: %s", error)
-        return {"ok": sent > 0, "sent": sent, "subscriptions": len(subscriptions)}
+                    problem = f"HTTP {status}" if status else type(error).__name__
+            except Exception as error:  # noqa: BLE001 - one bad subscription must not stop the rest
+                log.warning("web push failed: %s", error)
+                problem = type(error).__name__
+        return {
+            "ok": sent > 0,
+            "sent": sent,
+            "subscriptions": len(subscriptions),
+            "error": problem,
+        }
