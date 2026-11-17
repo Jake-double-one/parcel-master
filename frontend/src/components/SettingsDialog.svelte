@@ -661,8 +661,9 @@
   .tabs {
     padding: 12px clamp(18px, 4vw, 28px);
     border-bottom: 1px solid var(--line);
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    /* Wrap on narrow screens; a scrolling row would bring scrollbars with it. */
+    flex-wrap: wrap;
+    flex: 0 0 auto;
   }
 
   .skins {
