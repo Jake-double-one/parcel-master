@@ -1,6 +1,11 @@
 {
-  "meta": { "name": "Deutsch" },
-  "app": { "name": "Parcel Master", "tagline": "Alle Pakete an einem Ort." },
+  "meta": {
+    "name": "Deutsch"
+  },
+  "app": {
+    "name": "Parcel Master",
+    "tagline": "Alle Pakete an einem Ort."
+  },
   "status": {
     "unknown": "Noch keine Daten",
     "registered": "Angekündigt",
@@ -11,7 +16,11 @@
     "problem": "Problem",
     "returned": "Zurückgeschickt"
   },
-  "direction": { "incoming": "Eingehend", "outgoing": "Ausgehend", "return": "Retoure" },
+  "direction": {
+    "incoming": "Eingehend",
+    "outgoing": "Ausgehend",
+    "return": "Retoure"
+  },
   "group": {
     "attention": "Braucht dich",
     "today": "Heute",
@@ -112,7 +121,7 @@
     "budget_help": "Heute verbraucht: {used} von {budget}.",
     "budget_unlimited": "Heute verbraucht: {used}. Kein Limit.",
     "configured": "Bereit",
-    "not_configured": "Schlüssel fehlt",
+    "not_configured": "Nicht eingerichtet",
     "no_settings": "Braucht keine Einrichtung.",
     "apprise": "Apprise-Adressen",
     "apprise_help": "Eine pro Zeile, zum Beispiel gotify://host/token oder ntfy://thema. Deckt Gotify, ntfy, Telegram, E-Mail und viele weitere ab.",
@@ -155,7 +164,11 @@
     "import_done": "{imported} importiert, {skipped} übersprungen.",
     "import_failed": "Das ist kein Parcel-Master-Export.",
     "version": "Version {version}",
-    "logout": "Abmelden"
+    "logout": "Abmelden",
+    "sync_now": "Jetzt abgleichen",
+    "syncing": "Gleiche ab",
+    "sync_last": "Letzter Abgleich {time}, {count} Bestellungen mit Sendungen.",
+    "sync_never": "Noch nicht abgeglichen. Speicher dein Konto, dann gleich ab."
   },
   "login": {
     "password": "Passwort",
@@ -189,7 +202,8 @@
     "not_in_demo": "Im Demo-Modus nicht verfügbar.",
     "invalid_timezone": "Unbekannte Zeitzone.",
     "invalid_quiet_hours": "Gib die Ruhezeiten als hh:mm ein.",
-    "not_found": "Diese Sendung gibt es nicht mehr."
+    "not_found": "Diese Sendung gibt es nicht mehr.",
+    "too_soon": "Gerade erst abgeglichen. Warte eine Minute."
   },
   "carrier_error": {
     "not_configured": "Für diesen Paketdienst ist kein Schlüssel eingerichtet.",
@@ -200,17 +214,36 @@
     "unavailable": "Der Paketdienst hat nicht geantwortet.",
     "invalid_response": "Die Antwort des Paketdienstes war nicht lesbar.",
     "unknown_carrier": "Das Modul für diesen Paketdienst fehlt.",
-    "module_error": "Das Modul des Paketdienstes ist abgestürzt."
+    "module_error": "Das Modul des Paketdienstes ist abgestürzt.",
+    "needs_code": "Der Dienst hat einen Zwei-Schritt-Code verlangt. Trag den Geheimschlüssel ein und gleich dann noch einmal ab.",
+    "needs_person": "Der Dienst verlangt eine Prüfung, die nur ein Mensch besteht (Captcha oder Freigabe). Melde dich einmal im Browser an und gleich dann noch einmal ab."
   },
   "notify": {
     "title": "{title}",
-    "change": { "body": "{carrier}: {description}" },
-    "out_for_delivery": { "body": "In Zustellung mit {carrier}." },
-    "ready_for_pickup": { "body": "Abholbereit. {description}" },
-    "delivered": { "body": "Zugestellt von {carrier}." },
-    "problem": { "body": "Problem bei {carrier}: {description}" },
-    "stale": { "body": "Seit {days} Tagen keine Bewegung bei {carrier}." },
-    "pickup_reminder": { "body": "Hol es bald ab: noch {days} Tage." },
-    "test": { "title": "Parcel Master", "body": "Testmeldung. Meldungen funktionieren." }
+    "change": {
+      "body": "{carrier}: {description}"
+    },
+    "out_for_delivery": {
+      "body": "In Zustellung mit {carrier}."
+    },
+    "ready_for_pickup": {
+      "body": "Abholbereit. {description}"
+    },
+    "delivered": {
+      "body": "Zugestellt von {carrier}."
+    },
+    "problem": {
+      "body": "Problem bei {carrier}: {description}"
+    },
+    "stale": {
+      "body": "Seit {days} Tagen keine Bewegung bei {carrier}."
+    },
+    "pickup_reminder": {
+      "body": "Hol es bald ab: noch {days} Tage."
+    },
+    "test": {
+      "title": "Parcel Master",
+      "body": "Testmeldung. Meldungen funktionieren."
+    }
   }
 }

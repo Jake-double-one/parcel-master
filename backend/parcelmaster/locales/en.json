@@ -1,6 +1,11 @@
 {
-  "meta": { "name": "English" },
-  "app": { "name": "Parcel Master", "tagline": "Every parcel, one place." },
+  "meta": {
+    "name": "English"
+  },
+  "app": {
+    "name": "Parcel Master",
+    "tagline": "Every parcel, one place."
+  },
   "status": {
     "unknown": "No data yet",
     "registered": "Announced",
@@ -11,7 +16,11 @@
     "problem": "Problem",
     "returned": "Returned"
   },
-  "direction": { "incoming": "Incoming", "outgoing": "Outgoing", "return": "Return" },
+  "direction": {
+    "incoming": "Incoming",
+    "outgoing": "Outgoing",
+    "return": "Return"
+  },
   "group": {
     "attention": "Needs you",
     "today": "Today",
@@ -112,7 +121,7 @@
     "budget_help": "Used today: {used} of {budget}.",
     "budget_unlimited": "Used today: {used}. No limit.",
     "configured": "Ready",
-    "not_configured": "Key missing",
+    "not_configured": "Not set up",
     "no_settings": "Needs no setup.",
     "apprise": "Apprise addresses",
     "apprise_help": "One per line, for example gotify://host/token or ntfy://topic. Covers Gotify, ntfy, Telegram, e-mail and many more.",
@@ -155,7 +164,11 @@
     "import_done": "{imported} imported, {skipped} skipped.",
     "import_failed": "This is not a Parcel Master export.",
     "version": "Version {version}",
-    "logout": "Log out"
+    "logout": "Log out",
+    "sync_now": "Sync now",
+    "syncing": "Syncing",
+    "sync_last": "Last sync {time}, {count} orders with shipments.",
+    "sync_never": "Not synced yet. Save your account, then sync."
   },
   "login": {
     "password": "Password",
@@ -189,7 +202,8 @@
     "not_in_demo": "Not available in demo mode.",
     "invalid_timezone": "Unknown time zone.",
     "invalid_quiet_hours": "Enter quiet hours as hh:mm.",
-    "not_found": "This shipment no longer exists."
+    "not_found": "This shipment no longer exists.",
+    "too_soon": "Just synced. Wait a minute."
   },
   "carrier_error": {
     "not_configured": "No key set up for this carrier.",
@@ -200,17 +214,36 @@
     "unavailable": "The carrier did not answer.",
     "invalid_response": "The carrier sent an answer that could not be read.",
     "unknown_carrier": "The module for this carrier is missing.",
-    "module_error": "The carrier module failed."
+    "module_error": "The carrier module failed.",
+    "needs_code": "The service asked for a two-step code. Add the two-step secret key, then sync again.",
+    "needs_person": "The service wants a check only a person can pass (captcha or approval). Sign in once in a browser, then sync again."
   },
   "notify": {
     "title": "{title}",
-    "change": { "body": "{carrier}: {description}" },
-    "out_for_delivery": { "body": "Out for delivery with {carrier}." },
-    "ready_for_pickup": { "body": "Ready for pickup. {description}" },
-    "delivered": { "body": "Delivered by {carrier}." },
-    "problem": { "body": "Problem at {carrier}: {description}" },
-    "stale": { "body": "No movement for {days} days at {carrier}." },
-    "pickup_reminder": { "body": "Pick it up soon: {days} days left." },
-    "test": { "title": "Parcel Master", "body": "Test message. Notifications work." }
+    "change": {
+      "body": "{carrier}: {description}"
+    },
+    "out_for_delivery": {
+      "body": "Out for delivery with {carrier}."
+    },
+    "ready_for_pickup": {
+      "body": "Ready for pickup. {description}"
+    },
+    "delivered": {
+      "body": "Delivered by {carrier}."
+    },
+    "problem": {
+      "body": "Problem at {carrier}: {description}"
+    },
+    "stale": {
+      "body": "No movement for {days} days at {carrier}."
+    },
+    "pickup_reminder": {
+      "body": "Pick it up soon: {days} days left."
+    },
+    "test": {
+      "title": "Parcel Master",
+      "body": "Test message. Notifications work."
+    }
   }
 }

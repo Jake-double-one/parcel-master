@@ -44,9 +44,13 @@
   let error = $state("");
   let saving = $state(false);
 
+  // Only trackers can be added by number; importers bring their parcels themselves.
+  const trackers = $derived(carriers.filter((c) => c.kind === "tracker"));
+
   function emptyParcel(): ParcelDraft {
+    const selectable = carriers.filter((c) => c.kind === "tracker");
     // With a single carrier there is nothing to choose.
-    return { carrier: carriers.length === 1 ? carriers[0].id : "", tracking_number: "", extra: {} };
+    return { carrier: selectable.length === 1 ? selectable[0].id : "", tracking_number: "", extra: {} };
   }
 
   function carrierOf(id: string): Carrier | undefined {
@@ -144,61 +148,68 @@
             {parcels.length > 1 ? t("dialog.parcel_n", { n: index + 1 }) : t("dialog.parcel")}
           </legend>
 
-          <label class="field">
-            <span class="eyebrow">{t("dialog.paste")}</span>
-            <!-- svelte-ignore a11y_autofocus -->
-            <input
-              type="text"
-              class="mono"
-              autocomplete="off"
-              autocapitalize="characters"
-              spellcheck="false"
-              autofocus={index === 0 && !shipment}
-              bind:value={parcel.tracking_number}
-              onpaste={(e) => {
-                const text = e.clipboardData?.getData("text") ?? "";
-                if (text.trim()) {
-                  e.preventDefault();
-                  parcel.tracking_number = text.trim();
-                  detect(index, text);
-                }
-              }}
-              onblur={() => detect(index, parcel.tracking_number)}
-            />
-            <span class="note">{hints[index] ?? (index === 0 ? t("dialog.paste_hint") : "")}</span>
-          </label>
-
-          {#if carriers.length > 1}
+          {#if carrier?.kind === "importer"}
+            <p class="imported">
+              <span class="eyebrow">{carrier.name}</span>
+              <span class="mono">{parcel.tracking_number}</span>
+            </p>
+          {:else}
             <label class="field">
-              <span class="eyebrow">{t("dialog.carrier")}</span>
-              <select bind:value={parcel.carrier}>
-                <option value="">{t("dialog.carrier_choose")}</option>
-                {#each carriers as option}
-                  <option value={option.id}>
-                    {option.name}{option.country ? ` (${option.country.toUpperCase()})` : ""}
-                  </option>
-                {/each}
-              </select>
-            </label>
-          {/if}
-
-          {#if carrier && !carrier.configured}
-            <p class="hint">{t("dialog.not_configured", { carrier: carrier.name })}</p>
-          {/if}
-
-          {#each carrier?.parcel_fields ?? [] as field}
-            <label class="field">
-              <span class="eyebrow">{t(`carrier.${carrier!.id}.parcel.${field.key}.label`)}</span>
+              <span class="eyebrow">{t("dialog.paste")}</span>
+              <!-- svelte-ignore a11y_autofocus -->
               <input
                 type="text"
                 class="mono"
                 autocomplete="off"
-                placeholder={field.placeholder}
-                bind:value={parcel.extra[field.key]}
+                autocapitalize="characters"
+                spellcheck="false"
+                autofocus={index === 0 && !shipment}
+                bind:value={parcel.tracking_number}
+                onpaste={(e) => {
+                  const text = e.clipboardData?.getData("text") ?? "";
+                  if (text.trim()) {
+                    e.preventDefault();
+                    parcel.tracking_number = text.trim();
+                    detect(index, text);
+                  }
+                }}
+                onblur={() => detect(index, parcel.tracking_number)}
               />
-              <span class="note">{tOr(`carrier.${carrier!.id}.parcel.${field.key}.help`, "")}</span>
+              <span class="note">{hints[index] ?? (index === 0 ? t("dialog.paste_hint") : "")}</span>
             </label>
-          {/each}
+
+            {#if trackers.length > 1}
+              <label class="field">
+                <span class="eyebrow">{t("dialog.carrier")}</span>
+                <select bind:value={parcel.carrier}>
+                  <option value="">{t("dialog.carrier_choose")}</option>
+                  {#each trackers as option}
+                    <option value={option.id}>
+                      {option.name}{option.country ? ` (${option.country.toUpperCase()})` : ""}
+                    </option>
+                  {/each}
+                </select>
+              </label>
+            {/if}
+
+            {#if carrier && !carrier.configured}
+              <p class="hint">{t("dialog.not_configured", { carrier: carrier.name })}</p>
+            {/if}
+
+            {#each carrier?.parcel_fields ?? [] as field}
+              <label class="field">
+                <span class="eyebrow">{t(`carrier.${carrier!.id}.parcel.${field.key}.label`)}</span>
+                <input
+                  type="text"
+                  class="mono"
+                  autocomplete="off"
+                  placeholder={field.placeholder}
+                  bind:value={parcel.extra[field.key]}
+                />
+                <span class="note">{tOr(`carrier.${carrier!.id}.parcel.${field.key}.help`, "")}</span>
+              </label>
+            {/each}
+          {/if}
 
           {#if parcels.length > 1}
             <button type="button" class="chip" onclick={() => removeParcel(index)}>
@@ -288,6 +299,15 @@
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
+  }
+
+  .imported {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 12px;
+    margin-bottom: 14px;
+    overflow-wrap: anywhere;
   }
 
   .more {

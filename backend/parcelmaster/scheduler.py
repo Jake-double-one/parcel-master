@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 
+from . import importer
 from .carriers.registry import Registry
 from .db import Store
 from .notify import Notifier
@@ -22,8 +24,14 @@ PAUSE_BETWEEN_LOOKUPS = 0.5
 
 class Scheduler:
     def __init__(
-        self, store: Store, registry: Registry, http: httpx.AsyncClient, notifier: Notifier
+        self,
+        store: Store,
+        registry: Registry,
+        http: httpx.AsyncClient,
+        notifier: Notifier,
+        data_dir: Path,
     ) -> None:
+        self.data_dir = data_dir
         self.store = store
         self.registry = registry
         self.http = http
@@ -57,6 +65,11 @@ class Scheduler:
             notices = await refresh_parcel(self.store, self.registry, self.http, parcel_id)
             await self.notifier.handle(notices)
             await asyncio.sleep(PAUSE_BETWEEN_LOOKUPS)
+        carrier_settings = self.store.get_settings()["carriers"]
+        for module in importer.importers(self.registry):
+            if importer.due(self.store, module, carrier_settings.get(module.id, {})):
+                notices = await importer.run(self.store, self.registry, module, self.data_dir)
+                await self.notifier.handle(notices)
         await self.notifier.handle(periodic_notices(self.store, self.registry))
         await self.notifier.flush_held()
         auto_archive(self.store)

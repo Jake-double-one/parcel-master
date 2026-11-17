@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
-from .carriers.base import CarrierError, CarrierModule, TrackRequest
+from .carriers.base import CarrierError, CarrierModule, TrackingResult, TrackRequest
 from .carriers.registry import Registry
 from .db import Store
 from .status import FINAL, Status
@@ -19,6 +19,8 @@ log = logging.getLogger(__name__)
 
 MIN_INTERVAL_MINUTES = 15
 PICKUP_REMINDER_DAYS = 2
+#: "Next check" of a parcel that is never looked up on its own.
+NEVER = "9999-12-31T00:00:00+00:00"
 
 
 @dataclass
@@ -81,6 +83,80 @@ def pickup_deadline(parcel: dict[str, Any], module: CarrierModule | None) -> dat
     return ready + timedelta(days=module.pickup_hold_days)
 
 
+def record_result(
+    store: Store,
+    parcel: dict[str, Any],
+    result: TrackingResult,
+    base: int,
+    zone: ZoneInfo,
+    now: datetime,
+    poll: bool = True,
+) -> list[Notice]:
+    """Store what a carrier (or an importing service) reported about a parcel.
+
+    With ``poll=False`` the parcel is not scheduled for lookups of its own:
+    its status arrives with the next sync of the service that imported it.
+    """
+    events = sorted(
+        (
+            {
+                "timestamp": to_iso(event.timestamp, zone),
+                "status": str(event.status),
+                "description": event.description,
+                "location": event.location,
+            }
+            for event in result.events
+        ),
+        key=lambda event: event["timestamp"] or "",
+    )
+    timestamps = [event["timestamp"] for event in events if event["timestamp"]]
+    last_event_at = max(timestamps) if timestamps else parcel["last_event_at"]
+    now_iso = now.isoformat(timespec="seconds")
+
+    def first_time(status: Status) -> str | None:
+        matching = [e["timestamp"] for e in events if e["status"] == status and e["timestamp"]]
+        return min(matching) if matching else None
+
+    old_status = Status(parcel["status"])
+    status = result.status
+    delay = next_delay_minutes(status, base, parse_iso(last_event_at))
+    store.update_parcel(
+        parcel["id"],
+        status=str(status),
+        description=result.description,
+        location=result.location,
+        eta_from=to_iso(result.eta_from, zone),
+        eta_to=to_iso(result.eta_to, zone),
+        last_event_at=last_event_at,
+        delivered_at=(
+            (parcel["delivered_at"] or first_time(status) or now_iso) if status in FINAL else None
+        ),
+        pickup_ready_at=(
+            (parcel["pickup_ready_at"] or first_time(status) or now_iso)
+            if status is Status.READY_FOR_PICKUP
+            else None
+        ),
+        last_checked_at=now_iso,
+        last_success_at=now_iso,
+        last_error=None,
+        error_count=0,
+        next_check_at=(
+            (now + timedelta(minutes=delay)).isoformat(timespec="seconds")
+            if delay and poll
+            else None
+            if poll
+            else NEVER
+        ),
+    )
+    store.replace_events(parcel["id"], events)
+
+    # The first answer for a parcel is not news: the user just added it.
+    if parcel["last_success_at"] is None or status == old_status:
+        return []
+    updated = store.get_parcel(parcel["id"])
+    return [Notice(str(status), updated, {"description": result.description})]
+
+
 async def refresh_parcel(
     store: Store, registry: Registry, http: httpx.AsyncClient, parcel_id: int
 ) -> list[Notice]:
@@ -107,6 +183,10 @@ async def refresh_parcel(
     module = registry.get(parcel["carrier"])
     if module is None:
         return fail("unknown_carrier", parcel["carrier"], 24 * 60, count_error=False)
+    if module.kind == "importer":
+        # Its status comes with the service's sync, not from a lookup by number.
+        store.update_parcel(parcel_id, next_check_at=NEVER)
+        return []
     carrier_settings = settings["carriers"].get(module.id, {})
     if not module.is_configured(carrier_settings):
         return fail("not_configured", "", 60, count_error=False)
@@ -143,60 +223,7 @@ async def refresh_parcel(
         log.exception("carrier module %s failed", module.id)
         return fail("module_error", type(error).__name__, base)
 
-    events = sorted(
-        (
-            {
-                "timestamp": to_iso(event.timestamp, zone),
-                "status": str(event.status),
-                "description": event.description,
-                "location": event.location,
-            }
-            for event in result.events
-        ),
-        key=lambda event: event["timestamp"] or "",
-    )
-    timestamps = [event["timestamp"] for event in events if event["timestamp"]]
-    last_event_at = max(timestamps) if timestamps else parcel["last_event_at"]
-    now_iso = now.isoformat(timespec="seconds")
-
-    def first_time(status: Status) -> str | None:
-        matching = [e["timestamp"] for e in events if e["status"] == status and e["timestamp"]]
-        return min(matching) if matching else None
-
-    old_status = Status(parcel["status"])
-    status = result.status
-    delay = next_delay_minutes(status, base, parse_iso(last_event_at))
-    store.update_parcel(
-        parcel_id,
-        status=str(status),
-        description=result.description,
-        location=result.location,
-        eta_from=to_iso(result.eta_from, zone),
-        eta_to=to_iso(result.eta_to, zone),
-        last_event_at=last_event_at,
-        delivered_at=(
-            (parcel["delivered_at"] or first_time(status) or now_iso) if status in FINAL else None
-        ),
-        pickup_ready_at=(
-            (parcel["pickup_ready_at"] or first_time(status) or now_iso)
-            if status is Status.READY_FOR_PICKUP
-            else None
-        ),
-        last_checked_at=now_iso,
-        last_success_at=now_iso,
-        last_error=None,
-        error_count=0,
-        next_check_at=(
-            (now + timedelta(minutes=delay)).isoformat(timespec="seconds") if delay else None
-        ),
-    )
-    store.replace_events(parcel_id, events)
-
-    # The first answer for a parcel is not news: the user just added it.
-    if parcel["last_success_at"] is None or status == old_status:
-        return []
-    updated = store.get_parcel(parcel_id)
-    return [Notice(str(status), updated, {"description": result.description})]
+    return record_result(store, parcel, result, base, zone, now)
 
 
 def periodic_notices(store: Store, registry: Registry) -> list[Notice]:

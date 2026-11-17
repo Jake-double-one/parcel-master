@@ -10,6 +10,7 @@ dependencies = [
     "httpx==0.28.1",
     "apprise==2.2.0",
     "pywebpush==2.5.0",
+    "amazon-orders==6.0.0",
 ]
 
 [dependency-groups]

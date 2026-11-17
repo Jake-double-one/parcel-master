@@ -46,6 +46,7 @@
   let testState = $state("");
   let importState = $state("");
   let error = $state("");
+  let syncing = $state("");
 
   async function load() {
     [settings, carriers, status] = await Promise.all([api.settings(), api.carriers(), api.status()]);
@@ -82,6 +83,21 @@
       saveState = "idle";
       fail(caught);
       return false;
+    }
+  }
+
+  /** Save first, so the sync uses what is on screen. */
+  async function syncNow(id: string) {
+    if (!(await save())) return;
+    syncing = id;
+    try {
+      await api.syncImporter(id);
+      onchanged(false);
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      syncing = "";
+      carriers = await api.carriers().catch(() => carriers);
     }
   }
 
@@ -253,22 +269,48 @@
               <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
             </label>
           {/each}
-          <label class="field">
-            <span class="eyebrow">{t("settings.budget")}</span>
-            <span class="inline-number">
-              <input
-                type="number"
-                min="1"
-                placeholder={carrier.default_daily_budget ? String(carrier.default_daily_budget) : "∞"}
-                bind:value={own.daily_budget}
-              />
-            </span>
-            <span class="note">
-              {carrier.daily_budget
-                ? t("settings.budget_help", { used: carrier.used_today, budget: carrier.daily_budget })
-                : t("settings.budget_unlimited", { used: carrier.used_today })}
-            </span>
-          </label>
+          {#if carrier.kind === "importer"}
+            <div class="row sync">
+              <button
+                type="button"
+                class="chip"
+                disabled={syncing === carrier.id || !carrier.configured}
+                onclick={() => syncNow(carrier.id)}
+              >
+                {syncing === carrier.id ? t("settings.syncing") : t("settings.sync_now")}
+              </button>
+              <span class="note">
+                {carrier.sync?.last_sync_at
+                  ? t("settings.sync_last", {
+                      time: ago(carrier.sync.last_sync_at, now),
+                      count: carrier.sync.found ?? 0,
+                    })
+                  : t("settings.sync_never")}
+              </span>
+            </div>
+            {#if carrier.sync?.last_error}
+              <p class="hint alert">
+                {tOr(`carrier_error.${carrier.sync.last_error.code}`, t("carrier_error.unavailable"))}
+              </p>
+            {/if}
+          {:else}
+            <label class="field">
+              <span class="eyebrow">{t("settings.budget")}</span>
+              <span class="inline-number">
+                <input
+                  type="number"
+                  min="1"
+                  placeholder={carrier.default_daily_budget ? String(carrier.default_daily_budget) : "∞"}
+                  bind:value={own.daily_budget}
+                />
+              </span>
+              <span class="note">
+                {carrier.daily_budget
+                  ? t("settings.budget_help", { used: carrier.used_today, budget: carrier.daily_budget })
+                  : t("settings.budget_unlimited", { used: carrier.used_today })}
+              </span>
+            </label>
+          {/if}
         </section>
       {/each}
     {:else if tab === "notifications"}
@@ -498,6 +540,10 @@
   .module .stats {
     grid-template-columns: repeat(2, 1fr);
     margin-bottom: 10px;
+  }
+
+  .sync {
+    margin-bottom: 16px;
   }
 
   .time {

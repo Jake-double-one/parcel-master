@@ -261,3 +261,53 @@ def test_demo_mode_is_isolated_from_real_data(tmp_path):
 
 def test_demo_is_off_unless_enabled(client):
     assert client.post("/api/auth/demo", json={}).status_code == 404
+
+
+def test_importer_modules_are_listed_but_not_selectable_by_hand(client):
+    amazon = next(c for c in client.get("/api/carriers").json() if c["id"] == "de.amazon")
+    assert amazon["kind"] == "importer"
+    assert amazon["configured"] is False
+    assert [f["key"] for f in amazon["settings_fields"]] == ["email", "password", "otp_secret"]
+    by_hand = client.post(
+        "/api/shipments",
+        json={"parcels": [{"carrier": "de.amazon", "tracking_number": "302-1234567"}]},
+    )
+    assert by_hand.json()["detail"]["error"] == "unknown_carrier"
+    # Without credentials a sync does nothing but say so.
+    state = client.post("/api/importers/de.amazon/sync").json()
+    assert state["last_error"]["code"] == "not_configured"
+    assert client.post("/api/importers/de.dhl/sync").status_code == 404
+
+
+def test_editing_an_imported_shipment_keeps_what_the_importer_noted(client):
+    store = client.app.state.pm.store
+    shipment_id = store.save_shipment(
+        None,
+        {
+            "title": "Kettle",
+            "direction": "incoming",
+            "note": "",
+            "source": "Amazon",
+            "reference": "302-1",
+        },
+        [],
+    )
+    store.add_parcel(shipment_id, "de.amazon", "SHIP1", {"import_key": "SHIP1", "url": "https://x"})
+    store.add_parcel(shipment_id, "demo", "DEMO0002", {"import_key": "SHIP2"})
+    shipment = next(s for s in client.get("/api/shipments").json() if s["id"] == shipment_id)
+    assert shipment["parcels"][0]["tracking_url"] == "https://x"
+    assert shipment["parcels"][0]["site_name"] == "Amazon"
+
+    edited = client.put(
+        f"/api/shipments/{shipment_id}",
+        json={
+            "title": "My kettle",
+            "parcels": [
+                {"id": p["id"], "carrier": p["carrier"], "tracking_number": p["tracking_number"]}
+                for p in shipment["parcels"]
+            ],
+        },
+    ).json()
+    assert edited["title"] == "My kettle"
+    assert edited["source"] == "Amazon" and edited["reference"] == "302-1"
+    assert [p["extra"].get("import_key") for p in edited["parcels"]] == ["SHIP1", "SHIP2"]

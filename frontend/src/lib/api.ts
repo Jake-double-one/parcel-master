@@ -4,6 +4,7 @@ import type {
   Settings,
   Shipment,
   ShipmentDraft,
+  SyncState,
   SystemStatus,
 } from "./types";
 
@@ -72,6 +73,7 @@ export const api = {
     request<void>("POST", "/api/push/subscriptions", subscription),
   pushUnsubscribe: (endpoint: string) => request<void>("POST", "/api/push/unsubscribe", { endpoint }),
   status: () => request<SystemStatus>("GET", "/api/status"),
+  syncImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/sync`),
   exportData: () => request<unknown>("GET", "/api/export"),
   importData: (data: unknown) =>
     request<{ imported: number; skipped: number }>("POST", "/api/import", data),

@@ -24,9 +24,30 @@ with one small module per carrier.
 | Country | Carrier | How | Needs |
 | --- | --- | --- | --- |
 | DE | DHL | Official "Shipment Tracking - Unified" API | Free API key from [developer.dhl.com](https://developer.dhl.com) |
+| DE | Amazon | Reads the order history of your account with [amazon-orders](https://github.com/alexdlaird/amazon-orders) | Account e-mail and password; the two-step secret key if two-step verification is on |
 
 A demo carrier (`DEMO` followed by digits) exists for the demo mode and for
 development.
+
+### Amazon
+
+Amazon offers customers no tracking API. The Amazon module therefore signs in
+to amazon.de like a browser and reads the orders of the last 30 days, every
+three hours. Each order with something on its way becomes a shipment. As soon
+as Amazon names carrier and tracking number and that carrier's module is set
+up, the parcel is handed over to it ("Amazon via DHL"); until then it shows
+the status Amazon reports, in Amazon's English wording.
+
+Things to know:
+
+- Amazon may ask for a captcha or an approval that only a person can give.
+  The module then stops and says so; it does not keep trying, so the account
+  is not locked. Sign in once in a browser and sync again.
+- With two-step verification the module needs the secret key of an
+  authenticator app, because nobody can type a code for the server.
+- The password is stored unencrypted in the data directory, like the API keys.
+- Amazon changes its pages from time to time. If orders stop showing up,
+  update the image; the parsing lives in the amazon-orders library.
 
 ## Run it
 
@@ -128,6 +149,9 @@ class Example(CarrierModule):
 
 MODULE = Example()
 ```
+
+A service that knows the shipments itself, like a shop account, subclasses
+`ImporterModule` instead and implements `sync()`; see `carriers/de/amazon`.
 
 The module is picked up on the next start. The settings dialog builds its
 fields from `settings_fields`. Labels go into `locales/en.json` next to the

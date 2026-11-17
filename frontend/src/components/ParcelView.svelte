@@ -36,7 +36,9 @@
   <div class="top">
     <div class="who">
       <span class="eyebrow carrier">
-        {origin ? t("shipment.via", { source: origin, carrier: parcel.carrier_name }) : parcel.carrier_name}
+        {origin && origin !== parcel.carrier_name
+          ? t("shipment.via", { source: origin, carrier: parcel.carrier_name })
+          : parcel.carrier_name}
       </span>
       <button
         type="button"
@@ -82,7 +84,7 @@
   <div class="row below">
     {#if parcel.tracking_url}
       <a class="chip" href={parcel.tracking_url} target="_blank" rel="noopener noreferrer">
-        {t("shipment.open_carrier", { carrier: parcel.carrier_name })} ↗
+        {t("shipment.open_carrier", { carrier: parcel.site_name })} ↗
       </a>
     {/if}
     <details class="history">

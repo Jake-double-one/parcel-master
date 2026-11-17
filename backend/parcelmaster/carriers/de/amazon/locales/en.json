@@ -1,0 +1,10 @@
+{
+  "settings": {
+    "email": { "label": "Amazon e-mail", "help": "Parcel Master signs in to amazon.de with this account and reads the orders of the last 30 days." },
+    "password": { "label": "Amazon password", "help": "Stored on your server, unencrypted, like the API keys." },
+    "otp_secret": {
+      "label": "Two-step secret key",
+      "help": "Only if two-step verification is on: the key Amazon shows when you add an authenticator app (\"Can't scan the barcode?\"). Without it nobody can type the code for the server."
+    }
+  }
+}

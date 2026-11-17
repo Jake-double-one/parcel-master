@@ -18,7 +18,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__
+from . import __version__, importer
 from .carriers.base import CarrierModule
 from .carriers.registry import Registry, discover
 from .config import Config
@@ -96,7 +96,7 @@ def create_app(config: Config) -> FastAPI:
     async def lifespan(app: FastAPI):
         http = httpx.AsyncClient(timeout=20, headers={"User-Agent": f"ParcelMaster/{__version__}"})
         notifier = Notifier(store, registry, translations, config.push_contact)
-        scheduler = Scheduler(store, registry, http, notifier)
+        scheduler = Scheduler(store, registry, http, notifier, config.data_dir)
         app.state.pm = State(
             config=config,
             store=store,
@@ -161,9 +161,13 @@ def create_app(config: Config) -> FastAPI:
         return {
             **{key: value for key, value in parcel.items() if key not in hidden},
             "events": parcel["events"][:MAX_EVENTS],
-            "carrier_name": module.name if module else parcel["carrier"],
+            # An imported parcel names the carrier that delivers it, once known.
+            "carrier_name": parcel["extra"].get("carrier_name")
+            or (module.name if module else parcel["carrier"]),
+            # Whose website the link below opens.
+            "site_name": module.name if module else parcel["carrier"],
             "tracking_url": (
-                module.tracking_url(parcel["tracking_number"], parcel["extra"], language)
+                module.tracking_url(parcel["tracking_number"], parcel["extra"], language) or None
                 if module
                 else None
             ),
@@ -271,6 +275,30 @@ def create_app(config: Config) -> FastAPI:
 
     # -- carriers ---------------------------------------------------------
 
+    def sync_state(ctx: Ctx, module: CarrierModule) -> dict[str, Any] | None:
+        if module.kind != "importer":
+            return None
+        state = importer.get_state(ctx.store, module.id)
+        return {
+            "last_sync_at": state.get("last_sync_at"),
+            "last_attempt_at": state.get("last_attempt_at"),
+            "last_error": state.get("last_error"),
+            "found": state.get("found"),
+        }
+
+    @app.post("/api/importers/{module_id}/sync")
+    async def sync_importer(ctx: RealContext, module_id: str) -> dict[str, Any]:
+        module = ctx.module(module_id)
+        if not isinstance(module, importer.ImporterModule):
+            raise fail(404, "not_found")
+        if importer.too_soon(ctx.store, module):
+            raise fail(429, "too_soon")
+        notices = await importer.run(
+            ctx.store, ctx.state.registry, module, ctx.state.config.data_dir
+        )
+        await ctx.state.notifier.handle(notices)
+        return sync_state(ctx, module)
+
     @app.get("/api/carriers")
     def carriers(ctx: Context) -> list[dict[str, Any]]:
         settings = ctx.store.get_settings()
@@ -282,6 +310,8 @@ def create_app(config: Config) -> FastAPI:
                     "id": module.id,
                     "name": module.name,
                     "country": module.country,
+                    "kind": module.kind,
+                    "sync": sync_state(ctx, module),
                     "configured": module.is_configured(own),
                     "settings_fields": [vars(f) for f in module.settings_fields],
                     "parcel_fields": [vars(f) for f in module.parcel_fields],
@@ -345,10 +375,30 @@ def create_app(config: Config) -> FastAPI:
     ) -> list[dict[str, Any]]:
         parcels: list[dict[str, Any]] = []
         seen: set[tuple[str, str]] = set()
+        stored = ctx.store.get_shipment(shipment_id) if shipment_id is not None else None
+        stored_parcels = {p["id"]: p for p in (stored["parcels"] if stored else [])}
         for item in payload.parcels:
             module = ctx.module(item.carrier)
             if module is None:
                 raise fail(422, "unknown_carrier", carrier=item.carrier)
+            before = stored_parcels.get(item.id or -1)
+            if module.kind == "importer":
+                # Only the importing service creates these; editing may keep them as they are.
+                if not before or (before["carrier"], before["tracking_number"]) != (
+                    module.id,
+                    item.tracking_number,
+                ):
+                    raise fail(422, "unknown_carrier", carrier=item.carrier)
+                seen.add((module.id, item.tracking_number))
+                parcels.append(
+                    {
+                        "id": item.id,
+                        "carrier": module.id,
+                        "tracking_number": item.tracking_number,
+                        "extra": before["extra"],
+                    }
+                )
+                continue
             number = module.normalize(item.tracking_number)
             if len(number) < 3:
                 raise fail(422, "invalid_tracking_number")
@@ -366,6 +416,9 @@ def create_app(config: Config) -> FastAPI:
                 )
             allowed = {f.key for f in module.parcel_fields}
             extra = {k: v.strip()[:80] for k, v in item.extra.items() if k in allowed and v.strip()}
+            if before and (before["carrier"], before["tracking_number"]) == (module.id, number):
+                # Keep what an importer noted on this parcel; the form only knows its own fields.
+                extra = {**{k: v for k, v in before["extra"].items() if k not in allowed}, **extra}
             parcels.append(
                 {"id": item.id, "carrier": module.id, "tracking_number": number, "extra": extra}
             )
@@ -576,6 +629,8 @@ def create_app(config: Config) -> FastAPI:
                 {
                     "id": module.id,
                     "name": module.name,
+                    "kind": module.kind,
+                    "sync": sync_state(ctx, module),
                     "configured": module.is_configured(own),
                     "open_parcels": len(open_mine),
                     "daily_budget": daily_budget(module, own),

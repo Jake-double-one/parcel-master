@@ -34,6 +34,8 @@ export interface Parcel {
   last_checked_at: string | null;
   last_error: { code: string; detail: string } | null;
   tracking_url: string | null;
+  /** Whose website `tracking_url` opens. */
+  site_name: string;
   events: TrackingEvent[];
 }
 
@@ -63,10 +65,20 @@ export interface FieldSpec {
   placeholder: string;
 }
 
+export interface SyncState {
+  last_sync_at: string | null;
+  last_attempt_at: string | null;
+  last_error: { code: string; detail: string } | null;
+  found: number | null;
+}
+
 export interface Carrier {
   id: string;
   name: string;
   country: string;
+  /** "tracker": added by number. "importer": finds its shipments itself. */
+  kind: "tracker" | "importer";
+  sync: SyncState | null;
   configured: boolean;
   settings_fields: FieldSpec[];
   parcel_fields: FieldSpec[];

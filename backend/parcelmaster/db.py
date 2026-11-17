@@ -313,6 +313,59 @@ class Store:
                 self._db.execute("DELETE FROM parcels WHERE id=?", (parcel_id,))
         return shipment_id
 
+    def find_by_reference(self, source: str, reference: str) -> dict[str, Any] | None:
+        """The shipment an importer filed for this order, archived or not."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM shipments WHERE source=? AND reference=? ORDER BY id LIMIT 1",
+                (source, reference),
+            ).fetchall()
+            loaded = self._load(rows)
+        return loaded[0] if loaded else None
+
+    def add_parcel(
+        self, shipment_id: int, carrier: str, tracking_number: str, extra: dict[str, str]
+    ) -> int:
+        now = now_iso()
+        with self._lock, self._db:
+            position = self._db.execute(
+                "SELECT COALESCE(MAX(position), -1) + 1 FROM parcels WHERE shipment_id=?",
+                (shipment_id,),
+            ).fetchone()[0]
+            cursor = self._db.execute(
+                "INSERT INTO parcels(shipment_id, position, carrier, tracking_number, extra, "
+                "next_check_at, created_at) VALUES(?,?,?,?,?,?,?)",
+                (shipment_id, position, carrier, tracking_number, json.dumps(extra), now, now),
+            )
+        return int(cursor.lastrowid)
+
+    def retarget_parcel(
+        self, parcel_id: int, carrier: str, tracking_number: str, extra: dict[str, str]
+    ) -> None:
+        """Point a parcel at another carrier or number; it is due for a lookup at once."""
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE parcels SET carrier=?, tracking_number=?, extra=?, next_check_at=?, "
+                "last_error=NULL, error_count=0 WHERE id=?",
+                (carrier, tracking_number, json.dumps(extra), now_iso(), parcel_id),
+            )
+
+    def set_parcel_extra(self, parcel_id: int, extra: dict[str, str]) -> None:
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE parcels SET extra=? WHERE id=?", (json.dumps(extra), parcel_id)
+            )
+
+    def parcel_events(self, parcel_id: int) -> list[dict[str, Any]]:
+        """A parcel's events, oldest first."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT timestamp, status, description, location FROM events "
+                "WHERE parcel_id=? ORDER BY timestamp, id",
+                (parcel_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def set_archived(self, shipment_id: int, archived: bool) -> bool:
         with self._lock, self._db:
             cursor = self._db.execute(

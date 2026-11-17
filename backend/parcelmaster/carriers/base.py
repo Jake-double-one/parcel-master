@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -68,6 +69,9 @@ class CarrierError(Exception):
 
 
 class CarrierModule:
+    #: "tracker": the user enters a number and the module looks it up.
+    #: "importer": the module finds the shipments itself (see ImporterModule).
+    kind: str = "tracker"
     #: Unique id, by convention "<country>.<name>", e.g. "de.dhl".
     id: str = ""
     #: ISO country code of the market this module serves, or "" for none.
@@ -102,4 +106,58 @@ class CarrierModule:
         return all(settings.get(f.key) for f in self.settings_fields if f.required)
 
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
+        raise NotImplementedError
+
+
+@dataclass
+class ImportedParcel:
+    """One parcel as the importing service sees it."""
+
+    #: Stable id of this parcel at the service; used to recognise it again.
+    key: str
+    status: Status
+    description: str = ""
+    eta_from: datetime | None = None
+    #: Name of the carrier that delivers it, as the service prints it ("DHL").
+    carrier_name: str | None = None
+    #: That carrier's tracking number, once known.
+    tracking_number: str | None = None
+    #: Link to this parcel at the service.
+    url: str | None = None
+
+
+@dataclass
+class ImportedShipment:
+    #: Order number or similar; one shipment per reference.
+    reference: str
+    title: str
+    parcels: list[ImportedParcel] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class SyncRequest:
+    settings: dict[str, Any]
+    language: str
+    #: A directory of its own where the module may keep session files.
+    state_dir: Path
+
+
+class ImporterModule(CarrierModule):
+    """A service that knows the user's shipments, such as a shop account.
+
+    ``sync`` returns what is currently open there. Parcel Master files each
+    entry as a shipment and hands a parcel over to the carrier's own module
+    as soon as carrier and tracking number are known and that module is set
+    up. Until then the parcel shows the status the service reports.
+    """
+
+    kind = "importer"
+    #: Minutes between two syncs.
+    sync_interval_minutes: int = 180
+
+    def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
+        return extra.get("url", "")
+
+    def sync(self, request: SyncRequest) -> list[ImportedShipment]:
+        """Fetch the open shipments. Runs in a worker thread and may block."""
         raise NotImplementedError
