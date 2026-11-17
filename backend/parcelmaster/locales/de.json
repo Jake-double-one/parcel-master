@@ -202,7 +202,8 @@
     "test_push_ok": "Browser: {sent} von {total} ✓",
     "test_push_failed": "Browser: fehlgeschlagen ({reason})",
     "test_apprise_ok": "Apprise: ✓",
-    "test_apprise_failed": "Apprise: fehlgeschlagen, prüf die Adressen"
+    "test_apprise_failed": "Apprise: fehlgeschlagen, prüf die Adressen",
+    "push_failed": "Der Browser konnte sich nicht für Benachrichtigungen anmelden. {reason}"
   },
   "login": {
     "password": "Passwort",

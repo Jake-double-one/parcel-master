@@ -3,7 +3,14 @@
   import { api, ApiError } from "../lib/api";
   import { ago, until } from "../lib/format";
   import { i18n, t, tOr } from "../lib/i18n.svelte";
-  import { disablePush, enablePush, pushEndpoint, pushState, type PushState } from "../lib/push";
+  import {
+    disablePush,
+    enablePush,
+    pushEndpoint,
+    pushState,
+    syncPush,
+    type PushState,
+  } from "../lib/push";
   import { currentSkin, setSkin, SKINS } from "../lib/skins";
   import type { Carrier, Meta, Settings, SystemStatus } from "../lib/types";
 
@@ -67,6 +74,13 @@
   function fail(caught: unknown) {
     const code = caught instanceof ApiError ? caught.code : "generic";
     error = tOr(`error.${code}`, t("error.generic"));
+  }
+
+  /** The browser's own words help more here than "that did not work". */
+  function failPush(caught: unknown) {
+    if (caught instanceof ApiError) return fail(caught);
+    const reason = caught instanceof Error ? `${caught.name}: ${caught.message}` : String(caught);
+    error = t("settings.push_failed", { reason });
   }
 
   async function save(): Promise<boolean> {
@@ -169,7 +183,7 @@
       push = push === "on" ? await disablePush() : await enablePush();
       status = await api.status();
     } catch (caught) {
-      fail(caught);
+      failPush(caught);
     }
   }
 
@@ -185,7 +199,7 @@
       } else if (report.push.ok) deviceTest = t("settings.push_test_sent");
       else deviceTest = t("settings.push_test_failed", { reason: report.push.error });
     } catch (caught) {
-      fail(caught);
+      failPush(caught);
     }
   }
 
@@ -244,7 +258,9 @@
   onMount(() => {
     dialog.showModal();
     load().catch(fail);
-    pushState().then((state) => (push = state));
+    syncPush()
+      .catch(() => pushState())
+      .then((state) => (push = state));
   });
 </script>
 
