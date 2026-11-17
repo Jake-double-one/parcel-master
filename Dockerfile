@@ -17,7 +17,10 @@ COPY backend/parcelmaster ./parcelmaster
 RUN uv sync --frozen --no-dev
 
 FROM python:3.14-slim
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* \
+# libatomic1: needed by the Node.js that Playwright ships to install the browser.
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends libatomic1 \
+    && rm -rf /var/lib/apt/lists/* \
     && useradd --system --create-home --uid 10001 parcelmaster \
     && mkdir /data && chown parcelmaster /data
 WORKDIR /app
