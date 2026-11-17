@@ -13,6 +13,7 @@ import importlib.util
 import re
 from datetime import date, datetime, timedelta
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from parcelmaster.carriers.base import (
     CarrierError,
@@ -98,6 +99,24 @@ def _prepare_browser() -> None:
 
     PlaywrightBrowserLauncher._launch_options = staticmethod(launch_options)
     PlaywrightBrowserLauncher._parcelmaster_prepared = True
+
+
+def clean_otp_secret(value: str | None) -> str | None:
+    """The authenticator secret in the form the library needs, or None if empty.
+
+    Accepts the key as Amazon shows it (groups of letters and digits) and a
+    whole otpauth:// link. Anything else, such as a six-digit code, is
+    rejected before a sign-in is attempted.
+    """
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.lower().startswith("otpauth://"):
+        text = (parse_qs(urlparse(text).query).get("secret") or [""])[0]
+    secret = re.sub(r"[\s\-]", "", text).upper().rstrip("=")
+    if len(secret) < 16 or not re.fullmatch(r"[A-Z2-7]+", secret):
+        raise CarrierError("invalid_otp_secret")
+    return secret
 
 
 def _first_line(error: Exception) -> str:
@@ -230,6 +249,7 @@ class AmazonDe(ImporterModule):
                 raise NeedsPerson(msg)
 
         settings = request.settings
+        otp_secret = clean_otp_secret(settings.get("otp_secret"))
         request.state_dir.mkdir(parents=True, exist_ok=True)
         data: dict[str, Any] = {}
         if importlib.util.find_spec("playwright"):
@@ -259,7 +279,7 @@ class AmazonDe(ImporterModule):
             settings.get("password"),
             io=NoPrompt(),
             config=config,
-            otp_secret_key=(settings.get("otp_secret") or "").replace(" ", "") or None,
+            otp_secret_key=otp_secret,
         )
         try:
             session.login()

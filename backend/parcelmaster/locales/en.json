@@ -224,7 +224,8 @@
     "needs_code": "The service asked for a two-step code. Add the two-step secret key, then sync again.",
     "needs_person": "The service wants a check only a person can pass (captcha or approval). Sign in once in a browser, then sync again.",
     "sign_in_failed": "The sign-in did not go through. Check e-mail and password; the service's own message is below.",
-    "browser_failed": "The browser needed for the sign-in check failed."
+    "browser_failed": "The browser needed for the sign-in check failed.",
+    "invalid_otp_secret": "That is not a two-step secret key. It is the long key of letters A–Z and digits 2–7 that Amazon shows when you add an authenticator app, not the six-digit code."
   },
   "notify": {
     "title": "{title}",

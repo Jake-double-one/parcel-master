@@ -224,7 +224,8 @@
     "needs_code": "Der Dienst hat einen Zwei-Schritt-Code verlangt. Trag den Geheimschlüssel ein und gleich dann noch einmal ab.",
     "needs_person": "Der Dienst verlangt eine Prüfung, die nur ein Mensch besteht (Captcha oder Freigabe). Melde dich einmal im Browser an und gleich dann noch einmal ab.",
     "sign_in_failed": "Die Anmeldung ist nicht durchgegangen. Prüf E-Mail und Passwort; darunter steht die Meldung des Dienstes.",
-    "browser_failed": "Der Browser für die Anmeldeprüfung ist gescheitert."
+    "browser_failed": "Der Browser für die Anmeldeprüfung ist gescheitert.",
+    "invalid_otp_secret": "Das ist kein Geheimschlüssel der Zwei-Schritt-Verifizierung. Gemeint ist der lange Schlüssel aus Buchstaben A–Z und Ziffern 2–7, den Amazon beim Hinzufügen einer Authenticator-App zeigt, nicht der sechsstellige Code."
   },
   "notify": {
     "title": "{title}",

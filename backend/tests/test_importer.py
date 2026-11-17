@@ -14,7 +14,15 @@ from parcelmaster.carriers.base import (
     ImportedShipment,
     ImporterModule,
 )
-from parcelmaster.carriers.de.amazon import parse_eta, parse_status, to_shipments
+from parcelmaster.carriers.de.amazon import (
+    MODULE as AMAZON,
+)
+from parcelmaster.carriers.de.amazon import (
+    clean_otp_secret,
+    parse_eta,
+    parse_status,
+    to_shipments,
+)
 from parcelmaster.carriers.registry import Registry
 from parcelmaster.db import Store
 from parcelmaster.status import Status
@@ -306,3 +314,27 @@ def test_amazon_orders_are_turned_into_shipments():
     assert (parcel.carrier_name, parcel.tracking_number) == ("DHL", "0034")
     assert parcel.url == "https://www.amazon.de/progress-tracker/package?shipmentId=SHIP1"
     assert parcel.eta_from == datetime(2026, 11, 18)
+
+
+def test_two_step_secret_is_checked_before_any_sign_in(tmp_path):
+    key = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+    assert clean_otp_secret("jbsw y3dp ehpk 3pxp jbsw y3dp ehpk 3pxp") == key
+    assert clean_otp_secret(f"otpauth://totp/Amazon:me?secret={key}&issuer=Amazon") == key
+    assert clean_otp_secret("") is None and clean_otp_secret(None) is None
+    for wrong in ("123456", "not a key at all, sorry!", "otpauth://totp/Amazon:me"):
+        with pytest.raises(CarrierError) as caught:
+            clean_otp_secret(wrong)
+        assert caught.value.code == "invalid_otp_secret"
+
+    # The module refuses such a key itself, without contacting Amazon.
+    from parcelmaster.carriers.base import SyncRequest
+
+    request = SyncRequest(
+        {"email": "a@example.org", "password": "x", "otp_secret": "123456"},
+        "en",
+        tmp_path / "state",
+    )
+    with pytest.raises(CarrierError) as caught:
+        AMAZON.sync(request)
+    assert caught.value.code == "invalid_otp_secret"
+    assert not (tmp_path / "state").exists()

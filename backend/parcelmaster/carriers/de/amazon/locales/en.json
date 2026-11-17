@@ -10,7 +10,7 @@
     },
     "otp_secret": {
       "label": "Two-step secret key",
-      "help": "Only if two-step verification is on: the key Amazon shows when you add an authenticator app (\"Can't scan the barcode?\"). Without it nobody can type the code for the server."
+      "help": "Only if two-step verification is on: the long key (letters and digits 2–7) Amazon shows when you add an authenticator app (\"Can't scan the barcode?\"). Not the six-digit code. Without it nobody can type the code for the server."
     }
   }
 }

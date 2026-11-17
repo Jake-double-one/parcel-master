@@ -10,7 +10,7 @@
     },
     "otp_secret": {
       "label": "Geheimschlüssel der Zwei-Schritt-Verifizierung",
-      "help": "Nur bei aktiver Zwei-Schritt-Verifizierung: der Schlüssel, den Amazon beim Hinzufügen einer Authenticator-App zeigt („Barcode kann nicht gescannt werden?“). Ohne ihn kann niemand den Code für den Server eintippen."
+      "help": "Nur bei aktiver Zwei-Schritt-Verifizierung: der lange Schlüssel (Buchstaben und Ziffern 2–7), den Amazon beim Hinzufügen einer Authenticator-App zeigt („Barcode kann nicht gescannt werden?“). Nicht der sechsstellige Code. Ohne ihn kann niemand den Code für den Server eintippen."
     }
   }
 }
