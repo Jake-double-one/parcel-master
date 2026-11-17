@@ -35,6 +35,33 @@
     problem: open.filter((s) => s.status === "problem").length,
     arrived: shipments.length - open.length,
   });
+  /** The first shipment each key figure counts; clicking the figure scrolls there. */
+  const tiles = $derived([
+    { label: t("group.today"), count: figures.today, alert: false,
+      target: open.find((s) => groupOf(s, now) === "today") },
+    { label: t("status.ready_for_pickup"), count: figures.pickup, alert: false,
+      target: open.find((s) => s.status === "ready_for_pickup") },
+    { label: t("status.problem"), count: figures.problem, alert: true,
+      target: open.find((s) => s.status === "problem") },
+    { label: t("group.done"), count: figures.arrived, alert: false,
+      target: shipments.find((s) => groupOf(s, now) === "done") },
+  ]);
+  let scrolled = $state(false);
+
+  function smooth(): ScrollBehavior {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  }
+
+  function jumpTo(target: Shipment | undefined) {
+    if (!target) return;
+    query = ""; // a filter could be hiding the card
+    requestAnimationFrame(() => {
+      const card = document.getElementById(`shipment-${target.id}`);
+      // Show the group heading above the card as well.
+      (card?.closest(".group") ?? card)?.scrollIntoView({ behavior: smooth(), block: "start" });
+    });
+  }
+
   // A parcel that was just added has no answer from its carrier yet.
   const pending = $derived(
     shipments.some((s) => s.parcels.some((p) => !p.last_checked_at && !p.last_error)),
@@ -172,7 +199,10 @@
       }
     };
     document.addEventListener("visibilitychange", onVisible);
+    const onScroll = () => (scrolled = window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
+      window.removeEventListener("scroll", onScroll);
       document.removeEventListener("visibilitychange", onVisible);
       clearTimeout(pollTimer);
     };
@@ -216,24 +246,19 @@
         <p class="hero mono">{open.length}</p>
       </section>
 
-      <dl class="stats">
-        <div class="stat">
-          <dt>{t("group.today")}</dt>
-          <dd>{figures.today}</dd>
-        </div>
-        <div class="stat">
-          <dt>{t("status.ready_for_pickup")}</dt>
-          <dd>{figures.pickup}</dd>
-        </div>
-        <div class="stat">
-          <dt>{t("status.problem")}</dt>
-          <dd class:alert={figures.problem > 0}>{figures.problem}</dd>
-        </div>
-        <div class="stat">
-          <dt>{t("group.done")}</dt>
-          <dd>{figures.arrived}</dd>
-        </div>
-      </dl>
+      <div class="stats jump">
+        {#each tiles as tile}
+          <button
+            type="button"
+            class="stat"
+            disabled={tile.count === 0}
+            onclick={() => jumpTo(tile.target)}
+          >
+            <span class="label">{tile.label}</span>
+            <span class="value" class:alert={tile.alert && tile.count > 0}>{tile.count}</span>
+          </button>
+        {/each}
+      </div>
     {:else}
       <section class="lede">
         <p class="eyebrow">{t("overview.archive")}</p>
@@ -336,6 +361,20 @@
   />
 {/if}
 
+{#if scrolled}
+  <button
+    type="button"
+    class="to-top"
+    aria-label={t("overview.to_top")}
+    title={t("overview.to_top")}
+    onclick={() => window.scrollTo({ top: 0, behavior: smooth() })}
+  >
+    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" />
+    </svg>
+  </button>
+{/if}
+
 {#if toast}
   <div class="toast" role="status">
     <span>{toast.text}</span>
@@ -385,6 +424,69 @@
     font-size: clamp(3.4rem, 14vw, 5.4rem);
     line-height: 0.95;
     letter-spacing: -0.02em;
+  }
+
+  /* The key figures double as shortcuts to the shipments they count. */
+  .jump .stat {
+    display: block;
+    width: 100%;
+    border: 0;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+  }
+
+  .jump .stat:hover:not(:disabled),
+  .jump .stat:focus-visible {
+    background: var(--surface-2);
+  }
+
+  .jump .stat:disabled {
+    cursor: default;
+  }
+
+  .jump .label {
+    display: block;
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+  }
+
+  .jump .value {
+    display: block;
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 1.32rem;
+    font-weight: 500;
+    color: var(--ink);
+  }
+
+  .jump .value.alert {
+    color: var(--alert);
+  }
+
+  .to-top {
+    position: fixed;
+    right: max(20px, env(safe-area-inset-right));
+    bottom: max(20px, env(safe-area-inset-bottom));
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    z-index: 9;
+  }
+
+  .to-top:hover {
+    border-color: var(--dusk);
   }
 
   .tools {

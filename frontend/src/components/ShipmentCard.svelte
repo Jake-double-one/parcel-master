@@ -49,7 +49,11 @@
   }
 </script>
 
-<article class="card" class:arrived={finished && shipment.status === "delivered"}>
+<article
+  class="card"
+  id="shipment-{shipment.id}"
+  class:arrived={finished && shipment.status === "delivered"}
+>
   <header>
     <div class="titles">
       <p class="micro">

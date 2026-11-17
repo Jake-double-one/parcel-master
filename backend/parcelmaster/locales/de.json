@@ -43,7 +43,8 @@
     "empty_archive": "Das Archiv ist leer. Zugestellte Sendungen wandern von selbst hierher.",
     "no_match": "Nichts passt zu „{query}“.",
     "refresh_all": "Alle aktualisieren",
-    "refreshing": "Aktualisiere"
+    "refreshing": "Aktualisiere",
+    "to_top": "Nach oben"
   },
   "shipment": {
     "parcels": "{done} von {count} angekommen",

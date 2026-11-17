@@ -43,7 +43,8 @@
     "empty_archive": "The archive is empty. Delivered shipments move here on their own.",
     "no_match": "Nothing matches \"{query}\".",
     "refresh_all": "Refresh all",
-    "refreshing": "Refreshing"
+    "refreshing": "Refreshing",
+    "to_top": "Back to top"
   },
   "shipment": {
     "parcels": "{done} of {count} arrived",

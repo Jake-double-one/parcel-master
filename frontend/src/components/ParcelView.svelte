@@ -13,6 +13,12 @@
   }: { parcel: Parcel; now: Date; showStatus?: boolean; origin?: string } = $props();
 
   let copied = $state(false);
+  // One panel at a time, so opening one never pushes the other button around.
+  let panel = $state<"contents" | "history" | null>(null);
+
+  function toggle(name: "contents" | "history") {
+    panel = panel === name ? null : name;
+  }
 
   async function copyNumber() {
     try {
@@ -81,6 +87,7 @@
     <p class="hint alert">{errorText}</p>
   {/if}
 
+  <!-- The buttons keep their place; what they open appears below the row. -->
   <div class="row below">
     {#if parcel.tracking_url}
       <a class="chip" href={parcel.tracking_url} target="_blank" rel="noopener noreferrer">
@@ -88,44 +95,51 @@
       </a>
     {/if}
     {#if parcel.contents.length}
-      <details class="fold">
-        <summary>
-          <svg class="chev" width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
-            <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
-          </svg>
-          {t("shipment.contents")}
-          <span class="count">{parcel.contents.length}</span>
-        </summary>
-        <ul class="contents">
-          {#each parcel.contents as item}
-            <li>{item}</li>
-          {/each}
-        </ul>
-      </details>
+      <button
+        type="button"
+        class="chip"
+        aria-pressed={panel === "contents"}
+        aria-expanded={panel === "contents"}
+        onclick={() => toggle("contents")}
+      >
+        {t("shipment.contents")}
+        <span class="count">{parcel.contents.length}</span>
+      </button>
     {/if}
-    <details class="fold history">
-      <summary>
-        <svg class="chev" width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
-          <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
-        </svg>
-        {t("shipment.history")}
-      </summary>
-      {#if parcel.events.length}
-        <ol>
-          {#each parcel.events as event}
-            <li>
-              <span class="mono when">{eventTime(event.timestamp, now)}</span>
-              <span>
-                {event.description}{#if event.location}<span class="muted"> · {event.location}</span>{/if}
-              </span>
-            </li>
-          {/each}
-        </ol>
-      {:else}
-        <p class="note none">{t("shipment.no_events")}</p>
-      {/if}
-    </details>
+    <button
+      type="button"
+      class="chip"
+      aria-pressed={panel === "history"}
+      aria-expanded={panel === "history"}
+      onclick={() => toggle("history")}
+    >
+      {t("shipment.history")}
+      {#if parcel.events.length}<span class="count">{parcel.events.length}</span>{/if}
+    </button>
   </div>
+
+  {#if panel === "contents"}
+    <ul class="contents">
+      {#each parcel.contents as item}
+        <li>{item}</li>
+      {/each}
+    </ul>
+  {:else if panel === "history"}
+    {#if parcel.events.length}
+      <ol>
+        {#each parcel.events as event}
+          <li>
+            <span class="mono when">{eventTime(event.timestamp, now)}</span>
+            <span>
+              {event.description}{#if event.location}<span class="muted"> · {event.location}</span>{/if}
+            </span>
+          </li>
+        {/each}
+      </ol>
+    {:else}
+      <p class="note none">{t("shipment.no_events")}</p>
+    {/if}
+  {/if}
 </div>
 
 <style>
@@ -185,7 +199,7 @@
 
   .contents {
     list-style: none;
-    margin: 6px 0 4px;
+    margin: 12px 0 0;
     padding: 0;
     font-size: 0.88rem;
     color: var(--muted);
@@ -213,23 +227,11 @@
 
   .below {
     margin-top: 12px;
-    align-items: flex-start;
-  }
-
-  /* Closed, the history is just a link in the row; open, it takes the full width. */
-  .fold[open] {
-    flex: 1 1 100%;
-  }
-
-  .fold > summary {
-    min-height: 36px;
-    width: fit-content;
-    padding: 0 4px;
   }
 
   ol {
     list-style: none;
-    margin: 6px 0 0;
+    margin: 12px 0 0;
     padding: 0;
   }
 
@@ -249,7 +251,7 @@
   }
 
   .none {
-    margin-top: 6px;
+    margin-top: 12px;
   }
 
   @media (max-width: 560px) {
