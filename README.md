@@ -40,6 +40,9 @@ the status Amazon reports, in Amazon's English wording.
 
 Things to know:
 
+- Amazon sometimes answers the sign-in with a JavaScript check. The image
+  ships a headless Chromium that the amazon-orders library uses to pass it.
+  This works on a best-effort basis.
 - Amazon may ask for a captcha or an approval that only a person can give.
   The module then stops and says so; it does not keep trying, so the account
   is not locked. Sign in once in a browser and sync again.

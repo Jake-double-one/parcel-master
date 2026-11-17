@@ -24,9 +24,14 @@ WORKDIR /app
 COPY --from=backend /app /app
 COPY --from=frontend /build/dist /app/static
 ENV PATH="/app/.venv/bin:$PATH" \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers \
     PM_DATA_DIR=/data \
     PM_STATIC_DIR=/app/static \
     PYTHONUNBUFFERED=1
+# The Amazon module needs a real browser when Amazon answers the sign-in with
+# a JavaScript check.
+RUN playwright install --with-deps chromium \
+    && rm -rf /var/lib/apt/lists/*
 USER parcelmaster
 VOLUME /data
 EXPOSE 8000

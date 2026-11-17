@@ -9,6 +9,7 @@ parsed below are therefore the English ones.
 from __future__ import annotations
 
 import contextlib
+import importlib.util
 import re
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -207,9 +208,22 @@ class AmazonDe(ImporterModule):
 
         settings = request.settings
         request.state_dir.mkdir(parents=True, exist_ok=True)
+        data: dict[str, Any] = {}
+        if importlib.util.find_spec("playwright"):
+            # Amazon sometimes answers the sign-in with a JavaScript check that a
+            # plain HTTP client cannot run. The library then runs it in a headless
+            # browser and carries the cookies back.
+            data = {
+                "browser": "chromium",
+                "auth_forms_classes": [
+                    "amazonauth.contrib.browser.playwright.PlaywrightAcicForm",
+                    "amazonauth.contrib.browser.playwright.PlaywrightJSAuthForm",
+                ],
+            }
         config = AmazonOrdersConfig(
             config_path=str(request.state_dir / "config.yml"),
             data={
+                **data,
                 "domain": DOMAIN,
                 "cookie_jar_path": str(request.state_dir / "cookies.json"),
                 "output_dir": str(request.state_dir / "output"),

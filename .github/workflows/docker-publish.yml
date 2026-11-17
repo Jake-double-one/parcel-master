@@ -55,3 +55,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Check that the image starts its browser
+        run: |
+          image="$(echo "${{ steps.meta.outputs.tags }}" | head -n 1)"
+          docker run --rm "$image" python -c "
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as pw:
+              browser = pw.chromium.launch()
+              page = browser.new_page()
+              page.set_content('<p>ok</p>')
+              assert page.inner_text('p') == 'ok'
+              browser.close()
+          print('browser ok')
+          "
