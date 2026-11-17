@@ -22,12 +22,14 @@ from .carriers.base import (
 from .carriers.registry import Registry
 from .db import Store
 from .status import FINAL, Status
-from .tracking import Notice, parse_iso, record_result, timezone
+from .tracking import Notice, parse_iso, record_result, saver_on, timezone
 
 log = logging.getLogger(__name__)
 
 STATE_KEY = "importers"
 DISMISSED_KEY = "importers_dismissed"
+#: With the saver on, a parcel goes to its carrier's module from these states on.
+HAND_OVER_FROM = frozenset({Status.OUT_FOR_DELIVERY, Status.READY_FOR_PICKUP, Status.PROBLEM})
 MAX_DISMISSED = 500
 #: Days a finished order still counts as recent when auto-archive is off.
 DEFAULT_RECENT_DAYS = 3
@@ -113,6 +115,7 @@ def apply(
     base = int(settings["polling"]["interval_minutes"])
     now = datetime.now(UTC)
     notices: list[Notice] = []
+    saving = saver_on(settings)
     dismissed = store.get_value(DISMISSED_KEY) or []
     # Orders that arrived within the days they would stay in the overview anyway.
     recent_days = int(settings["polling"]["auto_archive_days"]) or DEFAULT_RECENT_DAYS
@@ -150,17 +153,21 @@ def apply(
             if parcel["extra"].get("import_key")
         }
         for position, imported in enumerate(item.parcels, start=1):
+            parcel = known.get(imported.key)
+            # With the saver on, the carrier is only asked once its answer adds
+            # something: the delivery window on the day, or help when things go wrong.
+            handed_over = parcel is not None and parcel["carrier"] != module.id
+            worth_asking = handed_over or not saving or imported.status in HAND_OVER_FROM
             taker = (
                 carrier_for(
                     registry, imported.carrier_name, imported.tracking_number, settings["carriers"]
                 )
-                if imported.tracking_number
+                if imported.tracking_number and worth_asking
                 else None
             )
             extra = {"import_key": imported.key, "url": imported.url or ""}
             if imported.items:
                 extra["items"] = json.dumps(imported.items, ensure_ascii=False)
-            parcel = known.get(imported.key)
             if taker:
                 number = taker.normalize(imported.tracking_number)
                 already_there = parcel is not None and (

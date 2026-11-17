@@ -113,7 +113,13 @@ export interface Meta {
 export interface Settings {
   language: string;
   timezone: string;
-  polling: { interval_minutes: number; stale_days: number; auto_archive_days: number };
+  polling: {
+    interval_minutes: number;
+    stale_days: number;
+    auto_archive_days: number;
+    /** Ask carriers less: night rest, slower lookups, later hand-over. */
+    saver: { enabled: boolean; from: string; to: string };
+  };
   carriers: Record<string, Record<string, string | number | null>>;
   notifications: {
     apprise_urls: string[];

@@ -6,13 +6,13 @@ import asyncio
 import base64
 import json
 import logging
-from datetime import datetime, time
+from datetime import datetime
 from typing import Any
 
 from .carriers.registry import Registry
 from .db import Store
 from .i18n import Translations
-from .tracking import Notice, timezone
+from .tracking import Notice, in_window, timezone
 
 log = logging.getLogger(__name__)
 
@@ -20,23 +20,12 @@ STATUS_KINDS = ("out_for_delivery", "ready_for_pickup", "delivered", "problem")
 
 
 def in_quiet_hours(settings: dict[str, Any], now: datetime | None = None) -> bool:
-    quiet = settings["notifications"]["quiet_hours"]
-    if not quiet.get("enabled"):
-        return False
-    try:
-        start = time.fromisoformat(quiet["from"])
-        end = time.fromisoformat(quiet["to"])
-    except (KeyError, ValueError):
-        return False
-    current = (now or datetime.now(timezone(settings))).time()
-    if start <= end:
-        return start <= current < end
-    return current >= start or current < end  # the window crosses midnight
+    return in_window(settings["notifications"]["quiet_hours"], timezone(settings), now)
 
 
 def wanted(settings: dict[str, Any], kind: str) -> bool:
     events = settings["notifications"]["events"]
-    if kind in ("stale", "pickup_reminder"):
+    if kind in ("stale", "pickup_reminder", "delivery_window"):
         return bool(events.get(kind))
     return bool(events.get("any_change") or (kind in STATUS_KINDS and events.get(kind)))
 

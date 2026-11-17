@@ -145,7 +145,18 @@ def test_settings_are_validated_and_bounded(client):
         "/api/settings",
         json={"polling": {"interval_minutes": 1, "stale_days": 99, "auto_archive_days": "x"}},
     ).json()
-    assert saved["polling"] == {"interval_minutes": 15, "stale_days": 30, "auto_archive_days": 3}
+    assert saved["polling"] == {
+        "interval_minutes": 15,
+        "stale_days": 30,
+        "auto_archive_days": 3,
+        "saver": {"enabled": True, "from": "22:00", "to": "06:00"},  # on unless switched off
+    }
+    off = {"polling": {"saver": {"enabled": False, "from": "23:00", "to": "05:30"}}}
+    assert (
+        client.put("/api/settings", json=off).json()["polling"]["saver"] == off["polling"]["saver"]
+    )
+    bad = {"polling": {"saver": {"enabled": True, "from": "late", "to": "05:30"}}}
+    assert client.put("/api/settings", json=bad).json()["detail"]["error"] == "invalid_saver_hours"
     assert client.put("/api/settings", json={"timezone": "Mars/Olympus"}).status_code == 422
     bad_quiet = {
         "notifications": {"quiet_hours": {"enabled": True, "from": "25:00", "to": "07:00"}}

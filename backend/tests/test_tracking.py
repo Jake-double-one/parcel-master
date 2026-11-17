@@ -12,9 +12,11 @@ from parcelmaster.notify import Notifier, in_quiet_hours, wanted
 from parcelmaster.status import Status
 from parcelmaster.tracking import (
     auto_archive,
+    delivery_window,
     next_delay_minutes,
     periodic_notices,
     refresh_parcel,
+    resting,
 )
 
 
@@ -214,3 +216,88 @@ def test_messages_are_translated_and_held_during_quiet_hours(world):
     assert [(m["title"], m["body"]) for m in sent] == [("Boots", "Zugestellt von Test Post.")]
     asyncio.run(notifier.flush_held())
     assert len(sent) == 1
+
+
+def test_the_saver_asks_less_while_little_can_happen():
+    now = datetime.now(UTC)
+    soon, far = now + timedelta(hours=20), now + timedelta(days=3)
+    # Only announced: every six hours instead of every two.
+    assert next_delay_minutes(Status.REGISTERED, 120, now, saver=True) == 360
+    assert next_delay_minutes(Status.REGISTERED, 120, now, saver=False) == 120
+    # Days away: twice a day, so movement still shows.
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, now, far, saver=True) == 720
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, now, soon, saver=True) == 120
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, now, far, saver=False) == 120
+    # On the day itself nothing is slowed down.
+    assert next_delay_minutes(Status.OUT_FOR_DELIVERY, 120, now, far, saver=True) == 30
+
+
+def test_night_rest_follows_the_saver_setting():
+    def settings(enabled):
+        saver = {"enabled": enabled, "from": "22:00", "to": "06:00"}
+        return {"timezone": "UTC", "polling": {"saver": saver}}
+
+    assert resting(settings(True), datetime(2026, 1, 1, 23, 30))
+    assert resting(settings(True), datetime(2026, 1, 1, 5, 59))
+    assert not resting(settings(True), datetime(2026, 1, 1, 6, 0))
+    assert not resting(settings(False), datetime(2026, 1, 1, 23, 30))
+
+
+def test_scheduler_asks_nobody_during_the_night_rest(world, monkeypatch):
+    from parcelmaster import scheduler as scheduler_module
+    from parcelmaster.scheduler import Scheduler
+
+    store, module, registry, _, parcel_id = world
+    module.answers = [TrackingResult(Status.IN_TRANSIT, "On its way")]
+
+    class Quiet:
+        async def handle(self, notices):
+            pass
+
+        async def flush_held(self):
+            pass
+
+    async def run(night):
+        monkeypatch.setattr(scheduler_module, "resting", lambda settings: night)
+        async with httpx.AsyncClient() as http:
+            await Scheduler(store, registry, http, Quiet(), None).run_once()
+
+    asyncio.run(run(night=True))
+    assert module.calls == 0  # what is due waits for the morning
+    asyncio.run(run(night=False))
+    assert module.calls == 1
+
+
+def test_a_new_delivery_window_is_news(world):
+    store, module, registry, _, parcel_id = world
+    # Not a parcel the user added a moment ago.
+    store._db.execute("UPDATE parcels SET created_at='2026-01-01T00:00:00+00:00'")
+    today = datetime.now().replace(hour=11, minute=30, second=0, microsecond=0)
+    window = {"eta_from": today, "eta_to": today.replace(hour=13)}
+    module.answers = [
+        TrackingResult(Status.IN_TRANSIT, "On its way"),
+        TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", **window),
+        TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", **window),
+    ]
+    assert refresh(store, registry, parcel_id) == []
+    notices = refresh(store, registry, parcel_id)
+    assert [n.kind for n in notices] == ["delivery_window", "out_for_delivery"]
+    assert notices[0].params == {"window": "11:30–13:30"}
+    assert refresh(store, registry, parcel_id) == []  # the same window is not repeated
+
+    notifier = Notifier(store, registry, Translations({}), "mailto:test@example.org")
+    message = notifier.compose(notices[0], "de")
+    assert message["body"] == "Test Post nennt Zustellfenster: 11:30–13:30"
+    assert wanted(store.get_settings(), "delivery_window")
+
+
+def test_a_date_without_a_time_is_not_a_window():
+    from zoneinfo import ZoneInfo
+
+    zone, now = ZoneInfo("Europe/Berlin"), datetime(2026, 11, 17, 9, 0, tzinfo=UTC)
+    same = "2026-11-18T00:00:00+00:00"
+    assert delivery_window(same, same, zone, now) is None
+    assert delivery_window(same, None, zone, now) is None
+    assert delivery_window("2026-11-18T09:00:00+00:00", "2026-11-18T11:00:00+00:00", zone, now) == (
+        "18.11. 10:00–12:00"
+    )

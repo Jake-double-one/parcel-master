@@ -186,7 +186,14 @@
     "pace_tracker": "Checked every {minutes} minutes; out for delivery every {fast}, parcels standing still or waiting for pickup less often.",
     "pace_importer": "Synced every {minutes} minutes.",
     "next_sync": "Next sync {time}",
-    "no_next_sync": "No sync scheduled."
+    "no_next_sync": "No sync scheduled.",
+    "saver": "Saver",
+    "saver_on": "Saver on",
+    "saver_off": "Saver off",
+    "saver_night": "night rest from",
+    "saver_help": "Asks carriers less without missing the delivery day: nothing at night, announced parcels every six hours, parcels still days away twice a day, and Amazon parcels go to DHL only once they are out for delivery. Refresh by hand always works.",
+    "saver_status": "Saver on: no lookups between {from} and {to}.",
+    "event_delivery_window": "a carrier names a delivery window"
   },
   "login": {
     "password": "Password",
@@ -227,7 +234,8 @@
     "too_soon": "Just tried. Wait a moment.",
     "missing_credentials": "Enter e-mail and password.",
     "order_alone": "Add an order on its own; its parcels come with it.",
-    "invalid_reference": "That does not look like an order number."
+    "invalid_reference": "That does not look like an order number.",
+    "invalid_saver_hours": "Enter the night rest as hh:mm."
   },
   "carrier_error": {
     "not_configured": "No key set up for this carrier.",
@@ -272,6 +280,9 @@
     "test": {
       "title": "Parcel Master",
       "body": "Test message. Notifications work."
+    },
+    "delivery_window": {
+      "body": "{carrier} names a delivery window: {window}"
     }
   }
 }

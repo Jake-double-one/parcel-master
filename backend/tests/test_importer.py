@@ -62,6 +62,8 @@ def world(tmp_path):
     registry = Registry([shop, post], {})
     settings = store.get_settings()
     settings["carriers"] = {"test.shop": {"email": "me@example.org", "password": "pw"}}
+    # Most tests here are about the hand-over itself, so it happens at once.
+    settings["polling"]["saver"]["enabled"] = False
     store.save_settings(settings)
     return store, registry, shop, tmp_path
 
@@ -592,3 +594,26 @@ def test_an_old_amazon_order_without_parcels_is_kept_when_asked_for():
         == "302-1234567-7654321"
     )
     assert AMAZON.extract_from_url("https://example.com/?orderID=302-1234567-7654321") is None
+
+
+def test_with_the_saver_a_parcel_goes_to_its_carrier_only_once_it_matters(world):
+    store = world[0]
+    configure_post(store)
+    settings = store.get_settings()
+    settings["polling"]["saver"]["enabled"] = True
+    store.save_settings(settings)
+
+    def parcel():
+        return store.list_shipments(False)[0]["parcels"][0]
+
+    shipped = {"carrier_name": "Post", "tracking_number": "PO123456"}
+    sync(world, order(**shipped))
+    assert parcel()["carrier"] == "test.shop"  # on its way: the shop's word is enough
+    assert store.due_parcels("2100-01-01", 10) == []  # and costs no lookup
+
+    sync(world, order(status=Status.OUT_FOR_DELIVERY, description="Out for delivery", **shipped))
+    assert parcel()["carrier"] == "test.post"  # today the carrier knows the time window
+
+    # Once handed over it stays there, whatever the shop says next.
+    sync(world, order(**shipped))
+    assert parcel()["carrier"] == "test.post"

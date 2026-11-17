@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -20,6 +20,10 @@ log = logging.getLogger(__name__)
 MIN_INTERVAL_MINUTES = 15
 PICKUP_REMINDER_DAYS = 2
 AUTO_ARCHIVED_KEY = "auto_archived"
+#: With the saver on: minutes between lookups of a parcel that is only announced,
+#: and of one whose delivery is still days away.
+ANNOUNCED_MINUTES = 6 * 60
+FAR_AWAY_MINUTES = 12 * 60
 #: "Next check" of a parcel that is never looked up on its own.
 NEVER = "9999-12-31T00:00:00+00:00"
 
@@ -53,16 +57,51 @@ def parse_iso(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value) if value else None
 
 
-def next_delay_minutes(status: Status, base: int, last_event_at: datetime | None) -> int | None:
+def in_window(window: dict[str, Any], zone: ZoneInfo, now: datetime | None = None) -> bool:
+    """Whether the local time lies in a daily window such as 22:00 to 06:00."""
+    if not window.get("enabled"):
+        return False
+    try:
+        start = time.fromisoformat(window["from"])
+        end = time.fromisoformat(window["to"])
+    except (KeyError, ValueError):
+        return False
+    current = (now or datetime.now(zone)).time()
+    if start <= end:
+        return start <= current < end
+    return current >= start or current < end  # the window crosses midnight
+
+
+def saver_on(settings: dict[str, Any]) -> bool:
+    return bool(settings["polling"].get("saver", {}).get("enabled"))
+
+
+def resting(settings: dict[str, Any], now: datetime | None = None) -> bool:
+    """Whether the saver's night rest applies right now: nothing is asked on its own."""
+    return in_window(settings["polling"].get("saver", {}), timezone(settings), now)
+
+
+def next_delay_minutes(
+    status: Status,
+    base: int,
+    last_event_at: datetime | None,
+    eta_from: datetime | None = None,
+    saver: bool = False,
+) -> int | None:
     """How long to wait before asking again; None once nothing more can happen."""
     base = max(MIN_INTERVAL_MINUTES, base)
+    now = datetime.now(UTC)
     if status in FINAL:
         return None
     if status is Status.OUT_FOR_DELIVERY:
         return max(MIN_INTERVAL_MINUTES, base // 4)
     if status is Status.READY_FOR_PICKUP:
         return base * 3
-    if last_event_at and datetime.now(UTC) - last_event_at > timedelta(days=3):
+    if saver and status is Status.REGISTERED:
+        return max(base, ANNOUNCED_MINUTES)  # only announced: little happens for a while
+    if saver and eta_from and (eta_from - now) > timedelta(days=1, hours=12):
+        return max(base, FAR_AWAY_MINUTES)  # days away: twice a day shows the movement
+    if last_event_at and now - last_event_at > timedelta(days=3):
         return base * 2
     return base
 
@@ -120,14 +159,22 @@ def record_result(
 
     old_status = Status(parcel["status"])
     status = result.status
-    delay = next_delay_minutes(status, base, parse_iso(last_event_at))
+    eta_from_iso = to_iso(result.eta_from, zone)
+    eta_to_iso = to_iso(result.eta_to, zone)
+    delay = next_delay_minutes(
+        status,
+        base,
+        parse_iso(last_event_at),
+        parse_iso(eta_from_iso),
+        saver_on(store.get_settings()),
+    )
     store.update_parcel(
         parcel["id"],
         status=str(status),
         description=result.description,
         location=result.location,
-        eta_from=to_iso(result.eta_from, zone),
-        eta_to=to_iso(result.eta_to, zone),
+        eta_from=eta_from_iso,
+        eta_to=eta_to_iso,
         last_event_at=last_event_at,
         delivered_at=(
             (parcel["delivered_at"] or first_time(status) or now_iso) if status in FINAL else None
@@ -151,11 +198,37 @@ def record_result(
     )
     store.replace_events(parcel["id"], events)
 
-    # The first answer for a parcel is not news: the user just added it.
-    if parcel["last_success_at"] is None or status == old_status:
-        return []
     updated = store.get_parcel(parcel["id"])
-    return [Notice(str(status), updated, {"description": result.description})]
+    notices: list[Notice] = []
+    # A delivery window is news whenever the carrier names a new one, unless the
+    # user is looking at a parcel they added moments ago.
+    window = delivery_window(eta_from_iso, eta_to_iso, zone, now)
+    just_added = now - (parse_iso(parcel["created_at"]) or now) < timedelta(minutes=5)
+    if (
+        window
+        and status not in FINAL
+        and (eta_from_iso, eta_to_iso) != (parcel["eta_from"], parcel["eta_to"])
+        and not just_added
+    ):
+        notices.append(Notice("delivery_window", updated, {"window": window}))
+    # The first answer for a parcel is not news: the user just added it.
+    if parcel["last_success_at"] is not None and status != old_status:
+        notices.append(Notice(str(status), updated, {"description": result.description}))
+    return notices
+
+
+def delivery_window(
+    eta_from: str | None, eta_to: str | None, zone: ZoneInfo, now: datetime
+) -> str | None:
+    """A window like "today 11:30–13:30" if the carrier names a time of day, else None."""
+    start, end = parse_iso(eta_from), parse_iso(eta_to)
+    if not start or not end or end <= start:
+        return None
+    start, end = start.astimezone(zone), end.astimezone(zone)
+    if end - start > timedelta(hours=12):
+        return None  # a whole day is a date, not a window
+    day = "" if start.date() == now.astimezone(zone).date() else f"{start:%d.%m.} "
+    return f"{day}{start:%H:%M}–{end:%H:%M}"
 
 
 async def refresh_parcel(

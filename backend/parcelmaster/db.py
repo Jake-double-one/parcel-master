@@ -82,7 +82,15 @@ CREATE TABLE IF NOT EXISTS outbox (
 DEFAULT_SETTINGS: dict[str, Any] = {
     "language": "en",
     "timezone": "Europe/Berlin",
-    "polling": {"interval_minutes": 120, "stale_days": 4, "auto_archive_days": 3},
+    "polling": {
+        "interval_minutes": 120,
+        "stale_days": 4,
+        "auto_archive_days": 3,
+        # Ask carriers less where it costs nothing: not at night, rarely while a
+        # parcel is only announced or days away, and an importer's parcels only
+        # once they are out for delivery.
+        "saver": {"enabled": True, "from": "22:00", "to": "06:00"},
+    },
     "carriers": {},
     "notifications": {
         "apprise_urls": [],
@@ -92,6 +100,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
             "out_for_delivery": True,
             "ready_for_pickup": True,
             "delivered": True,
+            "delivery_window": True,
             "problem": True,
             "stale": True,
             "pickup_reminder": True,

@@ -186,7 +186,14 @@
     "pace_tracker": "Abruf alle {minutes} Minuten; in Zustellung alle {fast}, stillstehende und abholbereite Pakete seltener.",
     "pace_importer": "Abgleich alle {minutes} Minuten.",
     "next_sync": "Nächster Abgleich {time}",
-    "no_next_sync": "Kein Abgleich geplant."
+    "no_next_sync": "Kein Abgleich geplant.",
+    "saver": "Sparmodus",
+    "saver_on": "Sparmodus an",
+    "saver_off": "Sparmodus aus",
+    "saver_night": "Nachtruhe von",
+    "saver_help": "Fragt die Paketdienste seltener, ohne den Zustelltag zu verpassen: nachts gar nicht, angekündigte Pakete alle sechs Stunden, Pakete, die noch Tage entfernt sind, zweimal täglich, und Amazon-Pakete gehen erst an DHL, wenn sie in Zustellung sind. Aktualisieren von Hand geht immer.",
+    "saver_status": "Sparmodus an: zwischen {from} und {to} keine Abrufe.",
+    "event_delivery_window": "ein Paketdienst ein Zustellfenster nennt"
   },
   "login": {
     "password": "Passwort",
@@ -227,7 +234,8 @@
     "too_soon": "Gerade erst versucht. Warte einen Moment.",
     "missing_credentials": "Trag E-Mail und Passwort ein.",
     "order_alone": "Leg eine Bestellung einzeln an; ihre Pakete kommen von selbst mit.",
-    "invalid_reference": "Das sieht nicht nach einer Bestellnummer aus."
+    "invalid_reference": "Das sieht nicht nach einer Bestellnummer aus.",
+    "invalid_saver_hours": "Gib die Nachtruhe als hh:mm ein."
   },
   "carrier_error": {
     "not_configured": "Für diesen Paketdienst ist kein Schlüssel eingerichtet.",
@@ -272,6 +280,9 @@
     "test": {
       "title": "Parcel Master",
       "body": "Testmeldung. Meldungen funktionieren."
+    },
+    "delivery_window": {
+      "body": "{carrier} nennt Zustellfenster: {window}"
     }
   }
 }

@@ -12,8 +12,9 @@ with one small module per carrier.
 - **Notifications.** Browser push (installable as an app) and
   [Apprise](https://github.com/caronc/apprise) for Gotify, ntfy, Telegram,
   e-mail and many more. Quiet hours included.
-- **Careful with limits.** A daily lookup budget per carrier, and polling that
-  slows down for parcels that are not moving.
+- **Careful with limits.** A daily lookup budget per carrier, and a saver that
+  rests at night, asks rarely while a parcel is only announced or still days
+  away, and speeds up on the delivery day.
 - **Languages.** English and German. A new language is one JSON file; anything
   missing falls back to English.
 - **Demo mode.** Optional, with made-up parcels and a private sandbox per

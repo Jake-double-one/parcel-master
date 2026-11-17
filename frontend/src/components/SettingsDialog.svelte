@@ -26,6 +26,7 @@
   type Tab = (typeof TABS)[number];
   const EVENTS = [
     "out_for_delivery",
+    "delivery_window",
     "ready_for_pickup",
     "delivered",
     "problem",
@@ -273,6 +274,29 @@
         </span>
         <span class="note">{t("settings.interval_help")}</span>
       </label>
+
+      <div class="field">
+        <span class="eyebrow">{t("settings.saver")}</span>
+        <div class="row">
+          <button
+            type="button"
+            class="chip"
+            aria-pressed={settings.polling.saver.enabled}
+            onclick={() => (settings!.polling.saver.enabled = !settings!.polling.saver.enabled)}
+          >
+            {settings.polling.saver.enabled ? t("settings.saver_on") : t("settings.saver_off")}
+          </button>
+          <label class="time">
+            <span class="micro">{t("settings.saver_night")}</span>
+            <input type="time" bind:value={settings.polling.saver.from} />
+          </label>
+          <label class="time">
+            <span class="micro">{t("settings.quiet_to")}</span>
+            <input type="time" bind:value={settings.polling.saver.to} />
+          </label>
+        </div>
+        <span class="note">{t("settings.saver_help")}</span>
+      </div>
 
       <label class="field">
         <span class="eyebrow">{t("settings.stale_days")}</span>
@@ -527,6 +551,12 @@
           {status.scheduler.running ? t("settings.scheduler_running") : t("settings.scheduler_stopped")}
           {#if status.scheduler.last_run}
             {t("settings.scheduler_last", { time: ago(status.scheduler.last_run, now) })}
+          {/if}
+          {#if settings.polling.saver.enabled}
+            {t("settings.saver_status", {
+              from: settings.polling.saver.from,
+              to: settings.polling.saver.to,
+            })}
           {/if}
         </span>
       </p>

@@ -13,7 +13,7 @@ from . import importer
 from .carriers.registry import Registry
 from .db import Store
 from .notify import Notifier
-from .tracking import auto_archive, periodic_notices, refresh_parcel
+from .tracking import auto_archive, periodic_notices, refresh_parcel, resting
 
 log = logging.getLogger(__name__)
 
@@ -61,15 +61,17 @@ class Scheduler:
 
     async def run_once(self) -> None:
         now = datetime.now(UTC)
-        for parcel_id in self.store.due_parcels(now.isoformat(timespec="seconds"), BATCH):
-            notices = await refresh_parcel(self.store, self.registry, self.http, parcel_id)
-            await self.notifier.handle(notices)
-            await asyncio.sleep(PAUSE_BETWEEN_LOOKUPS)
-        carrier_settings = self.store.get_settings()["carriers"]
-        for module in importer.importers(self.registry):
-            if importer.due(self.store, module, carrier_settings.get(module.id, {})):
-                notices = await importer.run(self.store, self.registry, module, self.data_dir)
+        settings = self.store.get_settings()
+        # During the saver's night rest nothing is asked; what is due waits for the morning.
+        if not resting(settings):
+            for parcel_id in self.store.due_parcels(now.isoformat(timespec="seconds"), BATCH):
+                notices = await refresh_parcel(self.store, self.registry, self.http, parcel_id)
                 await self.notifier.handle(notices)
+                await asyncio.sleep(PAUSE_BETWEEN_LOOKUPS)
+            for module in importer.importers(self.registry):
+                if importer.due(self.store, module, settings["carriers"].get(module.id, {})):
+                    notices = await importer.run(self.store, self.registry, module, self.data_dir)
+                    await self.notifier.handle(notices)
         await self.notifier.handle(periodic_notices(self.store, self.registry))
         await self.notifier.flush_held()
         auto_archive(self.store)

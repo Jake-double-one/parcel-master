@@ -619,6 +619,12 @@ def create_app(config: Config) -> FastAPI:
         except (TypeError, ValueError):
             return default
 
+    def daily_window(window: dict[str, Any], error: str) -> dict[str, Any]:
+        for key in ("from", "to"):
+            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(window.get(key, ""))):
+                raise fail(422, error)
+        return {"enabled": bool(window.get("enabled")), "from": window["from"], "to": window["to"]}
+
     @app.put("/api/settings")
     def put_settings(ctx: Context, incoming: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         current = ctx.store.get_settings()
@@ -639,6 +645,7 @@ def create_app(config: Config) -> FastAPI:
             "auto_archive_days": bounded(
                 polling.get("auto_archive_days"), 0, 90, defaults["auto_archive_days"]
             ),
+            "saver": daily_window(polling.get("saver") or defaults["saver"], "invalid_saver_hours"),
         }
         notifications = merged["notifications"]
         urls = notifications.get("apprise_urls")
@@ -652,15 +659,9 @@ def create_app(config: Config) -> FastAPI:
             key: bool(notifications.get("events", {}).get(key))
             for key in current["notifications"]["events"]
         }
-        quiet = notifications.get("quiet_hours") or {}
-        for key in ("from", "to"):
-            if not re.fullmatch(r"([01]\d|2[0-3]):[0-5]\d", str(quiet.get(key, ""))):
-                raise fail(422, "invalid_quiet_hours")
-        notifications["quiet_hours"] = {
-            "enabled": bool(quiet.get("enabled")),
-            "from": quiet["from"],
-            "to": quiet["to"],
-        }
+        notifications["quiet_hours"] = daily_window(
+            notifications.get("quiet_hours") or {}, "invalid_quiet_hours"
+        )
 
         carriers_in = incoming.get("carriers")
         if isinstance(carriers_in, dict):
