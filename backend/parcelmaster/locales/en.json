@@ -284,5 +284,14 @@
     "delivery_window": {
       "body": "{carrier} names a delivery window: {window}"
     }
+  },
+  "scanner": {
+    "open": "Scan a code with the camera",
+    "title": "Scan code",
+    "hint": "Hold the barcode or QR code of the label in front of the camera.",
+    "unknown": "Read, but not a known tracking number:",
+    "blocked": "The camera is blocked for this site. Allow it in the browser settings.",
+    "no_camera": "No camera found on this device.",
+    "failed": "The camera could not be started."
   }
 }

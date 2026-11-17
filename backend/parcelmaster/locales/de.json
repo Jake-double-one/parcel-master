@@ -284,5 +284,14 @@
     "delivery_window": {
       "body": "{carrier} nennt Zustellfenster: {window}"
     }
+  },
+  "scanner": {
+    "open": "Code mit der Kamera scannen",
+    "title": "Code scannen",
+    "hint": "Halt den Strichcode oder QR-Code des Etiketts vor die Kamera.",
+    "unknown": "Gelesen, aber keine bekannte Sendungsnummer:",
+    "blocked": "Die Kamera ist für diese Seite blockiert. Erlaub sie in den Browser-Einstellungen.",
+    "no_camera": "Auf diesem Gerät wurde keine Kamera gefunden.",
+    "failed": "Die Kamera ließ sich nicht starten."
   }
 }
