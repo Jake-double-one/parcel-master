@@ -168,7 +168,12 @@
     "sync_now": "Jetzt abgleichen",
     "syncing": "Gleiche ab",
     "sync_last": "Letzter Abgleich {time}, {count} Bestellungen mit Sendungen.",
-    "sync_never": "Noch nicht abgeglichen. Speicher dein Konto, dann gleich ab."
+    "sync_never": "Noch nicht abgeglichen.",
+    "connect": "Anmelden und prüfen",
+    "connecting": "Prüfe Anmeldung",
+    "connect_help": "Das kann bis zu einer Minute dauern. Gespeichert wird nur, wenn die Anmeldung klappt.",
+    "connected": "Verbunden mit Konto",
+    "disconnect": "Abmelden"
   },
   "login": {
     "password": "Passwort",
@@ -203,7 +208,8 @@
     "invalid_timezone": "Unbekannte Zeitzone.",
     "invalid_quiet_hours": "Gib die Ruhezeiten als hh:mm ein.",
     "not_found": "Diese Sendung gibt es nicht mehr.",
-    "too_soon": "Gerade erst abgeglichen. Warte eine Minute."
+    "too_soon": "Gerade erst versucht. Warte einen Moment.",
+    "missing_credentials": "Trag E-Mail und Passwort ein."
   },
   "carrier_error": {
     "not_configured": "Für diesen Paketdienst ist kein Schlüssel eingerichtet.",

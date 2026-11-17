@@ -168,7 +168,12 @@
     "sync_now": "Sync now",
     "syncing": "Syncing",
     "sync_last": "Last sync {time}, {count} orders with shipments.",
-    "sync_never": "Not synced yet. Save your account, then sync."
+    "sync_never": "Not synced yet.",
+    "connect": "Sign in and check",
+    "connecting": "Checking sign-in",
+    "connect_help": "This can take up to a minute. Nothing is saved unless the sign-in works.",
+    "connected": "Connected to account",
+    "disconnect": "Log out"
   },
   "login": {
     "password": "Password",
@@ -203,7 +208,8 @@
     "invalid_timezone": "Unknown time zone.",
     "invalid_quiet_hours": "Enter quiet hours as hh:mm.",
     "not_found": "This shipment no longer exists.",
-    "too_soon": "Just synced. Wait a minute."
+    "too_soon": "Just tried. Wait a moment.",
+    "missing_credentials": "Enter e-mail and password."
   },
   "carrier_error": {
     "not_configured": "No key set up for this carrier.",

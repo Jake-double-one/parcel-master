@@ -284,13 +284,44 @@ def create_app(config: Config) -> FastAPI:
             "last_attempt_at": state.get("last_attempt_at"),
             "last_error": state.get("last_error"),
             "found": state.get("found"),
+            # The account whose sign-in was checked, or None while not connected.
+            "account": state.get("account") if state.get("connected") else None,
         }
 
-    @app.post("/api/importers/{module_id}/sync")
-    async def sync_importer(ctx: RealContext, module_id: str) -> dict[str, Any]:
+    def importer_module(ctx: Ctx, module_id: str) -> importer.ImporterModule:
         module = ctx.module(module_id)
         if not isinstance(module, importer.ImporterModule):
             raise fail(404, "not_found")
+        return module
+
+    @app.post("/api/importers/{module_id}/connect")
+    async def connect_importer(
+        ctx: RealContext, module_id: str, credentials: Annotated[dict[str, str], Body()]
+    ) -> dict[str, Any]:
+        """Check a sign-in and keep the credentials only if it works."""
+        module = importer_module(ctx, module_id)
+        if importer.too_soon(ctx.store, module, timedelta(seconds=15)):
+            raise fail(429, "too_soon")
+        allowed = {f.key for f in module.settings_fields}
+        cleaned = {k: v.strip() for k, v in credentials.items() if k in allowed and v.strip()}
+        if not module.is_configured(cleaned):
+            raise fail(422, "missing_credentials")
+        error = await importer.connect(
+            ctx.store, ctx.state.registry, module, ctx.state.config.data_dir, cleaned
+        )
+        if error:
+            raise fail(400, "sign_in", reason=error.code, message=error.detail)
+        return sync_state(ctx, module)
+
+    @app.post("/api/importers/{module_id}/disconnect")
+    def disconnect_importer(ctx: RealContext, module_id: str) -> dict[str, Any]:
+        module = importer_module(ctx, module_id)
+        importer.disconnect(ctx.store, module, ctx.state.config.data_dir)
+        return sync_state(ctx, module)
+
+    @app.post("/api/importers/{module_id}/sync")
+    async def sync_importer(ctx: RealContext, module_id: str) -> dict[str, Any]:
+        module = importer_module(ctx, module_id)
         if importer.too_soon(ctx.store, module):
             raise fail(429, "too_soon")
         notices = await importer.run(
@@ -551,7 +582,8 @@ def create_app(config: Config) -> FastAPI:
         if isinstance(carriers_in, dict):
             for module in ctx.modules():
                 given = carriers_in.get(module.id)
-                if not isinstance(given, dict):
+                # An importer's account is set by connecting, never by saving the form.
+                if not isinstance(given, dict) or module.kind == "importer":
                     continue
                 own = dict(current["carriers"].get(module.id, {}))
                 for field in module.settings_fields:

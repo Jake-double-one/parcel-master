@@ -74,6 +74,9 @@ export const api = {
   pushUnsubscribe: (endpoint: string) => request<void>("POST", "/api/push/unsubscribe", { endpoint }),
   status: () => request<SystemStatus>("GET", "/api/status"),
   syncImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/sync`),
+  connectImporter: (id: string, credentials: Record<string, string>) =>
+    request<SyncState>("POST", `/api/importers/${id}/connect`, credentials),
+  disconnectImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/disconnect`),
   exportData: () => request<unknown>("GET", "/api/export"),
   importData: (data: unknown) =>
     request<{ imported: number; skipped: number }>("POST", "/api/import", data),

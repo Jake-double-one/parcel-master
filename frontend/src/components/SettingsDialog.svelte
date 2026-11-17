@@ -46,11 +46,14 @@
   let testState = $state("");
   let importState = $state("");
   let error = $state("");
-  let syncing = $state("");
+  let working = $state("");
+  let drafts = $state<Record<string, Record<string, string>>>({});
+  let connectError = $state<Record<string, { text: string; detail: string }>>({});
 
   async function load() {
     [settings, carriers, status] = await Promise.all([api.settings(), api.carriers(), api.status()]);
     appriseText = settings.notifications.apprise_urls.join("\n");
+    prepareDrafts();
   }
 
   function fail(caught: unknown) {
@@ -86,18 +89,65 @@
     }
   }
 
-  /** Save first, so the sync uses what is on screen. */
+  /** Every importer that is not connected gets an empty sign-in form. */
+  function prepareDrafts() {
+    for (const carrier of carriers) {
+      if (carrier.kind === "importer" && !carrier.sync?.account) drafts[carrier.id] ??= {};
+    }
+  }
+
+  async function reloadCarriers() {
+    carriers = await api.carriers().catch(() => carriers);
+    prepareDrafts();
+  }
+
   async function syncNow(id: string) {
-    if (!(await save())) return;
-    syncing = id;
+    error = "";
+    working = id;
     try {
       await api.syncImporter(id);
       onchanged(false);
     } catch (caught) {
       fail(caught);
     } finally {
-      syncing = "";
-      carriers = await api.carriers().catch(() => carriers);
+      working = "";
+      await reloadCarriers();
+    }
+  }
+
+  /** Check the sign-in. The server keeps the credentials only if it works. */
+  async function connect(id: string) {
+    delete connectError[id];
+    working = id;
+    try {
+      await api.connectImporter(id, drafts[id] ?? {});
+      delete drafts[id]; // the password has no business staying in the page
+      onchanged(false);
+    } catch (caught) {
+      const failure = caught instanceof ApiError ? caught : new ApiError(0, "generic");
+      connectError[id] =
+        failure.code === "sign_in"
+          ? {
+              text: tOr(`carrier_error.${failure.details.reason}`, t("carrier_error.unavailable")),
+              detail: String(failure.details.message ?? ""),
+            }
+          : { text: tOr(`error.${failure.code}`, t("error.generic")), detail: "" };
+    } finally {
+      working = "";
+      await reloadCarriers();
+    }
+  }
+
+  async function disconnect(id: string) {
+    error = "";
+    working = id;
+    try {
+      await api.disconnectImporter(id);
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      working = "";
+      await reloadCarriers();
     }
   }
 
@@ -244,61 +294,117 @@
       </label>
     {:else if tab === "carriers"}
       {#each carriers as carrier}
-        {@const own = (settings.carriers[carrier.id] ??= {})}
+        {@const own = settings.carriers[carrier.id] ?? {}}
+        {@const ready = carrier.kind === "importer" ? !!carrier.sync?.account : carrier.configured}
         <section class="module">
           <div class="row module-head">
             <h3>{carrier.name}{carrier.country ? ` · ${carrier.country.toUpperCase()}` : ""}</h3>
-            <span class="micro" class:ready={carrier.configured}>
+            <span class="micro" class:ready>
               {carrier.settings_fields.length === 0
                 ? t("settings.no_settings")
-                : carrier.configured
+                : ready
                   ? t("settings.configured")
                   : t("settings.not_configured")}
             </span>
           </div>
-          {#each carrier.settings_fields as field}
-            <label class="field">
-              <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)}</span>
-              <input
-                type={field.type === "secret" ? "password" : "text"}
-                class="mono"
-                autocomplete="off"
-                placeholder={field.placeholder}
-                bind:value={own[field.key]}
-              />
-              <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
-            </label>
-          {/each}
           {#if carrier.kind === "importer"}
-            <div class="row sync">
-              <button
-                type="button"
-                class="chip"
-                disabled={syncing === carrier.id || !carrier.configured}
-                onclick={() => syncNow(carrier.id)}
-              >
-                {syncing === carrier.id ? t("settings.syncing") : t("settings.sync_now")}
-              </button>
-              <span class="note">
+            {@const account = carrier.sync?.account}
+            {#if account}
+              <!-- Connected: the form is folded away until the user logs out. -->
+              <p class="account">
+                <span>{t("settings.connected")}</span>
+                <span class="mono">{account}</span>
+              </p>
+              <div class="row sync">
+                <button
+                  type="button"
+                  class="chip"
+                  disabled={working === carrier.id}
+                  onclick={() => syncNow(carrier.id)}
+                >
+                  {working === carrier.id ? t("settings.syncing") : t("settings.sync_now")}
+                </button>
+                <button
+                  type="button"
+                  class="chip"
+                  disabled={working === carrier.id}
+                  onclick={() => disconnect(carrier.id)}
+                >
+                  {t("settings.disconnect")}
+                </button>
+              </div>
+              <p class="note sync">
                 {carrier.sync?.last_sync_at
                   ? t("settings.sync_last", {
                       time: ago(carrier.sync.last_sync_at, now),
                       count: carrier.sync.found ?? 0,
                     })
                   : t("settings.sync_never")}
-              </span>
-            </div>
-            {#if carrier.sync?.last_error}
-              <p class="hint alert">
-                <span>
-                  {tOr(`carrier_error.${carrier.sync.last_error.code}`, t("carrier_error.unavailable"))}
-                  {#if carrier.sync.last_error.detail}
-                    <span class="detail mono">{carrier.sync.last_error.detail}</span>
-                  {/if}
-                </span>
               </p>
+              {#if carrier.sync?.last_error}
+                <p class="hint alert">
+                  <span>
+                    {tOr(`carrier_error.${carrier.sync.last_error.code}`, t("carrier_error.unavailable"))}
+                    {#if carrier.sync.last_error.detail}
+                      <span class="detail mono">{carrier.sync.last_error.detail}</span>
+                    {/if}
+                  </span>
+                </p>
+              {/if}
+            {:else if drafts[carrier.id]}
+              {@const draft = drafts[carrier.id]}
+              <form
+                onsubmit={(event) => {
+                  event.preventDefault();
+                  connect(carrier.id);
+                }}
+              >
+                {#each carrier.settings_fields as field}
+                  <label class="field">
+                    <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)}</span>
+                    <input
+                      type={field.type === "secret" ? "password" : "text"}
+                      class="mono"
+                      autocomplete="off"
+                      placeholder={field.placeholder}
+                      disabled={working === carrier.id}
+                      bind:value={draft[field.key]}
+                    />
+                    <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
+                  </label>
+                {/each}
+                <div class="row sync">
+                  <button type="submit" class="chip primary" disabled={working === carrier.id}>
+                    {working === carrier.id ? t("settings.connecting") : t("settings.connect")}
+                  </button>
+                  <span class="note">{t("settings.connect_help")}</span>
+                </div>
+              </form>
+              {#if connectError[carrier.id]}
+                <p class="hint alert" role="alert">
+                  <span>
+                    {connectError[carrier.id].text}
+                    {#if connectError[carrier.id].detail}
+                      <span class="detail mono">{connectError[carrier.id].detail}</span>
+                    {/if}
+                  </span>
+                </p>
+              {/if}
             {/if}
           {:else}
+            {#each carrier.settings_fields as field}
+              <label class="field">
+                <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)}</span>
+                <input
+                  type={field.type === "secret" ? "password" : "text"}
+                  class="mono"
+                  autocomplete="off"
+                  placeholder={field.placeholder}
+                  bind:value={own[field.key]}
+                />
+                <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
+              </label>
+            {/each}
             <label class="field">
               <span class="eyebrow">{t("settings.budget")}</span>
               <span class="inline-number">
@@ -549,6 +655,15 @@
 
   .sync {
     margin-bottom: 16px;
+  }
+
+  .account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 10px;
+    margin-bottom: 14px;
+    overflow-wrap: anywhere;
   }
 
   .detail {

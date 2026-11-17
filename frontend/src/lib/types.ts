@@ -70,6 +70,8 @@ export interface SyncState {
   last_attempt_at: string | null;
   last_error: { code: string; detail: string } | null;
   found: number | null;
+  /** The account whose sign-in was checked; null while not connected. */
+  account: string | null;
 }
 
 export interface Carrier {

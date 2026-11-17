@@ -152,6 +152,8 @@ class ImporterModule(CarrierModule):
     """
 
     kind = "importer"
+    #: The settings field that names the account, shown once it is connected.
+    account_field: str = "email"
     #: Minutes between two syncs.
     sync_interval_minutes: int = 180
 

@@ -279,6 +279,51 @@ def test_importer_modules_are_listed_but_not_selectable_by_hand(client):
     assert client.post("/api/importers/de.dhl/sync").status_code == 404
 
 
+def test_importer_accounts_are_connected_not_saved(client):
+    # Saving the settings form never stores an importer's credentials.
+    client.put(
+        "/api/settings",
+        json={"carriers": {"de.amazon": {"email": "a@example.org", "password": "x"}}},
+    )
+    saved = client.get("/api/settings").json()["carriers"]["de.amazon"]
+    assert "email" not in saved and saved["password"] == ""
+    amazon = next(c for c in client.get("/api/carriers").json() if c["id"] == "de.amazon")
+    assert amazon["sync"]["account"] is None
+
+    missing = client.post("/api/importers/de.amazon/connect", json={"email": "a@example.org"})
+    assert missing.json()["detail"]["error"] == "missing_credentials"
+    assert client.post("/api/importers/de.dhl/connect", json={}).status_code == 404
+    assert client.post("/api/importers/de.amazon/disconnect").json()["account"] is None
+
+
+def test_connecting_reports_why_the_sign_in_failed(client, monkeypatch):
+    from parcelmaster.carriers.base import CarrierError
+    from parcelmaster.carriers.de.amazon import MODULE
+
+    def refuse(request):
+        raise CarrierError("sign_in_failed", "Amazon said no")
+
+    monkeypatch.setattr(MODULE, "sync", refuse)
+    credentials = {"email": "a@example.org", "password": "x", "unknown": "dropped"}
+    failed = client.post("/api/importers/de.amazon/connect", json=credentials)
+    assert failed.status_code == 400
+    assert failed.json()["detail"] == {
+        "error": "sign_in",
+        "reason": "sign_in_failed",
+        "message": "Amazon said no",
+    }
+    # Trying again at once is refused, so a typo cannot hammer the service.
+    assert client.post("/api/importers/de.amazon/connect", json=credentials).status_code == 429
+
+    monkeypatch.setattr(MODULE, "sync", lambda request: [])
+    client.app.state.pm.store.set_value("importers", {})
+    connected = client.post("/api/importers/de.amazon/connect", json=credentials)
+    assert connected.json()["account"] == "a@example.org"
+    stored = client.app.state.pm.store.get_settings()["carriers"]["de.amazon"]
+    assert stored == {"email": "a@example.org", "password": "x"}
+    assert "x" not in client.get("/api/settings").json()["carriers"]["de.amazon"].values()
+
+
 def test_editing_an_imported_shipment_keeps_what_the_importer_noted(client):
     store = client.app.state.pm.store
     shipment_id = store.save_shipment(

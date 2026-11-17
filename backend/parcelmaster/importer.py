@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import json
 import logging
+import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -47,10 +46,6 @@ def _set_state(store: Store, module_id: str, **changes: Any) -> None:
     states = store.get_value(STATE_KEY) or {}
     states[module_id] = {**states.get(module_id, {}), **changes}
     store.set_value(STATE_KEY, states)
-
-
-def _fingerprint(settings: dict[str, Any]) -> str:
-    return hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def carrier_for(
@@ -162,11 +157,10 @@ def apply(
 
 
 def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) -> bool:
-    if not module.is_configured(carrier_settings):
-        return False
     state = get_state(store, module.id)
-    if state.get("fingerprint") != _fingerprint(carrier_settings):
-        return True  # new credentials: try them right away
+    # Only an account whose sign-in was checked is synced on its own.
+    if not state.get("connected") or not module.is_configured(carrier_settings):
+        return False
     if state.get("blocked"):
         return False  # wait until the credentials change or the user asks
     last = parse_iso(state.get("last_attempt_at"))
@@ -174,9 +168,64 @@ def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) 
     return last is None or datetime.now(UTC) - last >= interval
 
 
-def too_soon(store: Store, module: ImporterModule) -> bool:
+def too_soon(store: Store, module: ImporterModule, gap: timedelta = MIN_MANUAL_GAP) -> bool:
     last = parse_iso(get_state(store, module.id).get("last_attempt_at"))
-    return last is not None and datetime.now(UTC) - last < MIN_MANUAL_GAP
+    return last is not None and datetime.now(UTC) - last < gap
+
+
+async def connect(
+    store: Store,
+    registry: Registry,
+    module: ImporterModule,
+    data_dir: Path,
+    credentials: dict[str, Any],
+) -> CarrierError | None:
+    """Check a sign-in. Only credentials that work are kept.
+
+    The check is a full sync, so the first shipments are there right away.
+    Returns the error if the sign-in failed.
+    """
+    lock = _locks.setdefault(module.id, asyncio.Lock())
+    async with lock:
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        _set_state(store, module.id, last_attempt_at=now)
+        settings = store.get_settings()
+        request = SyncRequest(credentials, settings["language"], data_dir / "modules" / module.id)
+        try:
+            found = await asyncio.to_thread(module.sync, request)
+        except CarrierError as error:
+            return error
+        except Exception as error:  # a broken module must not take the request down
+            log.exception("importer %s failed", module.id)
+            return CarrierError("module_error", type(error).__name__)
+        settings["carriers"][module.id] = credentials
+        store.save_settings(settings)
+        apply(store, registry, module, found)
+        _set_state(
+            store,
+            module.id,
+            connected=True,
+            account=str(credentials.get(module.account_field) or ""),
+            last_sync_at=now,
+            last_error=None,
+            blocked=False,
+            found=len(found),
+        )
+        return None
+
+
+def disconnect(store: Store, module: ImporterModule, data_dir: Path) -> None:
+    """Forget the account: credentials, session files and sync state.
+
+    Shipments that were imported stay; they are the user's now.
+    """
+    settings = store.get_settings()
+    settings["carriers"].pop(module.id, None)
+    store.save_settings(settings)
+    shutil.rmtree(data_dir / "modules" / module.id, ignore_errors=True)
+    states = store.get_value(STATE_KEY) or {}
+    states.pop(module.id, None)
+    store.set_value(STATE_KEY, states)
 
 
 async def run(
@@ -193,7 +242,7 @@ async def run(
     if lock.locked():
         return []
     async with lock:
-        _set_state(store, module.id, last_attempt_at=now, fingerprint=_fingerprint(own))
+        _set_state(store, module.id, last_attempt_at=now)
         request = SyncRequest(own, settings["language"], data_dir / "modules" / module.id)
         try:
             found = await asyncio.to_thread(module.sync, request)

@@ -1,7 +1,13 @@
 {
   "settings": {
-    "email": { "label": "Amazon-E-Mail", "help": "Parcel Master meldet sich mit diesem Konto bei amazon.de an und liest die Bestellungen der letzten 30 Tage." },
-    "password": { "label": "Amazon-Passwort", "help": "Liegt unverschlüsselt auf deinem Server, wie die API-Schlüssel." },
+    "email": {
+      "label": "Amazon-E-Mail",
+      "help": "Parcel Master meldet sich mit diesem Konto bei amazon.de an und liest die Bestellungen der letzten 30 Tage."
+    },
+    "password": {
+      "label": "Amazon-Passwort",
+      "help": "Liegt unverschlüsselt auf deinem Server, wie die API-Schlüssel, und nur, wenn die Anmeldung klappt."
+    },
     "otp_secret": {
       "label": "Geheimschlüssel der Zwei-Schritt-Verifizierung",
       "help": "Nur bei aktiver Zwei-Schritt-Verifizierung: der Schlüssel, den Amazon beim Hinzufügen einer Authenticator-App zeigt („Barcode kann nicht gescannt werden?“). Ohne ihn kann niemand den Code für den Server eintippen."

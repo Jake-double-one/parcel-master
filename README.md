@@ -48,6 +48,9 @@ Things to know:
   is not locked. Sign in once in a browser and sync again.
 - With two-step verification the module needs the secret key of an
   authenticator app, because nobody can type a code for the server.
+- You connect the account under Settings → Carriers. The sign-in is checked
+  first; only credentials that work are kept, and "Log out" removes them
+  again together with the stored session.
 - The password is stored unencrypted in the data directory, like the API keys.
 - Amazon changes its pages from time to time. If orders stop showing up,
   update the image; the parsing lives in the amazon-orders library.

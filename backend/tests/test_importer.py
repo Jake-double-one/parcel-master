@@ -177,26 +177,79 @@ def test_a_number_the_user_already_tracks_is_not_added_twice(world):
     assert numbers.count("PO123456") == 1
 
 
-def test_failed_sign_in_is_not_retried_until_the_credentials_change(world):
+CREDENTIALS = {"email": "me@example.org", "password": "pw"}
+
+
+def connect(world, answer, credentials=CREDENTIALS):
     store, registry, shop, tmp_path = world
-    own = store.get_settings()["carriers"]["test.shop"]
-    assert importer.due(store, shop, own)
-    shop.answer = CarrierError("unauthorized")
+    shop.answer = answer
+    return asyncio.run(importer.connect(store, registry, shop, tmp_path, credentials))
+
+
+def test_connecting_checks_the_sign_in_and_keeps_only_working_credentials(world):
+    store, registry, shop, tmp_path = world
+    settings = store.get_settings()
+    settings["carriers"] = {}
+    store.save_settings(settings)
+
+    error = connect(world, CarrierError("sign_in_failed", "wrong password"))
+    assert (error.code, error.detail) == ("sign_in_failed", "wrong password")
+    assert "test.shop" not in store.get_settings()["carriers"]  # nothing was kept
+    assert not importer.get_state(store, shop.id).get("connected")
+    assert not importer.due(store, shop, CREDENTIALS)
+
+    assert connect(world, [order()]) is None
+    assert store.get_settings()["carriers"]["test.shop"] == CREDENTIALS
+    state = importer.get_state(store, shop.id)
+    assert (state["connected"], state["account"], state["found"]) == (True, "me@example.org", 1)
+    assert len(store.list_shipments(False)) == 1  # the check already imported
+
+
+def test_only_a_connected_account_is_synced_on_its_own(world):
+    store, registry, shop, tmp_path = world
+    assert not importer.due(store, shop, CREDENTIALS)  # saved, but never checked
+    connect(world, [])
+    assert not importer.due(store, shop, CREDENTIALS)  # just synced
+    shop.sync_interval_minutes = 0
+    assert importer.due(store, shop, CREDENTIALS)
+
+
+def test_a_sign_in_that_starts_failing_is_not_retried_automatically(world):
+    store, registry, shop, tmp_path = world
+    connect(world, [])
+    shop.sync_interval_minutes = 0
+    shop.answer = CarrierError("sign_in_failed")
     asyncio.run(importer.run(store, registry, shop, tmp_path))
-    assert importer.get_state(store, shop.id)["last_error"]["code"] == "unauthorized"
-    assert not importer.due(store, shop, own)
-    assert importer.due(store, shop, {**own, "password": "new"})
+    assert importer.get_state(store, shop.id)["last_error"]["code"] == "sign_in_failed"
+    assert not importer.due(store, shop, CREDENTIALS)
+    # Asking by hand still works, and a success lifts the block.
+    shop.answer = []
+    asyncio.run(importer.run(store, registry, shop, tmp_path))
+    assert importer.due(store, shop, CREDENTIALS)
 
 
 def test_other_errors_are_retried_after_the_interval(world):
     store, registry, shop, tmp_path = world
-    own = store.get_settings()["carriers"]["test.shop"]
+    connect(world, [])
     shop.answer = CarrierError("unavailable")
     asyncio.run(importer.run(store, registry, shop, tmp_path))
-    assert not importer.due(store, shop, own)  # not yet
+    assert not importer.due(store, shop, CREDENTIALS)  # not yet
     shop.sync_interval_minutes = 0
-    assert importer.due(store, shop, own)
-    assert not importer.due(store, shop, {})  # never without credentials
+    assert importer.due(store, shop, CREDENTIALS)
+
+
+def test_disconnecting_forgets_the_account_but_keeps_the_shipments(world):
+    store, registry, shop, tmp_path = world
+    connect(world, [order()])
+    session_file = tmp_path / "modules" / shop.id / "cookies.json"
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    session_file.write_text("{}")
+
+    importer.disconnect(store, shop, tmp_path)
+    assert "test.shop" not in store.get_settings()["carriers"]
+    assert importer.get_state(store, shop.id) == {}
+    assert not session_file.exists()
+    assert len(store.list_shipments(False)) == 1
 
 
 def test_amazon_status_lines():
