@@ -178,7 +178,13 @@
     "connecting": "Checking sign-in",
     "connect_help": "This can take up to a minute. Nothing is saved unless the sign-in works.",
     "connected": "Connected to account",
-    "disconnect": "Log out"
+    "disconnect": "Log out",
+    "sync_every": "Sync every",
+    "sync_every_help": "Leave empty for the default. Not more often than every 30 minutes, so the sign-ins do not look suspicious.",
+    "pace_tracker": "Checked every {minutes} minutes; out for delivery every {fast}, parcels standing still or waiting for pickup less often.",
+    "pace_importer": "Synced every {minutes} minutes.",
+    "next_sync": "Next sync {time}",
+    "no_next_sync": "No sync scheduled."
   },
   "login": {
     "password": "Password",
@@ -197,7 +203,10 @@
     "days": "{n} d ago",
     "today": "today",
     "tomorrow": "tomorrow",
-    "yesterday": "yesterday"
+    "yesterday": "yesterday",
+    "soon": "in a moment",
+    "in_minutes": "in {n} min",
+    "in_hours": "in about {n} h"
   },
   "error": {
     "generic": "That did not work. Try again.",

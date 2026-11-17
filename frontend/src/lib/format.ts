@@ -38,6 +38,14 @@ export function ago(iso: string, now: Date): string {
   return value.key === "now" ? t("time.now") : t(`time.${value.key}`, { n: value.n });
 }
 
+/** How long until a moment in the future, as a short phrase. */
+export function until(iso: string, now: Date): string {
+  const minutes = Math.round((new Date(iso).getTime() - now.getTime()) / 60_000);
+  if (minutes <= 1) return t("time.soon");
+  if (minutes < 90) return t("time.in_minutes", { n: minutes });
+  return t("time.in_hours", { n: Math.round(minutes / 60) });
+}
+
 export function eventTime(iso: string | null, now: Date): string {
   if (!iso) return "";
   const date = new Date(iso);

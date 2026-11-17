@@ -35,6 +35,10 @@ DEFAULT_RECENT_DAYS = 3
 #: same credentials would only make the service suspicious of the account.
 SIGN_IN_ERRORS = frozenset({"unauthorized", "sign_in_failed", "needs_code", "needs_person"})
 MIN_MANUAL_GAP = timedelta(seconds=60)
+#: Bounds for a user-chosen sync interval. A shop account is not asked more
+#: often than every half hour, so the sign-in does not look like an attack.
+MIN_SYNC_MINUTES = 30
+MAX_SYNC_MINUTES = 24 * 60
 
 _locks: dict[str, asyncio.Lock] = {}
 
@@ -233,6 +237,31 @@ def apply(
     return notices
 
 
+def interval_minutes(module: ImporterModule, carrier_settings: dict[str, Any]) -> int:
+    """Minutes between two syncs: the user's choice, else the module's own pace."""
+    try:
+        chosen = int(carrier_settings.get("sync_minutes") or 0)
+    except (TypeError, ValueError):
+        chosen = 0
+    if chosen <= 0:
+        return module.sync_interval_minutes
+    return max(MIN_SYNC_MINUTES, min(MAX_SYNC_MINUTES, chosen))
+
+
+def next_sync_at(
+    store: Store, module: ImporterModule, carrier_settings: dict[str, Any]
+) -> str | None:
+    """When the background sync will run next, or None while it is not running."""
+    state = get_state(store, module.id)
+    if not state.get("connected") or state.get("blocked"):
+        return None
+    last = parse_iso(state.get("last_attempt_at"))
+    if last is None:
+        return None
+    due_at = last + timedelta(minutes=interval_minutes(module, carrier_settings))
+    return due_at.isoformat(timespec="seconds")
+
+
 def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) -> bool:
     state = get_state(store, module.id)
     # Only an account whose sign-in was checked is synced on its own.
@@ -241,7 +270,7 @@ def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) 
     if state.get("blocked"):
         return False  # wait until the credentials change or the user asks
     last = parse_iso(state.get("last_attempt_at"))
-    interval = timedelta(minutes=module.sync_interval_minutes)
+    interval = timedelta(minutes=interval_minutes(module, carrier_settings))
     return last is None or datetime.now(UTC) - last >= interval
 
 

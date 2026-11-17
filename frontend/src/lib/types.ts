@@ -68,6 +68,11 @@ export interface FieldSpec {
 }
 
 export interface SyncState {
+  /** Minutes between two background syncs, and the module's own default. */
+  interval_minutes: number;
+  default_interval_minutes: number;
+  /** When the next background sync is due; null while none is scheduled. */
+  next_sync_at: string | null;
   last_sync_at: string | null;
   last_attempt_at: string | null;
   last_error: { code: string; detail: string } | null;
@@ -128,6 +133,8 @@ export interface ModuleStatus {
   last_success_at: string | null;
   last_error: { code: string; detail: string } | null;
   failing_parcels: number;
+  kind: "tracker" | "importer";
+  sync: SyncState | null;
 }
 
 export interface SystemStatus {

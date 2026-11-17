@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api, ApiError } from "../lib/api";
-  import { ago } from "../lib/format";
+  import { ago, until } from "../lib/format";
   import { i18n, t, tOr } from "../lib/i18n.svelte";
   import { disablePush, enablePush, pushState, type PushState } from "../lib/push";
   import { currentSkin, setSkin, SKINS } from "../lib/skins";
@@ -72,7 +72,10 @@
         .map((line) => line.trim())
         .filter(Boolean);
       // An emptied number field means "use the carrier's default".
-      for (const own of Object.values(settings.carriers)) own.daily_budget ??= null;
+      for (const own of Object.values(settings.carriers)) {
+        own.daily_budget ??= null;
+        own.sync_minutes ??= null;
+      }
       settings = await api.saveSettings(settings);
       appriseText = settings.notifications.apprise_urls.join("\n");
       const languageChanged = settings.language !== languageBefore;
@@ -333,6 +336,21 @@
                   {t("settings.disconnect")}
                 </button>
               </div>
+              <label class="field">
+                <span class="eyebrow">{t("settings.sync_every")}</span>
+                <span class="inline-number">
+                  <input
+                    type="number"
+                    min="30"
+                    max="1440"
+                    step="15"
+                    placeholder={String(carrier.sync?.default_interval_minutes ?? "")}
+                    bind:value={own.sync_minutes}
+                  />
+                  <span class="mono muted">{t("settings.interval_unit")}</span>
+                </span>
+                <span class="note">{t("settings.sync_every_help")}</span>
+              </label>
               <p class="note sync">
                 {carrier.sync?.last_sync_at
                   ? t("settings.sync_last", {
@@ -530,6 +548,21 @@
               <dd>{module.used_today}{module.daily_budget ? `/${module.daily_budget}` : ""}</dd>
             </div>
           </dl>
+          <p class="note">
+            {#if module.kind === "importer" && module.sync}
+              {t("settings.pace_importer", { minutes: module.sync.interval_minutes })}
+              {#if module.sync.next_sync_at}
+                {t("settings.next_sync", { time: until(module.sync.next_sync_at, now) })}
+              {:else}
+                {t("settings.no_next_sync")}
+              {/if}
+            {:else}
+              {t("settings.pace_tracker", {
+                minutes: settings.polling.interval_minutes,
+                fast: Math.max(15, Math.floor(settings.polling.interval_minutes / 4)),
+              })}
+            {/if}
+          </p>
           <p class="note">
             {module.last_success_at
               ? t("settings.module_last_success", { time: ago(module.last_success_at, now) })

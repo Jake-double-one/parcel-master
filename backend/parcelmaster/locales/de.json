@@ -178,7 +178,13 @@
     "connecting": "Prüfe Anmeldung",
     "connect_help": "Das kann bis zu einer Minute dauern. Gespeichert wird nur, wenn die Anmeldung klappt.",
     "connected": "Verbunden mit Konto",
-    "disconnect": "Abmelden"
+    "disconnect": "Abmelden",
+    "sync_every": "Abgleichen alle",
+    "sync_every_help": "Leer lassen für den Standard. Nicht öfter als alle 30 Minuten, damit die Anmeldungen nicht verdächtig wirken.",
+    "pace_tracker": "Abruf alle {minutes} Minuten; in Zustellung alle {fast}, stillstehende und abholbereite Pakete seltener.",
+    "pace_importer": "Abgleich alle {minutes} Minuten.",
+    "next_sync": "Nächster Abgleich {time}",
+    "no_next_sync": "Kein Abgleich geplant."
   },
   "login": {
     "password": "Passwort",
@@ -197,7 +203,10 @@
     "days": "vor {n} T.",
     "today": "heute",
     "tomorrow": "morgen",
-    "yesterday": "gestern"
+    "yesterday": "gestern",
+    "soon": "gleich",
+    "in_minutes": "in {n} Min.",
+    "in_hours": "in etwa {n} Std."
   },
   "error": {
     "generic": "Das hat nicht geklappt. Versuch es noch einmal.",

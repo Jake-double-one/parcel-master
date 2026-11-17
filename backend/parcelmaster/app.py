@@ -297,7 +297,11 @@ def create_app(config: Config) -> FastAPI:
         if module.kind != "importer":
             return None
         state = importer.get_state(ctx.store, module.id)
+        own = ctx.store.get_settings()["carriers"].get(module.id, {})
         return {
+            "interval_minutes": importer.interval_minutes(module, own),
+            "default_interval_minutes": module.sync_interval_minutes,
+            "next_sync_at": importer.next_sync_at(ctx.store, module, own),
             "last_sync_at": state.get("last_sync_at"),
             "last_attempt_at": state.get("last_attempt_at"),
             "last_error": state.get("last_error"),
@@ -585,8 +589,12 @@ def create_app(config: Config) -> FastAPI:
         carriers_out: dict[str, Any] = {}
         for module in ctx.modules():
             own = dict(settings["carriers"].get(module.id, {}))
+            if module.kind == "importer":
+                # The account itself never leaves the server; only the pace does.
+                own = {"sync_minutes": own.get("sync_minutes")}
             for key in secret_keys(module):
-                own[key] = SECRET_MASK if own.get(key) else ""
+                if module.kind != "importer":
+                    own[key] = SECRET_MASK if own.get(key) else ""
             carriers_out[module.id] = own
         return {**settings, "carriers": carriers_out}
 
@@ -647,10 +655,26 @@ def create_app(config: Config) -> FastAPI:
         if isinstance(carriers_in, dict):
             for module in ctx.modules():
                 given = carriers_in.get(module.id)
-                # An importer's account is set by connecting, never by saving the form.
-                if not isinstance(given, dict) or module.kind == "importer":
+                if not isinstance(given, dict):
                     continue
                 own = dict(current["carriers"].get(module.id, {}))
+                if isinstance(module, importer.ImporterModule):
+                    # The account is set by connecting, never by saving the form;
+                    # only the pace of the sync is a setting.
+                    if "sync_minutes" in given:
+                        minutes = given["sync_minutes"]
+                        own["sync_minutes"] = (
+                            None
+                            if minutes in (None, "")
+                            else bounded(
+                                minutes,
+                                importer.MIN_SYNC_MINUTES,
+                                importer.MAX_SYNC_MINUTES,
+                                module.sync_interval_minutes,
+                            )
+                        )
+                        merged["carriers"][module.id] = own
+                    continue
                 for field in module.settings_fields:
                     if field.key not in given:
                         continue

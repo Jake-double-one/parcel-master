@@ -286,7 +286,7 @@ def test_importer_accounts_are_connected_not_saved(client):
         json={"carriers": {"de.amazon": {"email": "a@example.org", "password": "x"}}},
     )
     saved = client.get("/api/settings").json()["carriers"]["de.amazon"]
-    assert "email" not in saved and saved["password"] == ""
+    assert saved == {"sync_minutes": None}  # the account never comes back to the browser
     amazon = next(c for c in client.get("/api/carriers").json() if c["id"] == "de.amazon")
     assert amazon["sync"]["account"] is None
 
@@ -509,3 +509,39 @@ def test_an_amazon_order_can_be_added_by_its_number_whatever_its_state(client, m
     client.delete(f"/api/shipments/{shipment['id']}")
     assert import_order().status_code == 201
     assert len(client.get("/api/shipments").json()) == 1
+
+
+def test_how_often_an_importer_syncs_is_a_setting_and_is_reported(client, monkeypatch):
+    from parcelmaster.carriers.de.amazon import MODULE
+
+    def amazon():
+        return next(c for c in client.get("/api/carriers").json() if c["id"] == "de.amazon")
+
+    assert amazon()["sync"]["interval_minutes"] == 180
+    assert amazon()["sync"]["next_sync_at"] is None  # not connected: nothing scheduled
+
+    monkeypatch.setattr(MODULE, "sync", lambda request: [])
+    credentials = {"email": "a@example.org", "password": "x"}
+    client.post("/api/importers/de.amazon/connect", json=credentials)
+    first = amazon()["sync"]
+    assert first["next_sync_at"] > first["last_sync_at"]
+
+    saved = client.put("/api/settings", json={"carriers": {"de.amazon": {"sync_minutes": 60}}})
+    # Saving the pace neither exposes nor wipes the account.
+    assert saved.json()["carriers"]["de.amazon"] == {"sync_minutes": 60}
+    assert client.app.state.pm.store.get_settings()["carriers"]["de.amazon"] == {
+        **credentials,
+        "sync_minutes": 60,
+    }
+    faster = amazon()["sync"]
+    assert faster["interval_minutes"] == 60 and faster["next_sync_at"] < first["next_sync_at"]
+    assert amazon()["sync"]["account"] == "a@example.org"
+
+    # Too eager is slowed down; empty means the module's own pace again.
+    client.put("/api/settings", json={"carriers": {"de.amazon": {"sync_minutes": 1}}})
+    assert amazon()["sync"]["interval_minutes"] == 30
+    client.put("/api/settings", json={"carriers": {"de.amazon": {"sync_minutes": None}}})
+    assert amazon()["sync"]["interval_minutes"] == 180
+
+    module = next(m for m in client.get("/api/status").json()["modules"] if m["id"] == "de.amazon")
+    assert module["kind"] == "importer" and module["sync"]["interval_minutes"] == 180
