@@ -1,7 +1,9 @@
 /*
  * Base styles. Colours come only from the skin tokens in skins.css:
  * --dusk marks progress and selection, --sun is kept for arrival and the one
- * armed switch, --alert for problems. One shadow, three radii, one breakpoint.
+ * armed switch. A state is named in one of four tones: --ok ready, --warn
+ * needs attention soon, --alert wrong, --muted neutral.
+ * One shadow, three radii.
  */
 :root {
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;

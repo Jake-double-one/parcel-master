@@ -1,6 +1,7 @@
 <script lang="ts">
   import { ago, dayLabel, etaLabel, eventTime, pickupLabel } from "../lib/format";
   import { t, tOr } from "../lib/i18n.svelte";
+  import { dayDistance } from "../lib/time";
   import type { Parcel } from "../lib/types";
   import Rail from "./Rail.svelte";
   import StatusTag from "./StatusTag.svelte";
@@ -63,7 +64,11 @@
 
   <p class="facts mono">
     {#if parcel.pickup_deadline}
-      <span class:alert={new Date(parcel.pickup_deadline) < now}>
+      <span
+        class:alert={new Date(parcel.pickup_deadline) < now}
+        class:warn={new Date(parcel.pickup_deadline) >= now &&
+          dayDistance(new Date(parcel.pickup_deadline), now) <= 2}
+      >
         {t("shipment.pickup_until", { date: dayLabel(new Date(parcel.pickup_deadline), now) })}
         · {pickupLabel(parcel.pickup_deadline, now)}
       </span>
@@ -186,6 +191,10 @@
 
   .facts .alert {
     color: var(--alert);
+  }
+
+  .facts .warn {
+    color: var(--warn);
   }
 
   .description {

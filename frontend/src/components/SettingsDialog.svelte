@@ -726,10 +726,8 @@
     letter-spacing: 0.04em;
   }
 
-  /* "Ready" is the one place for green. Mixing in the skin's text colour makes it
-     darker on light skins and lighter on dark ones, so it stays readable on all. */
   .micro.ready {
-    color: color-mix(in oklab, #2fa862 70%, var(--ink));
+    color: var(--ok);
   }
 
   .fold-toggle {
