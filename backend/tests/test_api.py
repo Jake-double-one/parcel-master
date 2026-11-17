@@ -545,3 +545,22 @@ def test_how_often_an_importer_syncs_is_a_setting_and_is_reported(client, monkey
 
     module = next(m for m in client.get("/api/status").json()["modules"] if m["id"] == "de.amazon")
     assert module["kind"] == "importer" and module["sync"]["interval_minutes"] == 180
+
+
+def test_automatic_archiving_is_reported_once(client):
+    from datetime import UTC, datetime, timedelta
+
+    from parcelmaster.tracking import auto_archive
+
+    store = client.app.state.pm.store
+    assert client.post("/api/notices/take").json() == {"auto_archived": 0}
+    long_ago = (datetime.now(UTC) - timedelta(days=5)).isoformat(timespec="seconds")
+    for number in ("DEMO0005", "DEMO0015"):
+        shipment = new_shipment(client, number).json()
+        store.update_parcel(shipment["parcels"][0]["id"], status="delivered", delivered_at=long_ago)
+    new_shipment(client, "DEMO0002")  # still on its way
+
+    assert auto_archive(store) == 2
+    assert client.post("/api/notices/take").json() == {"auto_archived": 2}
+    assert client.post("/api/notices/take").json() == {"auto_archived": 0}
+    assert len(client.get("/api/shipments").json()) == 1

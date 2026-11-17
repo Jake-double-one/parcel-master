@@ -44,7 +44,9 @@
     "no_match": "Nothing matches \"{query}\".",
     "refresh_all": "Refresh all",
     "refreshing": "Refreshing",
-    "to_top": "Back to top"
+    "to_top": "Back to top",
+    "auto_archived_one": "1 delivered shipment was archived automatically.",
+    "auto_archived": "{count} delivered shipments were archived automatically."
   },
   "shipment": {
     "parcels": "{done} of {count} arrived",

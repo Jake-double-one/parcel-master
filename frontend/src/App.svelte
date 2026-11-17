@@ -22,7 +22,7 @@
   let editing = $state<{ shipment: Shipment | null; prefill: string } | null>(null);
   let settingsOpen = $state(false);
   let busy = $state<number[]>([]);
-  let toast = $state<{ text: string; undo?: () => void } | null>(null);
+  let toast = $state<{ text: string; action?: { label: string; run: () => void } } | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -67,10 +67,10 @@
     shipments.some((s) => s.parcels.some((p) => !p.last_checked_at && !p.last_error)),
   );
 
-  function notify(text: string, undo?: () => void) {
+  function notify(text: string, action?: { label: string; run: () => void }) {
     clearTimeout(toastTimer);
-    toast = { text, undo };
-    toastTimer = setTimeout(() => (toast = null), undo ? 7000 : 4000);
+    toast = { text, action };
+    toastTimer = setTimeout(() => (toast = null), action ? 8000 : 4000);
   }
 
   function report(caught: unknown) {
@@ -86,6 +86,16 @@
     try {
       [shipments, carriers] = await Promise.all([api.shipments(showArchive), api.carriers()]);
       loaded = true;
+      // Shipments that left the overview on their own are mentioned once.
+      const { auto_archived } = await api.takeNotices();
+      if (auto_archived > 0) {
+        notify(
+          auto_archived === 1
+            ? t("overview.auto_archived_one")
+            : t("overview.auto_archived", { count: auto_archived }),
+          showArchive ? undefined : { label: t("overview.archive"), run: toggleArchive },
+        );
+      }
     } catch (caught) {
       report(caught);
     }
@@ -153,10 +163,13 @@
     try {
       await api.archive(shipment.id, archived);
       shipments = shipments.filter((s) => s.id !== shipment.id);
-      notify(archived ? t("shipment.archived_toast") : t("shipment.unarchive"), async () => {
-        await api.archive(shipment.id, !archived).catch(report);
-        toast = null;
-        await load();
+      notify(archived ? t("shipment.archived_toast") : t("shipment.unarchive"), {
+        label: t("shipment.undo"),
+        run: async () => {
+          await api.archive(shipment.id, !archived).catch(report);
+          toast = null;
+          await load();
+        },
       });
     } catch (caught) {
       report(caught);
@@ -378,8 +391,18 @@
 {#if toast}
   <div class="toast" role="status">
     <span>{toast.text}</span>
-    {#if toast.undo}
-      <button type="button" class="chip" onclick={toast.undo}>{t("shipment.undo")}</button>
+    {#if toast.action}
+      <button
+        type="button"
+        class="chip"
+        onclick={() => {
+          const run = toast?.action?.run;
+          toast = null;
+          run?.();
+        }}
+      >
+        {toast.action.label}
+      </button>
     {/if}
   </div>
 {/if}

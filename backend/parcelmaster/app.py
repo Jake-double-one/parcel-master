@@ -29,7 +29,13 @@ from .notify import Notifier, vapid_keys
 from .scheduler import Scheduler
 from .sessions import COOKIE, DEMO_TTL, LOGIN_TTL, DemoSessions, LoginThrottle, Signer
 from .status import FINAL, Status, aggregate
-from .tracking import daily_budget, parse_iso, pickup_deadline, refresh_parcel
+from .tracking import (
+    daily_budget,
+    parse_iso,
+    pickup_deadline,
+    refresh_parcel,
+    take_auto_archived,
+)
 
 SECRET_MASK = "********"
 DEMO_REFRESH_SECONDS = 15
@@ -513,6 +519,11 @@ def create_app(config: Config) -> FastAPI:
         elif fresh:
             refresh_soon(ctx, fresh)
         return present(ctx, shipment, language_of(ctx))
+
+    @app.post("/api/notices/take")
+    def take_notices(ctx: Context) -> dict[str, Any]:
+        """What happened in the background since the user last looked. Reported once."""
+        return {"auto_archived": len(take_auto_archived(ctx.store))}
 
     @app.post("/api/shipments", status_code=201)
     async def create_shipment(ctx: Context, payload: ShipmentIn) -> dict[str, Any]:

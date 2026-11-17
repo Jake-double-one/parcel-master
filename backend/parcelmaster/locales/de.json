@@ -44,7 +44,9 @@
     "no_match": "Nichts passt zu „{query}“.",
     "refresh_all": "Alle aktualisieren",
     "refreshing": "Aktualisiere",
-    "to_top": "Nach oben"
+    "to_top": "Nach oben",
+    "auto_archived_one": "1 zugestellte Sendung wurde automatisch archiviert.",
+    "auto_archived": "{count} zugestellte Sendungen wurden automatisch archiviert."
   },
   "shipment": {
     "parcels": "{done} von {count} angekommen",

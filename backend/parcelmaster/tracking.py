@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 
 MIN_INTERVAL_MINUTES = 15
 PICKUP_REMINDER_DAYS = 2
+AUTO_ARCHIVED_KEY = "auto_archived"
 #: "Next check" of a parcel that is never looked up on its own.
 NEVER = "9999-12-31T00:00:00+00:00"
 
@@ -265,4 +266,16 @@ def auto_archive(store: Store) -> int:
     ids = store.shipments_to_archive(cutoff)
     for shipment_id in ids:
         store.set_archived(shipment_id, True)
+    if ids:
+        # Remembered until the user next looks, so the tidy-up does not go unnoticed.
+        pending = store.get_value(AUTO_ARCHIVED_KEY) or []
+        store.set_value(AUTO_ARCHIVED_KEY, [*pending, *ids][-200:])
     return len(ids)
+
+
+def take_auto_archived(store: Store) -> list[int]:
+    """Shipments archived automatically since this was last asked; asking clears the list."""
+    ids = store.get_value(AUTO_ARCHIVED_KEY) or []
+    if ids:
+        store.set_value(AUTO_ARCHIVED_KEY, [])
+    return ids

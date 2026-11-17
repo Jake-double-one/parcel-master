@@ -73,6 +73,7 @@ export const api = {
     request<void>("POST", "/api/push/subscriptions", subscription),
   pushUnsubscribe: (endpoint: string) => request<void>("POST", "/api/push/unsubscribe", { endpoint }),
   status: () => request<SystemStatus>("GET", "/api/status"),
+  takeNotices: () => request<{ auto_archived: number }>("POST", "/api/notices/take"),
   syncImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/sync`),
   connectImporter: (id: string, credentials: Record<string, string>) =>
     request<SyncState>("POST", `/api/importers/${id}/connect`, credentials),
