@@ -8,6 +8,7 @@ optional ``locales/<lang>.json`` files hold the labels for its own fields.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -80,6 +81,7 @@ class CarrierModule:
     #: Tracking-number shapes this carrier uses, matched against the
     #: normalized number. Used to suggest a carrier while typing.
     patterns: tuple[re.Pattern[str], ...] = ()
+    #: A setting named "default_<key>" pre-fills the parcel field "<key>".
     settings_fields: tuple[Field, ...] = ()
     parcel_fields: tuple[Field, ...] = ()
     #: Lookups per day the carrier allows by default; None means unlimited.
@@ -101,6 +103,20 @@ class CarrierModule:
     def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
         """Link to this parcel on the carrier's own website."""
         raise NotImplementedError
+
+    def parcel_defaults(self, settings: dict[str, Any]) -> dict[str, str]:
+        """Values the user set as defaults for this module's parcel fields."""
+        defaults = {f.key: str(settings.get(f"default_{f.key}") or "") for f in self.parcel_fields}
+        return {key: value for key, value in defaults.items() if value}
+
+    def localize(self, text: str, phrase: Callable[[str], str | None]) -> str:
+        """Put a status text of this carrier into the user's language.
+
+        ``phrase(key)`` returns the text stored under ``key`` in this module's
+        locale file for that language, or None. Carriers that already answer
+        in the user's language need not do anything.
+        """
+        return text
 
     def is_configured(self, settings: dict[str, Any]) -> bool:
         return all(settings.get(f.key) for f in self.settings_fields if f.required)

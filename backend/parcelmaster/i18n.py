@@ -53,6 +53,17 @@ class Translations:
         """Every text for ``language``, with English filling what is missing."""
         return {**self._texts[FALLBACK], **self._texts.get(language, {})}
 
+    def exact(self, language: str, key: str) -> str | None:
+        """The text for ``key`` in exactly this language, without the English fallback."""
+        return self._texts.get(language, {}).get(key)
+
+    def localize(self, module: object, text: str, language: str) -> str:
+        """A carrier's status text in ``language``, as far as its module can translate it."""
+        if not text or language == FALLBACK:
+            return text
+        prefix = f"carrier.{module.id}."  # type: ignore[attr-defined]
+        return module.localize(text, lambda key: self.exact(language, prefix + key))  # type: ignore[attr-defined]
+
     def t(self, language: str, key: str, **params: object) -> str:
         text = self._texts.get(language, {}).get(key) or self._texts[FALLBACK].get(key) or key
         for name, value in params.items():

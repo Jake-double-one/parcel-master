@@ -170,6 +170,98 @@ def parse_eta(text: str | None, today: date) -> datetime | None:
     return None
 
 
+_DAY = r"(?:\d{1,2}(?:st|nd|rd|th)? [a-z]{3,9}|[a-z]{3,9} \d{1,2}(?:st|nd|rd|th)?)"
+_WHEN = rf"(today|tomorrow|yesterday|{'|'.join(_WEEKDAYS)}|(?:[a-z]+, )?{_DAY})"
+_BY = r"(?: by (\d{1,2})(?::(\d{2}))? ?([ap])\.?m\.?)?"
+
+#: Amazon's wording, lower-cased, and the phrase it stands for. The German
+#: (or any other) wording lives in this module's locale files.
+_PHRASES: tuple[tuple[re.Pattern[str], str], ...] = tuple(
+    (re.compile(pattern), key)
+    for pattern, key in (
+        (rf"delivered {_WHEN}", "delivered_on"),
+        (r"delivered", "delivered"),
+        (r"(?:your )?package (?:was )?delivered", "delivered"),
+        (rf"(?:now )?arriving {_WHEN}{_BY}", "arriving"),
+        (rf"(?:now )?arriving {_WHEN} - {_WHEN}", "arriving_between"),
+        (rf"(?:now )?expected (?:by )?{_WHEN}", "expected"),
+        (r"out for delivery", "out_for_delivery"),
+        (r"not yet (?:dispatched|shipped)", "not_dispatched"),
+        (r"preparing for (?:dispatch|shipment)", "preparing"),
+        (r"(?:dispatched|shipped)", "dispatched"),
+        (r"on the way", "on_the_way"),
+        (r"on the way,? but running late", "late"),
+        (r"running late", "late"),
+        (r"delayed", "delayed"),
+        (r"delivery attempted", "attempted"),
+        (r"ready for (?:pick-?up|collection)", "pickup"),
+        (r"refunded", "refunded"),
+        (r"return (?:complete|received)", "return_complete"),
+        (r"return started", "return_started"),
+        (r"carrier picked up the package", "picked_up"),
+        (r"package arrived at (?:a|the) carrier facility", "arrived_carrier"),
+        (r"package (?:has )?left the carrier facility", "left_carrier"),
+        (r"package arrived at an amazon facility", "arrived_amazon"),
+        (r"package (?:has )?left an amazon facility", "left_amazon"),
+        (
+            r"package (?:has )?left (?:the )?seller facility and is in transit to carrier",
+            "left_seller",
+        ),
+        (r"package (?:was )?handed (?:directly )?to (?:a )?(?:resident|customer)", "handed_over"),
+        (r"package (?:was )?left (?:in|at|near|with) .+", "left_somewhere"),
+    )
+)
+
+
+def _when(text: str, phrase: Any, plain: bool = False) -> str | None:
+    """A day as Amazon writes it ("tomorrow", "thursday", "17 november") in the user's words.
+
+    ``plain`` asks for the bare date ("20. November") for use inside a range.
+    """
+    text = re.sub(r"^[a-z]+, ", "", text)
+    if text in ("today", "tomorrow", "yesterday") or text in _WEEKDAYS:
+        return phrase(f"word.{text}")
+    match = re.fullmatch(r"(\d{1,2})(?:st|nd|rd|th)? ([a-z]{3,9})", text)
+    day, month = (match.group(1), match.group(2)) if match else (None, None)
+    if not match:
+        match = re.fullmatch(r"([a-z]{3,9}) (\d{1,2})(?:st|nd|rd|th)?", text)
+        if not match:
+            return None
+        day, month = match.group(2), match.group(1)
+    if month not in _MONTHS:
+        return None
+    template = (phrase("word.date_plain") if plain else None) or phrase("word.date")
+    name = phrase(f"word.month{_MONTHS[month]}")
+    return template.replace("{day}", day).replace("{month}", name) if template and name else None
+
+
+def translate(text: str, phrase: Any) -> str:
+    """Amazon's English status line in the user's language; unknown lines stay as they are."""
+    line = " ".join(text.lower().split()).rstrip(".")
+    for pattern, key in _PHRASES:
+        match = pattern.fullmatch(line)
+        if not match:
+            continue
+        template = phrase(f"phrase.{key}")
+        if not template:
+            return text
+        groups = match.groups()
+        plain = "{from}" in template
+        days = [_when(g, phrase, plain) for g in groups[:2] if g and not g.isdigit() and len(g) > 1]
+        if "{when}" in template or "{from}" in template:
+            if not days or any(day is None for day in days):
+                return text
+            template = template.replace("{when}", days[0]).replace("{from}", days[0])
+            template = template.replace("{to}", days[-1])
+        if key == "arriving" and groups[1]:
+            hour = int(groups[1]) % 12 + (12 if groups[3] == "p" else 0)
+            by = phrase("phrase.by")
+            if by:
+                template += " " + by.replace("{time}", f"{hour}:{groups[2] or '00'}")
+        return template[:1].upper() + template[1:]
+    return text
+
+
 def _has_class(tag: Any, name: str) -> bool:
     return any(name in value for value in (tag.get("class") or []))
 
@@ -319,6 +411,9 @@ class AmazonDe(ImporterModule):
         Field("otp_secret", type="secret"),
     )
     sync_interval_minutes = 180
+
+    def localize(self, text: str, phrase: Any) -> str:
+        return translate(text, phrase)
 
     def sync(self, request: SyncRequest) -> list[ImportedShipment]:
         # Imported here so that a missing or broken library only affects this module.

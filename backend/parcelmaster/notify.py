@@ -75,11 +75,16 @@ class Notifier:
         parcel = notice.parcel
         shipment = self.store.get_shipment(parcel["shipment_id"]) or {}
         module = self.registry.get(parcel["carrier"])
+        details = dict(notice.params)
+        if module and details.get("description"):
+            details["description"] = self.translations.localize(
+                module, str(details["description"]), language
+            )
         params = {
             "title": shipment.get("title") or parcel["tracking_number"],
             "carrier": module.name if module else parcel["carrier"],
             "number": parcel["tracking_number"],
-            **notice.params,
+            **details,
         }
         t = self.translations.t
         body = t(language, f"notify.{notice.kind}.body", **params)

@@ -445,3 +445,78 @@ def test_contents_and_full_history_from_the_shop_are_stored(world):
         ("Arrived at facility", "Hagen"),
     ]
     assert parcel["last_event_at"].startswith("2026-11-17T06:12")  # Berlin time, stored as UTC
+
+
+def test_hand_over_fills_the_carriers_fields_from_the_users_defaults(world):
+    store = world[0]
+    post = world[1].get("test.post")
+    post.parcel_fields = (Field("postal_code"),)
+    try:
+        settings = store.get_settings()
+        settings["carriers"]["test.post"] = {"api_key": "k", "default_postal_code": "50667"}
+        store.save_settings(settings)
+        sync(world, order(carrier_name="Post", tracking_number="PO123456"))
+        parcel = store.list_shipments(False)[0]["parcels"][0]
+        assert parcel["carrier"] == "test.post"
+        assert parcel["extra"]["postal_code"] == "50667"
+
+        # What the user corrects by hand survives the next sync.
+        store.set_parcel_extra(parcel["id"], {**parcel["extra"], "postal_code": "10115"})
+        sync(world, order(carrier_name="Post", tracking_number="PO123456"))
+        assert store.list_shipments(False)[0]["parcels"][0]["extra"]["postal_code"] == "10115"
+    finally:
+        post.parcel_fields = ()
+
+
+def test_amazon_status_lines_are_translated_and_unknown_ones_kept():
+    from parcelmaster.carriers.registry import discover
+    from parcelmaster.i18n import Translations
+
+    registry = discover()
+    translations = Translations(registry.locales)
+    amazon = registry.get("de.amazon")
+
+    def german(text):
+        return translations.localize(amazon, text, "de")
+
+    assert german("Delivered today") == "Heute zugestellt"
+    assert german("Delivered 14 November") == "Am 14. November zugestellt"
+    assert german("Arriving tomorrow") == "Kommt morgen"
+    assert german("Arriving tomorrow by 9 PM") == "Kommt morgen bis 21:00 Uhr"
+    assert german("Arriving Thursday") == "Kommt am Donnerstag"
+    assert german("Now arriving 20 November") == "Kommt am 20. November"
+    assert german("Arriving November 20 - November 22") == (
+        "Kommt zwischen dem 20. November und dem 22. November"
+    )
+    assert german("Out for delivery") == "In Zustellung"
+    assert german("Package arrived at a carrier facility.") == (
+        "Paket ist beim Paketdienst angekommen"
+    )
+    # Unknown wording and unknown languages fall back to Amazon's own text.
+    assert german("Something Amazon never said before") == "Something Amazon never said before"
+    assert translations.localize(amazon, "Delivered today", "en") == "Delivered today"
+    assert translations.localize(amazon, "Delivered today", "fr") == "Delivered today"
+    # Carriers that answer in the user's language are passed through.
+    assert translations.localize(registry.get("de.dhl"), "Zugestellt", "de") == "Zugestellt"
+
+
+def test_translated_status_reaches_overview_and_notifications(world):
+    from parcelmaster.i18n import Translations
+    from parcelmaster.notify import Notifier
+    from parcelmaster.tracking import Notice
+
+    store, registry, shop, _ = world
+    shop.localize = lambda text, phrase: {"Out for delivery": "In Zustellung"}.get(text, text)
+    try:
+        settings = store.get_settings()
+        settings["language"] = "de"
+        store.save_settings(settings)
+        sync(world, order())
+        parcel = store.list_shipments(False)[0]["parcels"][0]
+        notifier = Notifier(store, registry, Translations({}), "mailto:test@example.org")
+        message = notifier.compose(
+            Notice("problem", parcel, {"description": "Out for delivery"}), "de"
+        )
+        assert message["body"] == "Problem bei Shop: In Zustellung"
+    finally:
+        del shop.localize

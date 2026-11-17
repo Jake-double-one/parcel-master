@@ -129,7 +129,10 @@ class DhlDe(CarrierModule):
         re.compile(r"JVGL\d{10,22}"),
         re.compile(r"[A-Z]{2}\d{9}DE"),  # international, registered mail
     )
-    settings_fields = (Field("api_key", type="secret", required=True),)
+    settings_fields = (
+        Field("api_key", type="secret", required=True),
+        Field("default_postal_code", placeholder="53113"),
+    )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
     default_daily_budget = 250
     pickup_hold_days = 7

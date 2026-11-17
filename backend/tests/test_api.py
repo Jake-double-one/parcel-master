@@ -408,3 +408,17 @@ def test_refreshing_a_shipment_syncs_the_service_that_still_tracks_it(client, mo
     assert len(calls) == 2
     assert fresh["status"] == "out_for_delivery"
     assert fresh["parcels"][0]["description"] == "Out for delivery"
+
+
+def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
+    def dhl():
+        return next(c for c in client.get("/api/carriers").json() if c["id"] == "de.dhl")
+
+    assert dhl()["parcel_defaults"] == {}
+    assert [f["key"] for f in dhl()["settings_fields"]] == ["api_key", "default_postal_code"]
+    client.put("/api/settings", json={"carriers": {"de.dhl": {"default_postal_code": " 50667 "}}})
+    assert dhl()["parcel_defaults"] == {"postal_code": "50667"}
+    assert dhl()["configured"] is False  # the postal code is optional, the key is not
+    assert (
+        client.get("/api/settings").json()["carriers"]["de.dhl"]["default_postal_code"] == "50667"
+    )

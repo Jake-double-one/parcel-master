@@ -166,10 +166,18 @@ def create_app(config: Config) -> FastAPI:
     def present_parcel(ctx: Ctx, parcel: dict[str, Any], language: str) -> dict[str, Any]:
         module = ctx.state.registry.get(parcel["carrier"])
         deadline = pickup_deadline(parcel, module)
+
+        def localized(text: str) -> str:
+            return ctx.state.translations.localize(module, text, language) if module else text
+
         hidden = ("position", "error_count", "stale_notified_at", "pickup_reminded_at")
         return {
             **{key: value for key, value in parcel.items() if key not in hidden},
-            "events": parcel["events"][:MAX_EVENTS],
+            "description": localized(parcel["description"]),
+            "events": [
+                {**event, "description": localized(event["description"])}
+                for event in parcel["events"][:MAX_EVENTS]
+            ],
             # An imported parcel names the carrier that delivers it, once known.
             "carrier_name": parcel["extra"].get("carrier_name")
             or (module.name if module else parcel["carrier"]),
@@ -356,6 +364,7 @@ def create_app(config: Config) -> FastAPI:
                     "configured": module.is_configured(own),
                     "settings_fields": [vars(f) for f in module.settings_fields],
                     "parcel_fields": [vars(f) for f in module.parcel_fields],
+                    "parcel_defaults": module.parcel_defaults(own),
                     "default_daily_budget": module.default_daily_budget,
                     "daily_budget": daily_budget(module, own),
                     "used_today": ctx.store.usage_today(module.id),

@@ -116,8 +116,17 @@ def apply(
             extra = {"import_key": imported.key, "url": imported.url or ""}
             if imported.items:
                 extra["items"] = json.dumps(imported.items, ensure_ascii=False)
+            parcel = known.get(imported.key)
             if taker:
                 carrier, number = taker.id, taker.normalize(imported.tracking_number)
+                # The carrier's own fields: what the user entered wins, then their defaults.
+                own_fields = {f.key for f in taker.parcel_fields}
+                kept = {k: v for k, v in (parcel or {}).get("extra", {}).items() if k in own_fields}
+                extra = {
+                    **taker.parcel_defaults(settings["carriers"].get(taker.id, {})),
+                    **kept,
+                    **extra,
+                }
             else:
                 # Without a carrier number yet, show the order and which parcel of it this is.
                 carrier = module.id
@@ -125,7 +134,6 @@ def apply(
                 if imported.carrier_name:
                     extra["carrier_name"] = imported.carrier_name
 
-            parcel = known.get(imported.key)
             moved = parcel is not None and (parcel["carrier"], parcel["tracking_number"]) != (
                 carrier,
                 number,

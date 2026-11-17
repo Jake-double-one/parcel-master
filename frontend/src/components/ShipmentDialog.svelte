@@ -57,6 +57,25 @@
     return carriers.find((c) => c.id === id);
   }
 
+  /**
+   * Defaults such as the user's own postal code only fit parcels coming to
+   * them. They fill empty fields, and leave again when the direction changes.
+   */
+  function applyDefaults() {
+    for (const parcel of parcels) {
+      const defaults = carrierOf(parcel.carrier)?.parcel_defaults ?? {};
+      for (const [key, value] of Object.entries(defaults)) {
+        if (direction === "incoming" && !parcel.extra[key]) parcel.extra[key] = value;
+        if (direction !== "incoming" && parcel.extra[key] === value) parcel.extra[key] = "";
+      }
+    }
+  }
+
+  function setDirection(option: Direction) {
+    direction = option;
+    applyDefaults();
+  }
+
   /** Recognise carrier and number from whatever was typed or pasted: a number or a link. */
   async function detect(index: number, text: string) {
     const value = text.trim();
@@ -70,6 +89,7 @@
         parcels[index].carrier = first.carrier;
         parcels[index].tracking_number = first.tracking_number;
         hints[index] = t("dialog.detected", { carrier: carrierOf(first.carrier)?.name ?? "" });
+        applyDefaults();
         // A pasted message can hold several numbers.
         for (const match of more) {
           if (!parcels.some((p) => p.tracking_number === match.tracking_number)) {
@@ -125,6 +145,7 @@
 
   onMount(() => {
     dialog.showModal();
+    if (!shipment) applyDefaults();
     if (prefill && !shipment) {
       parcels[0].tracking_number = prefill;
       detect(0, prefill);
@@ -181,7 +202,7 @@
             {#if trackers.length > 1}
               <label class="field">
                 <span class="eyebrow">{t("dialog.carrier")}</span>
-                <select bind:value={parcel.carrier}>
+                <select bind:value={parcel.carrier} onchange={applyDefaults}>
                   <option value="">{t("dialog.carrier_choose")}</option>
                   {#each trackers as option}
                     <option value={option.id}>
@@ -220,7 +241,14 @@
       {/each}
 
       <div class="more">
-        <button type="button" class="chip" onclick={() => parcels.push(emptyParcel())}>
+        <button
+          type="button"
+          class="chip"
+          onclick={() => {
+            parcels.push(emptyParcel());
+            applyDefaults();
+          }}
+        >
           + {t("dialog.add_parcel")}
         </button>
         <p class="note">{t("dialog.group_hint")}</p>
@@ -240,7 +268,7 @@
               class="chip"
               role="radio"
               aria-checked={direction === option}
-              onclick={() => (direction = option)}
+              onclick={() => setDirection(option)}
             >
               {t(`direction.${option}`)}
             </button>

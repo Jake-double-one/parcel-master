@@ -86,6 +86,8 @@ export interface Carrier {
   configured: boolean;
   settings_fields: FieldSpec[];
   parcel_fields: FieldSpec[];
+  /** Defaults from the settings for parcel fields, e.g. the user's postal code. */
+  parcel_defaults: Record<string, string>;
   default_daily_budget: number | null;
   daily_budget: number | null;
   used_today: number;
