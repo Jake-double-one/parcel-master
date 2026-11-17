@@ -75,7 +75,8 @@
     "deleted_toast": "Deleted.",
     "undo": "Undo",
     "refresh_same": "Checked. Nothing new.",
-    "refresh_new": "Checked. There is news."
+    "refresh_new": "Checked. There is news.",
+    "contents": "Contents"
   },
   "dialog": {
     "create_title": "Add shipment",

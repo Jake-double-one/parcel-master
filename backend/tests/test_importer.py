@@ -338,3 +338,110 @@ def test_two_step_secret_is_checked_before_any_sign_in(tmp_path):
         AMAZON.sync(request)
     assert caught.value.code == "invalid_otp_secret"
     assert not (tmp_path / "state").exists()
+
+
+TRACKING_PAGE = """
+<div class="pt-main-container">
+  <div id="tracking-events-container">
+    <h2 class="tracking-event-carrier-header">Delivered by DHL</h2>
+    <div class="a-row tracking-event-date-header">Tuesday, 17 November</div>
+    <div class="a-row">
+      <span class="tracking-event-time">8:07 PM</span>
+      <span class="tracking-event-message">Package delivered</span>
+      <span class="tracking-event-location">Cologne, DE</span>
+    </div>
+    <div class="a-row">
+      <span class="tracking-event-time">7:12 AM</span>
+      <span class="tracking-event-message">Out for delivery</span>
+    </div>
+    <div class="a-row tracking-event-date-header">Monday, 16 November</div>
+    <div class="a-row">
+      <span class="tracking-event-time">22:40</span>
+      <span class="tracking-event-message">Package arrived at a carrier facility</span>
+      <span class="tracking-event-location">Hagen, DE</span>
+    </div>
+  </div>
+</div>
+"""
+
+
+def test_amazon_tracking_page_becomes_a_history():
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import parse_events
+
+    page = BeautifulSoup(TRACKING_PAGE, "html.parser")
+    events = parse_events(page, date(2026, 11, 17))
+    assert [(e.timestamp, e.status, e.description, e.location) for e in events] == [
+        (
+            datetime(2026, 11, 16, 22, 40),
+            Status.IN_TRANSIT,
+            "Package arrived at a carrier facility",
+            "Hagen, DE",
+        ),
+        (datetime(2026, 11, 17, 7, 12), Status.OUT_FOR_DELIVERY, "Out for delivery", None),
+        (datetime(2026, 11, 17, 20, 7), Status.DELIVERED, "Package delivered", "Cologne, DE"),
+    ]
+    # A page without a history leaves the stored one alone.
+    assert (
+        parse_events(
+            BeautifulSoup("<div>Arriving tomorrow</div>", "html.parser"), date(2026, 11, 17)
+        )
+        is None
+    )
+    assert parse_events(None, date(2026, 11, 17)) is None
+
+
+def test_amazon_parcels_list_their_articles():
+    kettle = SimpleNamespace(title="Kettle  1.7 l", quantity=1)
+    filters = SimpleNamespace(title="Water filter", quantity=3)
+    orders = [
+        SimpleNamespace(
+            order_number="302-1",
+            cancelled=False,
+            items=[kettle, filters],
+            shipments=[
+                SimpleNamespace(
+                    delivery_status="Arriving tomorrow",
+                    shipment_id="S1",
+                    tracking_link=None,
+                    items=[kettle, filters],
+                )
+            ],
+        )
+    ]
+    (shipment,) = to_shipments(orders, {}, date(2026, 11, 17))
+    assert shipment.parcels[0].items == ["Kettle 1.7 l", "3 × Water filter"]
+    assert shipment.parcels[0].events is None
+
+
+def test_contents_and_full_history_from_the_shop_are_stored(world):
+    from parcelmaster.carriers.base import TrackingEvent
+
+    store = world[0]
+    sync(world, order(items=["Kettle", "3 × Water filter"]))
+    parcel = store.list_shipments(False)[0]["parcels"][0]
+    assert parcel["extra"]["items"] == '["Kettle", "3 × Water filter"]'
+    assert len(parcel["events"]) == 1  # no history from the shop yet: one line per change
+
+    history = [
+        TrackingEvent(
+            datetime(2026, 11, 16, 22, 40), Status.IN_TRANSIT, "Arrived at facility", "Hagen"
+        ),
+        TrackingEvent(datetime(2026, 11, 17, 7, 12), Status.OUT_FOR_DELIVERY, "Out for delivery"),
+    ]
+    sync(
+        world,
+        order(
+            status=Status.OUT_FOR_DELIVERY,
+            description="Out for delivery",
+            items=["Kettle"],
+            events=history,
+        ),
+    )
+    parcel = store.list_shipments(False)[0]["parcels"][0]
+    assert [(e["description"], e["location"]) for e in parcel["events"]] == [
+        ("Out for delivery", None),
+        ("Arrived at facility", "Hagen"),
+    ]
+    assert parcel["last_event_at"].startswith("2026-11-17T06:12")  # Berlin time, stored as UTC

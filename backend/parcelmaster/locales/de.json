@@ -75,7 +75,8 @@
     "deleted_toast": "Gelöscht.",
     "undo": "Rückgängig",
     "refresh_same": "Abgerufen. Kein neuer Stand.",
-    "refresh_new": "Abgerufen. Es gibt Neues."
+    "refresh_new": "Abgerufen. Es gibt Neues.",
+    "contents": "Inhalt"
   },
   "dialog": {
     "create_title": "Sendung anlegen",

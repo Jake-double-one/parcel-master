@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import shutil
 from datetime import UTC, datetime, timedelta
@@ -113,6 +114,8 @@ def apply(
                 else None
             )
             extra = {"import_key": imported.key, "url": imported.url or ""}
+            if imported.items:
+                extra["items"] = json.dumps(imported.items, ensure_ascii=False)
             if taker:
                 carrier, number = taker.id, taker.normalize(imported.tracking_number)
             else:
@@ -140,12 +143,17 @@ def apply(
             parcel = store.get_parcel(parcel_id)
 
             if carrier == module.id:
-                events = [
-                    TrackingEvent(parse_iso(e["timestamp"]), Status(e["status"]), e["description"])
-                    for e in store.parcel_events(parcel_id)
-                ]
-                if not events or events[-1].description != imported.description:
-                    events.append(TrackingEvent(now, imported.status, imported.description))
+                if imported.events is not None:
+                    events = imported.events  # the service shows the whole history
+                else:
+                    events = [
+                        TrackingEvent(
+                            parse_iso(e["timestamp"]), Status(e["status"]), e["description"]
+                        )
+                        for e in store.parcel_events(parcel_id)
+                    ]
+                    if not events or events[-1].description != imported.description:
+                        events.append(TrackingEvent(now, imported.status, imported.description))
                 result = TrackingResult(
                     status=imported.status,
                     description=imported.description,

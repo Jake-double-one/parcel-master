@@ -77,6 +77,14 @@
     </p>
   {/if}
 
+  {#if parcel.contents.length}
+    <ul class="contents" aria-label={t("shipment.contents")}>
+      {#each parcel.contents as item}
+        <li>{item}</li>
+      {/each}
+    </ul>
+  {/if}
+
   {#if errorText}
     <p class="hint alert">{errorText}</p>
   {/if}
@@ -161,6 +169,30 @@
   .description {
     margin-top: 8px;
     font-size: 0.92rem;
+  }
+
+  .contents {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+  }
+
+  .contents li {
+    display: block;
+    padding: 2px 0 2px 14px;
+    border: 0;
+    position: relative;
+  }
+
+  .contents li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.75em;
+    width: 6px;
+    border-top: 1px solid var(--muted);
   }
 
   .hint {

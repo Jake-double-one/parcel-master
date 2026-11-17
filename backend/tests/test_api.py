@@ -337,11 +337,18 @@ def test_editing_an_imported_shipment_keeps_what_the_importer_noted(client):
         },
         [],
     )
-    store.add_parcel(shipment_id, "de.amazon", "SHIP1", {"import_key": "SHIP1", "url": "https://x"})
+    store.add_parcel(
+        shipment_id,
+        "de.amazon",
+        "SHIP1",
+        {"import_key": "SHIP1", "url": "https://x", "items": '["Kettle", "2 × Filter"]'},
+    )
     store.add_parcel(shipment_id, "demo", "DEMO0002", {"import_key": "SHIP2"})
     shipment = next(s for s in client.get("/api/shipments").json() if s["id"] == shipment_id)
     assert shipment["parcels"][0]["tracking_url"] == "https://x"
     assert shipment["parcels"][0]["site_name"] == "Amazon"
+    assert shipment["parcels"][0]["contents"] == ["Kettle", "2 × Filter"]
+    assert shipment["parcels"][1]["contents"] == []
 
     edited = client.put(
         f"/api/shipments/{shipment_id}",

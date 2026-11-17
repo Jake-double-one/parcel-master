@@ -22,10 +22,13 @@ from parcelmaster.carriers.base import (
     ImportedShipment,
     ImporterModule,
     SyncRequest,
+    TrackingEvent,
 )
 from parcelmaster.status import Status
 
 DOMAIN = "amazon.de"
+#: Upper limit of tracking pages read per sync, to stay a polite visitor.
+MAX_TRACKING_PAGES = 40
 
 _MONTHS = {
     name: index
@@ -167,6 +170,93 @@ def parse_eta(text: str | None, today: date) -> datetime | None:
     return None
 
 
+def _has_class(tag: Any, name: str) -> bool:
+    return any(name in value for value in (tag.get("class") or []))
+
+
+def _clock(text: str) -> tuple[int, int] | None:
+    match = re.search(r"\b(\d{1,2})[:.](\d{2})\s*([ap])?\.?m?\b", text.lower())
+    if not match:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if match.group(3) == "p" and hour < 12:
+        hour += 12
+    if match.group(3) == "a" and hour == 12:
+        hour = 0
+    return (hour, minute) if hour < 24 and minute < 60 else None
+
+
+def _event_day(text: str, today: date) -> date | None:
+    """The day a date heading of the tracking page names ("Tuesday, 17 November")."""
+    lower = text.lower()
+    if "today" in lower:
+        return today
+    if "yesterday" in lower:
+        return today - timedelta(days=1)
+    for pattern, day_group, month_group in (
+        (r"\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\b", 1, 2),
+        (r"\b([a-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?\b", 2, 1),
+    ):
+        match = re.search(pattern, lower)
+        if match and match.group(month_group) in _MONTHS:
+            try:
+                day = date(
+                    today.year, _MONTHS[match.group(month_group)], int(match.group(day_group))
+                )
+            except ValueError:
+                continue
+            # Events lie in the past: a date still ahead belongs to last year.
+            return day if day <= today + timedelta(days=1) else day.replace(year=today.year - 1)
+    return None
+
+
+def parse_events(page: Any, today: date) -> list[TrackingEvent] | None:
+    """The history on Amazon's tracking page, oldest first; None if it shows none.
+
+    The page lists days as headings, each followed by rows of time, message
+    and place. Elements are recognised by the "tracking-event-…" part of
+    their class names.
+    """
+    if page is None:
+        return None
+    events: list[TrackingEvent] = []
+    day: date | None = None
+    pending_time: tuple[int, int] | None = None
+    for tag in page.find_all(True):
+        text = " ".join(tag.get_text(" ", strip=True).split())
+        if not text:
+            continue
+        if _has_class(tag, "tracking-event-date"):
+            day = _event_day(text, today) or day
+            pending_time = None
+        elif _has_class(tag, "tracking-event-time"):
+            pending_time = _clock(text)
+        elif _has_class(tag, "tracking-event-message"):
+            when = None
+            if day:
+                hour, minute = pending_time or (0, 0)
+                when = datetime(day.year, day.month, day.day, hour, minute)
+            events.append(TrackingEvent(when, parse_status(text), text))
+            pending_time = None
+        elif _has_class(tag, "tracking-event-location") and events and not events[-1].location:
+            events[-1].location = text
+    if not events:
+        return None
+    # A line like "Package arrived at a carrier facility" matches no status rule.
+    for event in events:
+        if event.status is Status.UNKNOWN:
+            event.status = Status.IN_TRANSIT
+    return sorted(events, key=lambda event: event.timestamp or datetime.min)
+
+
+def describe_item(item: Any) -> str:
+    title = " ".join(str(getattr(item, "title", "") or "").split())
+    if len(title) > 120:
+        title = title[:117].rstrip() + "…"
+    quantity = getattr(item, "quantity", None)
+    return f"{quantity} × {title}" if isinstance(quantity, int) and quantity > 1 else title
+
+
 def to_shipments(orders: list[Any], tracking: dict[tuple[str, str], Any], today: date):
     """Turn the library's orders into what Parcel Master files.
 
@@ -200,6 +290,12 @@ def to_shipments(orders: list[Any], tracking: dict[tuple[str, str], Any], today:
                     tracking_number=getattr(found, "tracking_number", None),
                     url=link
                     or f"https://www.{DOMAIN}/gp/your-account/order-details?orderID={number}",
+                    items=[
+                        describe_item(item)
+                        for item in getattr(shipment, "items", [])
+                        if getattr(item, "title", None)
+                    ],
+                    events=parse_events(getattr(found, "parsed", None), today),
                 )
             )
         if not parcels:
@@ -288,11 +384,8 @@ class AmazonDe(ImporterModule):
             tracking: dict[tuple[str, str], Any] = {}
             for order in orders:
                 for shipment in order.shipments or []:
-                    open_status = parse_status(shipment.delivery_status) not in (
-                        Status.DELIVERED,
-                        Status.RETURNED,
-                    )
-                    if shipment.shipment_id and open_status:
+                    # One request per parcel: carrier, number and the history.
+                    if shipment.shipment_id and len(tracking) < MAX_TRACKING_PAGES:
                         # Without the carrier page the status from the order list still stands.
                         with contextlib.suppress(AmazonOrdersError):
                             tracking[(order.order_number, shipment.shipment_id)] = (

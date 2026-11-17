@@ -124,6 +124,10 @@ class ImportedParcel:
     tracking_number: str | None = None
     #: Link to this parcel at the service.
     url: str | None = None
+    #: What is inside, one line per article.
+    items: list[str] = field(default_factory=list)
+    #: The parcel's history if the service shows one; None keeps what is stored.
+    events: list[TrackingEvent] | None = None
 
 
 @dataclass

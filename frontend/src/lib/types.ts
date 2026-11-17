@@ -34,6 +34,8 @@ export interface Parcel {
   last_checked_at: string | null;
   last_error: { code: string; detail: string } | null;
   tracking_url: string | null;
+  /** What is inside, where an importer knows it. */
+  contents: string[];
   /** Whose website `tracking_url` opens. */
   site_name: string;
   events: TrackingEvent[];

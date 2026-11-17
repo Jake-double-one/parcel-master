@@ -5,6 +5,7 @@
 
 import asyncio
 import hmac
+import json
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -154,6 +155,14 @@ def create_app(config: Config) -> FastAPI:
 
     # -- presentation -----------------------------------------------------
 
+    def contents_of(parcel: dict[str, Any]) -> list[str]:
+        """What an importer noted as being inside the parcel."""
+        try:
+            items = json.loads(parcel["extra"].get("items") or "[]")
+        except ValueError:
+            return []
+        return [str(item) for item in items] if isinstance(items, list) else []
+
     def present_parcel(ctx: Ctx, parcel: dict[str, Any], language: str) -> dict[str, Any]:
         module = ctx.state.registry.get(parcel["carrier"])
         deadline = pickup_deadline(parcel, module)
@@ -164,6 +173,7 @@ def create_app(config: Config) -> FastAPI:
             # An imported parcel names the carrier that delivers it, once known.
             "carrier_name": parcel["extra"].get("carrier_name")
             or (module.name if module else parcel["carrier"]),
+            "contents": contents_of(parcel),
             # Whose website the link below opens.
             "site_name": module.name if module else parcel["carrier"],
             "tracking_url": (
