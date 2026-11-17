@@ -341,6 +341,14 @@ def parse_events(page: Any, today: date) -> list[TrackingEvent] | None:
     return sorted(events, key=lambda event: event.timestamp or datetime.min)
 
 
+def parse_delivery_day(text: str, today: date) -> datetime | None:
+    """The day in a line like "Delivered today" or "Delivered 14 November"."""
+    if not re.match(r"\s*delivered\b", text, re.I):
+        return None
+    day = _event_day(text, today)
+    return datetime(day.year, day.month, day.day) if day else None
+
+
 def describe_item(item: Any) -> str:
     title = " ".join(str(getattr(item, "title", "") or "").split())
     if len(title) > 120:
@@ -378,6 +386,7 @@ def to_shipments(orders: list[Any], tracking: dict[tuple[str, str], Any], today:
                     status=parse_status(text),
                     description=text,
                     eta_from=parse_eta(text, today),
+                    status_time=parse_delivery_day(text, today),
                     carrier_name=getattr(found, "carrier", None),
                     tracking_number=getattr(found, "tracking_number", None),
                     url=link

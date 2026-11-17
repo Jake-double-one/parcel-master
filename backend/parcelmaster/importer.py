@@ -27,6 +27,10 @@ from .tracking import Notice, parse_iso, record_result, timezone
 log = logging.getLogger(__name__)
 
 STATE_KEY = "importers"
+DISMISSED_KEY = "importers_dismissed"
+MAX_DISMISSED = 500
+#: Days a finished order still counts as recent when auto-archive is off.
+DEFAULT_RECENT_DAYS = 3
 #: Errors that mean "the sign-in itself is the problem". Trying again with the
 #: same credentials would only make the service suspicious of the account.
 SIGN_IN_ERRORS = frozenset({"unauthorized", "sign_in_failed", "needs_code", "needs_person"})
@@ -55,6 +59,24 @@ def _set_state(store: Store, module_id: str, **changes: Any) -> None:
     store.set_value(STATE_KEY, states)
 
 
+def _just_arrived(item: ImportedShipment, now: datetime, zone: Any, recent_days: int) -> bool:
+    """Whether an order that is complete arrived recently enough to be worth showing."""
+    times = [parcel.status_time for parcel in item.parcels if parcel.status_time]
+    for parcel in item.parcels:
+        times += [e.timestamp for e in parcel.events or [] if e.timestamp and e.status in FINAL]
+    if not times:
+        return False  # the service does not say when; assume it was long ago
+    latest = max(time if time.tzinfo else time.replace(tzinfo=zone) for time in times)
+    return now - latest <= timedelta(days=recent_days)
+
+
+def dismiss(store: Store, source: str, reference: str) -> None:
+    """Remember that the user deleted an imported order, so it does not come back."""
+    dismissed = store.get_value(DISMISSED_KEY) or []
+    if [source, reference] not in dismissed:
+        store.set_value(DISMISSED_KEY, [*dismissed, [source, reference]][-MAX_DISMISSED:])
+
+
 def carrier_for(
     registry: Registry, name: str | None, number: str, carrier_settings: dict[str, Any]
 ) -> CarrierModule | None:
@@ -79,14 +101,21 @@ def apply(
     base = int(settings["polling"]["interval_minutes"])
     now = datetime.now(UTC)
     notices: list[Notice] = []
+    dismissed = store.get_value(DISMISSED_KEY) or []
+    # Orders that arrived within the days they would stay in the overview anyway.
+    recent_days = int(settings["polling"]["auto_archive_days"]) or DEFAULT_RECENT_DAYS
 
     for item in found:
         shipment = store.find_by_reference(module.name, item.reference)
         if shipment and shipment["archived_at"]:
             continue  # the user is done with this order
         if shipment is None:
-            if all(parcel.status in FINAL for parcel in item.parcels):
-                continue  # nothing is on its way; no need to list old orders
+            if [module.name, item.reference] in dismissed:
+                continue  # the user deleted this order here
+            if all(parcel.status in FINAL for parcel in item.parcels) and not _just_arrived(
+                item, now, zone, recent_days
+            ):
+                continue  # arrived a while ago; no need to list old orders
             shipment_id = store.save_shipment(
                 None,
                 {
@@ -161,7 +190,11 @@ def apply(
                         for e in store.parcel_events(parcel_id)
                     ]
                     if not events or events[-1].description != imported.description:
-                        events.append(TrackingEvent(now, imported.status, imported.description))
+                        events.append(
+                            TrackingEvent(
+                                imported.status_time or now, imported.status, imported.description
+                            )
+                        )
                 result = TrackingResult(
                     status=imported.status,
                     description=imported.description,

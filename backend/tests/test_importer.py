@@ -520,3 +520,38 @@ def test_translated_status_reaches_overview_and_notifications(world):
         assert message["body"] == "Problem bei Shop: In Zustellung"
     finally:
         del shop.localize
+
+
+def test_orders_that_arrived_recently_are_listed_too(world):
+    from datetime import UTC, timedelta
+
+    from parcelmaster.carriers.de.amazon import parse_delivery_day
+
+    store = world[0]
+    now = datetime.now(UTC)
+    today = order(
+        "302-today",
+        status=Status.DELIVERED,
+        description="Delivered today",
+        status_time=now.replace(tzinfo=None) - timedelta(hours=3),
+    )
+    last_week = order(
+        "302-old",
+        status=Status.DELIVERED,
+        description="Delivered 9 November",
+        status_time=now.replace(tzinfo=None) - timedelta(days=8),
+    )
+    undated = order("302-undated", status=Status.DELIVERED, description="Delivered")
+    sync(world, today, last_week, undated)
+
+    (shipment,) = store.list_shipments(False)
+    assert shipment["reference"] == "302-today"
+    parcel = shipment["parcels"][0]
+    assert parcel["status"] == "delivered"
+    # Arrival is dated by the service, so the shipment is archived on schedule.
+    assert parcel["delivered_at"] < now.isoformat()
+    assert parcel["events"][0]["timestamp"] == parcel["delivered_at"]
+
+    assert parse_delivery_day("Delivered today", date(2026, 11, 17)) == datetime(2026, 11, 17)
+    assert parse_delivery_day("Delivered 14 November", date(2026, 11, 17)) == datetime(2026, 11, 14)
+    assert parse_delivery_day("Arriving today", date(2026, 11, 17)) is None

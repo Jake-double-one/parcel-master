@@ -508,8 +508,12 @@ def create_app(config: Config) -> FastAPI:
 
     @app.delete("/api/shipments/{shipment_id}", status_code=204)
     def delete_shipment(ctx: Context, shipment_id: int) -> None:
-        if not ctx.store.delete_shipment(shipment_id):
+        shipment = ctx.store.get_shipment(shipment_id)
+        if shipment is None or not ctx.store.delete_shipment(shipment_id):
             raise fail(404, "not_found")
+        if shipment["reference"] and shipment["source"] not in ("manual", "import", "demo"):
+            # Without this note the next sync would simply bring the order back.
+            importer.dismiss(ctx.store, shipment["source"], shipment["reference"])
 
     @app.post("/api/shipments/{shipment_id}/archive")
     def archive(

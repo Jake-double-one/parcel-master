@@ -422,3 +422,29 @@ def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
     assert (
         client.get("/api/settings").json()["carriers"]["de.dhl"]["default_postal_code"] == "50667"
     )
+
+
+def test_a_deleted_import_does_not_come_back_with_the_next_sync(client, monkeypatch):
+    from parcelmaster.carriers.base import ImportedParcel, ImportedShipment
+    from parcelmaster.carriers.de.amazon import MODULE
+    from parcelmaster.status import Status
+
+    found = [
+        ImportedShipment(
+            "302-1", "Kettle", [ImportedParcel("S1", Status.IN_TRANSIT, "Dispatched")]
+        ),
+        ImportedShipment("302-2", "Cable", [ImportedParcel("S2", Status.IN_TRANSIT, "Dispatched")]),
+    ]
+    monkeypatch.setattr(MODULE, "sync", lambda request: found)
+    client.post(
+        "/api/importers/de.amazon/connect", json={"email": "a@example.org", "password": "x"}
+    )
+    shipments = {s["reference"]: s["id"] for s in client.get("/api/shipments").json()}
+    assert set(shipments) == {"302-1", "302-2"}
+
+    client.delete(f"/api/shipments/{shipments['302-1']}")
+    states = client.app.state.pm.store.get_value("importers")
+    states["de.amazon"]["last_attempt_at"] = "2020-01-01T00:00:00+00:00"
+    client.app.state.pm.store.set_value("importers", states)
+    client.post("/api/importers/de.amazon/sync")
+    assert [s["reference"] for s in client.get("/api/shipments").json()] == ["302-2"]

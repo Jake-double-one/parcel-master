@@ -134,6 +134,8 @@ class ImportedParcel:
     status: Status
     description: str = ""
     eta_from: datetime | None = None
+    #: When the parcel reached this status, if the service says so.
+    status_time: datetime | None = None
     #: Name of the carrier that delivers it, as the service prints it ("DHL").
     carrier_name: str | None = None
     #: That carrier's tracking number, once known.
