@@ -121,6 +121,10 @@ class CarrierModule:
     def is_configured(self, settings: dict[str, Any]) -> bool:
         return all(settings.get(f.key) for f in self.settings_fields if f.required)
 
+    def source(self, settings: dict[str, Any]) -> str | None:
+        """Which way the module asks, if it knows more than one; named in ``locales``."""
+        return None
+
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
         raise NotImplementedError
 

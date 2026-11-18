@@ -238,6 +238,9 @@ class DhlDe(CarrierModule):
     default_daily_budget = 250
     pickup_hold_days = 7
 
+    def source(self, settings: dict[str, Any]) -> str | None:
+        return "api" if settings.get("api_key") else "website"
+
     def extract_from_url(self, url: str) -> str | None:
         parsed = urlparse(url)
         if not re.search(r"(^|\.)dhl\.(de|com)$", parsed.hostname or ""):

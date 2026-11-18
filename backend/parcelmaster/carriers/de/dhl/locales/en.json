@@ -14,5 +14,9 @@
       "label": "Recipient postal code",
       "help": "Optional. DHL only shows delivery details with it."
     }
+  },
+  "source": {
+    "api": "API, else dhl.de",
+    "website": "dhl.de"
   }
 }

@@ -14,5 +14,9 @@
       "label": "Postleitzahl des Empfängers",
       "help": "Optional. Nur damit zeigt DHL Zustelldetails."
     }
+  },
+  "source": {
+    "api": "API, sonst dhl.de",
+    "website": "dhl.de"
   }
 }

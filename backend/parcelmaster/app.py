@@ -319,6 +319,33 @@ def create_app(config: Config) -> FastAPI:
             "account": state.get("account") if state.get("connected") else None,
         }
 
+    def health(ctx: Ctx, module: CarrierModule, parcels: list[dict[str, Any]]) -> dict[str, Any]:
+        """Whether the module works right now, judged by what it did last.
+
+        "off" is not set up, "untested" has not asked yet, "ok" and "failing"
+        say how the latest lookup or sync went.
+        """
+        own = ctx.store.get_settings()["carriers"].get(module.id, {})
+        source = module.source(own)
+        if module.kind == "importer":
+            sync = sync_state(ctx, module) or {}
+            if not sync.get("account"):
+                state = "off"
+            elif sync.get("last_error"):
+                state = "failing"
+            else:
+                state = "ok" if sync.get("last_sync_at") else "untested"
+            return {"state": state, "source": source}
+        if not module.is_configured(own):
+            return {"state": "off", "source": source}
+        asked = sorted(
+            (p for p in parcels if p["carrier"] == module.id and p["last_checked_at"]),
+            key=lambda p: p["last_checked_at"],
+        )
+        if not asked:
+            return {"state": "untested", "source": source}
+        return {"state": "failing" if asked[-1]["last_error"] else "ok", "source": source}
+
     def importer_module(ctx: Ctx, module_id: str) -> importer.ImporterModule:
         module = ctx.module(module_id)
         if not isinstance(module, importer.ImporterModule):
@@ -381,6 +408,7 @@ def create_app(config: Config) -> FastAPI:
     @app.get("/api/carriers")
     def carriers(ctx: Context) -> list[dict[str, Any]]:
         settings = ctx.store.get_settings()
+        parcels = ctx.store.open_parcels()
         result = []
         for module in ctx.modules():
             own = settings["carriers"].get(module.id, {})
@@ -389,6 +417,7 @@ def create_app(config: Config) -> FastAPI:
                     "id": module.id,
                     "name": module.name,
                     "country": module.country,
+                    "health": health(ctx, module, parcels),
                     "kind": module.kind,
                     "sync": sync_state(ctx, module),
                     # Whether a single order can be added by its number.
@@ -781,6 +810,7 @@ def create_app(config: Config) -> FastAPI:
                     "kind": module.kind,
                     "sync": sync_state(ctx, module),
                     "configured": module.is_configured(own),
+                    "health": health(ctx, module, parcels),
                     "open_parcels": len(open_mine),
                     "daily_budget": daily_budget(module, own),
                     "used_today": ctx.store.usage_today(module.id),

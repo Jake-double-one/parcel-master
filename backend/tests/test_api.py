@@ -620,3 +620,14 @@ def test_log_shows_what_the_server_did(client):
     assert newest["level"] == "warning"
     assert newest["source"] == "tracking"
     assert "HTTP 404" in newest["message"]
+
+
+def test_carrier_health_says_how_the_last_lookup_went_and_which_way_it_asks(client):
+    def dhl():
+        return next(c for c in client.get("/api/carriers").json() if c["id"] == "de.dhl")["health"]
+
+    assert dhl() == {"state": "untested", "source": "website"}
+    client.put("/api/settings", json={"carriers": {"de.dhl": {"api_key": "k"}}})
+    assert dhl() == {"state": "untested", "source": "api"}
+    status = client.get("/api/status").json()
+    assert next(m for m in status["modules"] if m["id"] == "de.dhl")["health"]["source"] == "api"

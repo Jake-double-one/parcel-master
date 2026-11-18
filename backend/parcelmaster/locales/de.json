@@ -215,7 +215,11 @@
     "log_empty": "Noch nichts protokolliert.",
     "log_copy": "Kopieren",
     "log_copied": "Kopiert ✓",
-    "log_reload": "Neu laden"
+    "log_reload": "Neu laden",
+    "health_off": "Nicht eingerichtet",
+    "health_untested": "Noch nicht abgefragt",
+    "health_ok": "Läuft",
+    "health_failing": "Gestört"
   },
   "login": {
     "password": "Passwort",

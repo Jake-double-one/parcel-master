@@ -13,7 +13,7 @@
     type PushState,
   } from "../lib/push";
   import { currentSkin, setSkin, SKINS } from "../lib/skins";
-  import type { Carrier, Meta, Settings, SystemStatus } from "../lib/types";
+  import type { Carrier, Health, Meta, Settings, SystemStatus } from "../lib/types";
 
   let {
     meta,
@@ -97,6 +97,16 @@
   function fail(caught: unknown) {
     const code = caught instanceof ApiError ? caught.code : "generic";
     error = tOr(`error.${code}`, t("error.generic"));
+  }
+
+  /** "Working · dhl.de": how the module is doing, and which way it asks. */
+  function healthLabel(id: string, health: Health, needsNothing: boolean): string {
+    const state =
+      needsNothing && health.state !== "failing" && health.state !== "ok"
+        ? t("settings.no_settings")
+        : t(`settings.health_${health.state}`);
+    if (!health.source || health.state === "off") return state;
+    return `${state} · ${tOr(`carrier.${id}.source.${health.source}`, health.source)}`;
   }
 
   /** The browser's own words help more here than "that did not work". */
@@ -420,12 +430,12 @@
               <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
             </svg>
             <h3>{carrier.name}{carrier.country ? ` · ${carrier.country.toUpperCase()}` : ""}</h3>
-            <span class="micro state" class:ready>
-              {carrier.settings_fields.length === 0
-                ? t("settings.no_settings")
-                : ready
-                  ? t("settings.configured")
-                  : t("settings.not_configured")}
+            <span
+              class="micro state"
+              class:ready={carrier.health.state === "ok"}
+              class:failing={carrier.health.state === "failing"}
+            >
+              {healthLabel(carrier.id, carrier.health, carrier.settings_fields.length === 0)}
             </span>
           </button>
           {#if open}
@@ -677,8 +687,12 @@
         <section class="module">
           <div class="row module-head">
             <h3>{module.name}</h3>
-            <span class="micro" class:ready={module.configured}>
-              {module.configured ? t("settings.configured") : t("settings.not_configured")}
+            <span
+              class="micro"
+              class:ready={module.health.state === "ok"}
+              class:failing={module.health.state === "failing"}
+            >
+              {healthLabel(module.id, module.health, false)}
             </span>
           </div>
           <dl class="stats">
@@ -899,6 +913,10 @@
 
   .micro.ready {
     color: var(--ok);
+  }
+
+  .micro.failing {
+    color: var(--warn);
   }
 
   .fold-toggle {

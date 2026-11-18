@@ -81,7 +81,14 @@ export interface SyncState {
   account: string | null;
 }
 
+/** How a carrier module is doing, and which way it asks if it knows several. */
+export interface Health {
+  state: "off" | "untested" | "ok" | "failing";
+  source: string | null;
+}
+
 export interface Carrier {
+  health: Health;
   id: string;
   name: string;
   country: string;
@@ -130,6 +137,7 @@ export interface Settings {
 }
 
 export interface ModuleStatus {
+  health: Health;
   id: string;
   name: string;
   configured: boolean;

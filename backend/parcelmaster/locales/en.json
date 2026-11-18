@@ -215,7 +215,11 @@
     "log_empty": "Nothing logged yet.",
     "log_copy": "Copy",
     "log_copied": "Copied ✓",
-    "log_reload": "Reload"
+    "log_reload": "Reload",
+    "health_off": "Not set up",
+    "health_untested": "Not asked yet",
+    "health_ok": "Working",
+    "health_failing": "Failing"
   },
   "login": {
     "password": "Password",
