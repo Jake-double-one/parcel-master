@@ -82,9 +82,16 @@ environment only holds what belongs to the deployment:
 | `PM_DATA_DIR` | `/data` | Where the database and extra language files live. |
 | `PM_SCHEDULER` | `true` | Run the background checks. |
 | `PM_LOG_LEVEL` | `info` | How much goes into the log (`debug`, `info`, `warning`). The newest lines are also shown under Settings → Status → Log. |
+| `FORWARDED_ALLOW_IPS` | `*` | Addresses whose `X-Forwarded-For`/`-Proto` headers are believed (read by uvicorn). Set it to your reverse proxy's address, e.g. `172.18.0.5`, so nobody else can pose as another client. |
 
 Without `PM_PASSWORD` anyone who can reach the port can read and change
 everything, including stored API keys. Do not expose it directly.
+
+The app turns away changes that a page on another site asks the browser
+for (it checks `Sec-Fetch-Site` and `Origin`), so a neighbouring site on the
+same domain cannot use your session. Failed logins slow down every attempt
+once there are many of them, whatever address they claim to come from. A
+logout ends its session for good, and a new `PM_PASSWORD` ends all sessions.
 
 Push notifications need HTTPS and a server that can reach the internet. On
 iPhone, add the app to the home screen first.

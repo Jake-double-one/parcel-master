@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from parcelmaster.app import SECRET_MASK, create_app
+from parcelmaster.sessions import COOKIE
 
 from .conftest import make_config, new_shipment
 
@@ -841,3 +842,81 @@ def test_the_bare_list_of_the_dhl_account_resets_nothing():
     }
     found = DhlDe().take_from_companion({"sendungen": [bare, full]})
     assert [number for number, _ in found] == ["00340434651803443221"]
+
+
+def test_failed_logins_from_made_up_addresses_slow_everyone_down():
+    from parcelmaster import sessions
+
+    throttle = sessions.LoginThrottle()
+    for i in range(sessions.FREE_FAILURES - 1):
+        throttle.failed(f"203.0.113.{i}")  # a new address each time, as a forged header allows
+        assert not throttle.blocked(f"203.0.113.{i}")
+    assert throttle.pause() == 0
+    throttle.failed("198.51.100.1")
+    assert throttle.pause() == sessions.PAUSE_SECONDS
+
+
+def test_forged_forwarded_addresses_do_not_lift_the_login_pause(tmp_path, monkeypatch):
+    from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+
+    from parcelmaster import app as app_module
+    from parcelmaster import sessions
+
+    waits: list[float] = []
+
+    async def no_wait(seconds: float) -> None:
+        waits.append(seconds)
+
+    monkeypatch.setattr(app_module.asyncio, "sleep", no_wait)
+    app = ProxyHeadersMiddleware(create_app(make_config(tmp_path, password="hunter2")), "*")
+    with TestClient(app) as client:
+        for i in range(sessions.FREE_FAILURES + 3):
+            answer = client.post(
+                "/api/auth/login",
+                json={"password": "guess"},
+                headers={"X-Forwarded-For": f"203.0.113.{i}"},
+            )
+            assert answer.status_code == 401
+    assert waits[-3:] == [sessions.PAUSE_SECONDS] * 3
+
+
+def test_logout_and_a_new_password_end_the_session(tmp_path):
+    with TestClient(create_app(make_config(tmp_path, password="old-password"))) as client:
+        client.post("/api/auth/login", json={"password": "old-password"})
+        kept = client.cookies.get(COOKIE)
+        client.post("/api/auth/logout")
+        client.cookies.set(COOKIE, kept)
+        assert client.get("/api/settings").status_code == 401  # logged out for good
+
+        client.cookies.clear()
+        client.post("/api/auth/login", json={"password": "old-password"})
+        second = client.cookies.get(COOKIE)
+    with TestClient(create_app(make_config(tmp_path, password="new-password"))) as client:
+        client.cookies.set(COOKIE, second)
+        assert client.get("/api/settings").status_code == 401  # the password changed
+        client.post("/api/auth/login", json={"password": "new-password"})
+        assert client.get("/api/settings").status_code == 200
+
+
+def test_changes_requested_by_other_sites_are_refused(client):
+    shipment = new_shipment(client, "DEMO1234567890").json()["id"]
+    path = f"/api/shipments/{shipment}/archive"
+    for headers in (
+        {"Sec-Fetch-Site": "cross-site"},
+        {"Sec-Fetch-Site": "same-site"},  # a neighbour on the same domain
+        {"Origin": "https://elsewhere.example"},
+    ):
+        answer = client.post(path, headers=headers)
+        assert answer.status_code == 403
+        assert answer.json()["detail"]["error"] == "cross_origin"
+    assert client.get("/api/shipments").json()[0]["archived_at"] is None
+    assert client.post(path, headers={"Sec-Fetch-Site": "same-origin"}).status_code == 200
+    assert client.post(path, headers={"Origin": "http://testserver"}).status_code == 200
+    # Reading stays open, and the companion scripts talk from the script manager.
+    assert client.get("/api/shipments", headers={"Sec-Fetch-Site": "cross-site"}).status_code == 200
+    companion = client.post(
+        "/api/companion/de.dhl",
+        json={"payload": {}},
+        headers={"Origin": "https://www.dhl.de", "Sec-Fetch-Site": "cross-site"},
+    )
+    assert companion.status_code != 403

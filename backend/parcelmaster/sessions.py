@@ -23,15 +23,30 @@ DEMO_TTL = 3 * 3600
 MAX_DEMO_SESSIONS = 200
 MAX_FAILURES = 5
 FAILURE_WINDOW = 300
+#: Failed logins from all clients together within FAILURE_WINDOW before every
+#: further attempt waits. Client addresses can be made up, the total cannot.
+FREE_FAILURES = 20
+PAUSE_SECONDS = 2.0
+#: Client addresses remembered at most; the oldest go first.
+MAX_CLIENTS = 10_000
+REVOKED_KEY = "revoked_sessions"
 
 
 class Signer:
-    def __init__(self, store: Store) -> None:
+    """Signs session cookies.
+
+    The key depends on the password as well, so a new ``PM_PASSWORD`` ends
+    every session made under the old one. A logout ends its own cookie.
+    """
+
+    def __init__(self, store: Store, password: str | None = None) -> None:
         secret = store.get_value("session_secret")
         if not secret:
             secret = secrets.token_hex(32)
             store.set_value("session_secret", secret)
-        self._key = secret.encode()
+        bound = hashlib.sha256((password or "").encode()).hexdigest()
+        self._key = (secret + bound).encode()
+        self._store = store
 
     def sign(self, kind: str, subject: str, ttl: int) -> str:
         payload = f"{kind}.{subject}.{int(time.time()) + ttl}"
@@ -47,25 +62,62 @@ class Signer:
         kind, subject, expires = payload.split(".")
         if not expires.isdigit() or int(expires) < time.time():
             return None
+        if mac in (self._store.get_value(REVOKED_KEY) or {}):
+            return None
         return kind, subject
+
+    def revoke(self, token: str | None) -> None:
+        """End a cookie for good, e.g. on logout; kept until it would expire anyway."""
+        if not self.verify(token):
+            return
+        assert token is not None
+        payload, _, mac = token.rpartition(".")
+        now = time.time()
+        revoked = {
+            key: until
+            for key, until in (self._store.get_value(REVOKED_KEY) or {}).items()
+            if until > now
+        }
+        revoked[mac] = int(payload.rsplit(".", 1)[1])
+        self._store.set_value(REVOKED_KEY, revoked)
 
     def _mac(self, payload: str) -> str:
         return hmac.new(self._key, payload.encode(), hashlib.sha256).hexdigest()
 
 
 class LoginThrottle:
-    """Slows down password guessing per client address."""
+    """Slows down password guessing.
+
+    Per client address a few failures lead to a pause. As an address can be
+    made up (a forwarded header), all failures together count as well: past
+    FREE_FAILURES in the window every attempt waits its turn, one at a time.
+    That slows guessing to a crawl without locking the owner out.
+    """
 
     def __init__(self) -> None:
         self._failures: dict[str, list[float]] = {}
+        self._all: list[float] = []
 
     def blocked(self, client: str) -> bool:
         recent = [t for t in self._failures.get(client, []) if t > time.time() - FAILURE_WINDOW]
-        self._failures[client] = recent
+        if recent:
+            self._failures[client] = recent
+        else:
+            self._failures.pop(client, None)
         return len(recent) >= MAX_FAILURES
 
+    def pause(self) -> float:
+        """Seconds the next attempt waits; 0 while few logins failed lately."""
+        cutoff = time.time() - FAILURE_WINDOW
+        self._all = [t for t in self._all if t > cutoff]
+        return PAUSE_SECONDS if len(self._all) >= FREE_FAILURES else 0.0
+
     def failed(self, client: str) -> None:
-        self._failures.setdefault(client, []).append(time.time())
+        now = time.time()
+        if client not in self._failures and len(self._failures) >= MAX_CLIENTS:
+            self._failures.pop(next(iter(self._failures)))
+        self._failures.setdefault(client, []).append(now)
+        self._all.append(now)
 
     def succeeded(self, client: str) -> None:
         self._failures.pop(client, None)

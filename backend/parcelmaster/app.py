@@ -17,6 +17,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -62,6 +63,8 @@ class State:
     notifier: Notifier
     scheduler: Scheduler
     background: set[asyncio.Task[Any]]
+    #: Password checks take turns while many logins fail (see LoginThrottle).
+    login_gate: asyncio.Lock
 
 
 @dataclass
@@ -102,6 +105,26 @@ def fail(status: int, code: str, **extra: Any) -> HTTPException:
 
 journal = logging.getLogger(__name__)
 
+#: Sec-Fetch-Site values of requests the app's own pages make.
+OWN_FETCH = frozenset({"same-origin", "none"})
+
+
+def same_origin(request: Request) -> bool:
+    """Whether a request comes from the app's own pages, or from no browser page at all.
+
+    Browsers name the requesting site in Sec-Fetch-Site and, for changes, in
+    Origin. Without either (curl, scripts, old browsers) the request is let
+    through; the session or proxy still decides who may act.
+    """
+    site = request.headers.get("sec-fetch-site")
+    if site is not None:
+        return site in OWN_FETCH
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or ""
+    return urlparse(origin).netloc.lower() == host.split(",")[0].strip().lower()
+
 
 def create_app(config: Config) -> FastAPI:
     log_level = setup_logging()
@@ -119,13 +142,14 @@ def create_app(config: Config) -> FastAPI:
             store=store,
             registry=registry,
             translations=translations,
-            signer=Signer(store),
+            signer=Signer(store, config.password),
             demos=DemoSessions(),
             throttle=LoginThrottle(),
             http=http,
             notifier=notifier,
             scheduler=scheduler,
             background=set(),
+            login_gate=asyncio.Lock(),
         )
         if config.scheduler:
             scheduler.start()
@@ -137,6 +161,25 @@ def create_app(config: Config) -> FastAPI:
             store.close()
 
     app = FastAPI(title="Parcel Master", version=__version__, lifespan=lifespan)
+
+    @app.middleware("http")
+    async def same_origin_only(request: Request, call_next):
+        """Turn away changes that another website's page asks the browser for.
+
+        The session cookie goes along with same-site requests, so SameSite
+        alone does not keep a neighbour on the same domain out, nor anyone
+        when an authenticating proxy is the only wall. The companion scripts
+        are exempt: they talk from the user script manager, with JSON bodies
+        no page can send cross-origin anyway.
+        """
+        if (
+            request.method not in ("GET", "HEAD", "OPTIONS")
+            and request.url.path.startswith("/api/")
+            and not request.url.path.startswith("/api/companion/")
+            and not same_origin(request)
+        ):
+            return JSONResponse({"detail": {"error": "cross_origin"}}, status_code=403)
+        return await call_next(request)
 
     # -- who is asking ----------------------------------------------------
 
@@ -288,7 +331,7 @@ def create_app(config: Config) -> FastAPI:
         return translations.catalog(language)
 
     @app.post("/api/auth/login")
-    def login(
+    async def login(
         request: Request, response: Response, password: Annotated[str, Body(embed=True)]
     ) -> dict[str, bool]:
         state: State = request.app.state.pm
@@ -297,8 +340,12 @@ def create_app(config: Config) -> FastAPI:
             return {"ok": True}
         if state.throttle.blocked(client):
             raise fail(429, "too_many_attempts")
-        if not hmac.compare_digest(password.encode(), state.config.password.encode()):
-            state.throttle.failed(client)
+        async with state.login_gate:
+            await asyncio.sleep(state.throttle.pause())
+            right = hmac.compare_digest(password.encode(), state.config.password.encode())
+            if not right:
+                state.throttle.failed(client)
+        if not right:
             raise fail(401, "wrong_password")
         state.throttle.succeeded(client)
         set_cookie(response, request, state.signer.sign("user", "1", LOGIN_TTL), LOGIN_TTL)
@@ -316,7 +363,9 @@ def create_app(config: Config) -> FastAPI:
         return {"ok": True}
 
     @app.post("/api/auth/logout")
-    def logout(response: Response) -> dict[str, bool]:
+    def logout(request: Request, response: Response) -> dict[str, bool]:
+        state: State = request.app.state.pm
+        state.signer.revoke(request.cookies.get(COOKIE))
         response.delete_cookie(COOKIE, path="/")
         return {"ok": True}
 
