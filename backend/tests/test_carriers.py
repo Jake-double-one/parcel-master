@@ -140,24 +140,48 @@ def test_dhl_website_states():
 
 
 @pytest.mark.anyio
-async def test_dhl_without_key_reads_the_website_and_adds_the_postal_code():
+async def test_dhl_without_key_visits_the_website_like_the_page_does():
     calls = []
 
     def handler(req: httpx.Request) -> httpx.Response:
-        calls.append((req.method, req.url.path))
+        name = req.url.path.rsplit("/", 1)[1]
+        calls.append(name)
         assert "DHL-API-Key" not in req.headers
-        if req.url.path.endswith("/config"):
-            return httpx.Response(200, json={"verfolgenCsrfToken": "tok"})
-        if req.url.path.endswith("/shipment"):
-            assert req.headers["verfolgen-csrf-token"] == "tok"
-            assert json.loads(req.content)["zip"] == "50667"
-            return httpx.Response(200, json=web_answer(fortschritt=4))
-        assert req.url.params["piececode"] == "00340434161094042557"
+        if name == "config":
+            assert "Cookie" not in req.headers  # every visit starts fresh
+            return httpx.Response(
+                200, json={"verfolgenCsrfToken": "first"}, headers={"Set-Cookie": "visit=1; Path=/"}
+            )
+        assert req.headers["Cookie"] == "visit=1"
+        if name == "search":
+            assert req.headers["Verfolgen-CSRF-Token"] == "first"
+            assert req.url.params["piececode"] == "00340434161094042557"
+            return httpx.Response(
+                200, json=web_answer(), headers={"Verfolgen-CSRF-Token": "second"}
+            )
+        assert req.headers["Verfolgen-CSRF-Token"] == "second"
+        assert json.loads(req.content)["zip"] == "50667"
+        return httpx.Response(200, json=web_answer(fortschritt=4))
+
+    for _ in range(2):
+        result = await run_dhl(handler)
+        assert result.status is Status.OUT_FOR_DELIVERY
+    assert calls == ["config", "search", "shipment"] * 2
+
+
+@pytest.mark.anyio
+async def test_dhl_without_postal_code_asks_once():
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append(req.url.path.rsplit("/", 1)[1])
         return httpx.Response(200, json=web_answer())
 
-    result = await run_dhl(handler)
-    assert result.status is Status.OUT_FOR_DELIVERY
-    assert [path.rsplit("/", 1)[1] for _, path in calls] == ["search", "config", "shipment"]
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        plain = request()
+        plain.extra.clear()
+        assert (await DHL.track(plain, http)).status is Status.IN_TRANSIT
+    assert calls == ["search"]
 
 
 @pytest.mark.anyio

@@ -126,6 +126,7 @@ def parse_response(payload: Any) -> TrackingResult:
 
 
 WEB_URL = "https://www.dhl.de/int-verfolgen/data"
+TOKEN_HEADER = "Verfolgen-CSRF-Token"
 
 _NOT_DELIVERED = re.compile(
     r"nicht zugestellt werden|nicht angetroffen|zustellung (war )?nicht möglich"
@@ -304,58 +305,83 @@ class DhlDe(CarrierModule):
         self, request: TrackRequest, http: httpx.AsyncClient
     ) -> TrackingResult:
         language = "de" if request.language == "de" else "en"
+        postal_code = request.extra.get("postal_code")
         try:
+            if postal_code:
+                return await self._visit_website(request, http, language, postal_code)
             response = await http.get(
                 f"{WEB_URL}/search",
                 params={"piececode": request.tracking_number, "language": language},
                 headers={"Accept": "application/json"},
             )
-            result = parse_web_response(self._web_json(response))
-            postal_code = request.extra.get("postal_code")
-            if postal_code and result.status not in (Status.DELIVERED, Status.RETURNED):
-                detailed = await self._with_postal_code(request, http, language, postal_code)
-                result = detailed or result
-            return result
+            return parse_web_response(self._web_json(response))
         except httpx.HTTPError as error:
             raise CarrierError("unavailable", type(error).__name__) from error
 
-    async def _with_postal_code(
+    async def _visit_website(
         self, request: TrackRequest, http: httpx.AsyncClient, language: str, postal_code: str
-    ) -> TrackingResult | None:
-        """What the page shows after the recipient's postal code is entered.
+    ) -> TrackingResult:
+        """Looks a parcel up and enters the recipient's postal code, like the page does.
 
-        The page protects this form with a token; it is fetched the way the
-        page itself does. Any failure just leaves the plain answer in place.
+        The page opens a visit with a form token, searches within that visit
+        and only then accepts the postal code. Each visit starts fresh, so the
+        site does not pile our parcels into one ever-growing list. If the
+        postal code is turned down, the plain answer stays.
         """
-        try:
-            config = await http.get(
-                f"{WEB_URL}/config",
-                params={"domain": "de", "language": language},
-                headers={"Accept": "application/json"},
+        visit: dict[str, str] = {}  # cookies of this visit only
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+
+        async def ask(method: str, path: str, **kwargs: Any) -> httpx.Response:
+            if visit:
+                headers["Cookie"] = "; ".join(f"{name}={value}" for name, value in visit.items())
+            response = await http.request(
+                method, f"{WEB_URL}{path}", headers=dict(headers), **kwargs
             )
+            visit.update(response.cookies)
+            for cookie in list(http.cookies.jar):  # keep the shared client free of them
+                if cookie.domain.endswith("dhl.de"):
+                    http.cookies.jar.clear(cookie.domain, cookie.path, cookie.name)
+            # The site hands out a fresh form token with every answer.
+            if response.headers.get(TOKEN_HEADER):
+                headers[TOKEN_HEADER] = response.headers[TOKEN_HEADER]
+            return response
+
+        config = await ask("GET", "/config", params={"domain": "de", "language": language})
+        try:
             token = config.json().get("verfolgenCsrfToken")
-            if not token:
-                log.warning("dhl.de: no form token in /config (HTTP %s)", config.status_code)
-                return None
-            response = await http.post(
-                f"{WEB_URL}/shipment",
+        except (ValueError, AttributeError):
+            token = None
+        if token:
+            headers.setdefault(TOKEN_HEADER, token)
+        else:
+            log.warning("dhl.de: no form token in /config (HTTP %s)", config.status_code)
+
+        found = await ask(
+            "GET", "/search", params={"piececode": request.tracking_number, "language": language}
+        )
+        result = parse_web_response(self._web_json(found))
+        if not token or result.status in (Status.DELIVERED, Status.RETURNED):
+            return result
+        try:
+            detailed = await ask(
+                "POST",
+                "/shipment",
                 params={"language": language},
                 json={
                     "piececode": request.tracking_number,
                     "zip": postal_code,
                     "international": False,
                 },
-                headers={"Accept": "application/json", "verfolgen-csrf-token": token},
             )
-            return parse_web_response(self._web_json(response))
-        except (httpx.HTTPError, CarrierError, ValueError, AttributeError) as error:
+            return parse_web_response(self._web_json(detailed))
+        except (httpx.HTTPError, CarrierError) as error:
             log.warning(
                 "dhl.de: the postal code step failed for %s (%s: %s); keeping the plain answer",
                 request.tracking_number,
                 type(error).__name__,
                 error,
             )
-            return None
+            return result
 
     @staticmethod
     def _web_json(response: httpx.Response) -> Any:
