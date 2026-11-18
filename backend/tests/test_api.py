@@ -429,7 +429,7 @@ def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
     assert [f["key"] for f in dhl()["settings_fields"]] == ["api_key", "default_postal_code"]
     client.put("/api/settings", json={"carriers": {"de.dhl": {"default_postal_code": " 50667 "}}})
     assert dhl()["parcel_defaults"] == {"postal_code": "50667"}
-    assert dhl()["configured"] is False  # the postal code is optional, the key is not
+    assert dhl()["configured"] is True  # works without a key, by reading dhl.de
     assert (
         client.get("/api/settings").json()["carriers"]["de.dhl"]["default_postal_code"] == "50667"
     )

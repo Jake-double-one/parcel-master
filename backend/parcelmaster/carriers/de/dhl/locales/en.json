@@ -2,7 +2,7 @@
   "settings": {
     "api_key": {
       "label": "API key",
-      "help": "Create an app with the \"Shipment Tracking - Unified\" API at developer.dhl.com and paste its key here."
+      "help": "Optional. Without a key Parcel Master reads the tracking of dhl.de. With a key for the \"Shipment Tracking - Unified\" API from developer.dhl.com it uses that instead."
     },
     "default_postal_code": {
       "label": "Your postal code",

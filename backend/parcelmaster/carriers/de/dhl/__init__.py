@@ -1,9 +1,14 @@
-"""DHL Paket (Germany) via the official "Shipment Tracking - Unified" API."""
+"""DHL Paket (Germany).
+
+Without an API key the module reads the public tracking of dhl.de, the same
+answer the website shows. With a key it uses the official "Shipment Tracking -
+Unified" API instead, which DHL hands out only on request.
+"""
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import date, datetime, time
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -117,6 +122,99 @@ def parse_response(payload: Any) -> TrackingResult:
     )
 
 
+WEB_URL = "https://www.dhl.de/int-verfolgen/data"
+
+_NOT_DELIVERED = re.compile(
+    r"nicht zugestellt werden|nicht angetroffen|zustellung (war )?nicht möglich"
+    r"|could not be delivered|delivery (was )?not possible|recipient (was )?not (present|home)",
+    re.I,
+)
+
+
+def _web_time(value: Any, end_of_day: bool = False) -> datetime | None:
+    """A time from the website; a bare date becomes the start or end of that day."""
+    if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        day = date.fromisoformat(value)
+        return datetime.combine(day, time(23, 59) if end_of_day else time(0, 0))
+    return _parse_time(value)
+
+
+def _web_status(text: str, progress: Any, delivered: bool, returning: bool) -> Status:
+    if delivered:
+        return Status.DELIVERED
+    if returning or _RETURNED.search(text):
+        return Status.RETURNED
+    if _READY_FOR_PICKUP.search(text):
+        return Status.READY_FOR_PICKUP
+    if _OUT_FOR_DELIVERY.search(text):
+        return Status.OUT_FOR_DELIVERY
+    if _NOT_DELIVERED.search(text):
+        return Status.PROBLEM
+    if not isinstance(progress, int):
+        return Status.IN_TRANSIT if text else Status.UNKNOWN
+    # The website counts five steps: announced, on its way (2 and 3), on the van, delivered.
+    if progress <= 1:
+        return Status.REGISTERED
+    if progress == 4:
+        return Status.OUT_FOR_DELIVERY
+    if progress >= 5:
+        return Status.DELIVERED
+    return Status.IN_TRANSIT
+
+
+def parse_web_response(payload: Any) -> TrackingResult:
+    """Maps the answer of the dhl.de tracking page onto the common model."""
+    if isinstance(payload, dict) and (payload.get("rateLimited") or payload.get("isRateLimited")):
+        raise CarrierError("rate_limited")
+    shipments = payload.get("sendungen") if isinstance(payload, dict) else None
+    if not isinstance(shipments, list) or not shipments or not isinstance(shipments[0], dict):
+        raise CarrierError("invalid_response", "no shipment in response")
+    shipment = shipments[0]
+    details = shipment.get("sendungsdetails")
+    if shipment.get("sendungNichtGefunden") or not isinstance(details, dict):
+        raise CarrierError("not_found")
+    history = details.get("sendungsverlauf")
+    history = history if isinstance(history, dict) else {}
+    delivered = bool(details.get("istZugestellt"))
+    returning = bool(details.get("ruecksendung"))
+
+    raw_events = [event for event in history.get("events") or [] if isinstance(event, dict)]
+    events = []
+    for index, event in enumerate(raw_events):
+        text = str(event.get("status") or "").strip()
+        last = index == len(raw_events) - 1
+        events.append(
+            TrackingEvent(
+                timestamp=_parse_time(event.get("datum")),
+                status=_web_status(
+                    text,
+                    history.get("fortschritt") if last else (1 if index == 0 else 2),
+                    delivered and last,
+                    bool(event.get("ruecksendung")),
+                ),
+                description=text,
+                location=str(event.get("ort") or "").strip() or None,
+            )
+        )
+    events.reverse()  # newest first, like everywhere else
+
+    # The headline is short; the newest event says the same in a full sentence.
+    description = str(history.get("status") or "").strip()
+    if events and events[0].description:
+        description = events[0].description
+    status = _web_status(description, history.get("fortschritt"), delivered, returning)
+    delivery = details.get("zustellung")
+    delivery = delivery if isinstance(delivery, dict) else {}
+    return TrackingResult(
+        status=status,
+        description=description,
+        location=events[0].location if events else None,
+        events=events,
+        eta_from=None if delivered else _web_time(delivery.get("zustellzeitfensterVon")),
+        eta_to=None if delivered else _web_time(delivery.get("zustellzeitfensterBis"), True),
+    )
+
+
 class DhlDe(CarrierModule):
     id = "de.dhl"
     country = "de"
@@ -130,7 +228,7 @@ class DhlDe(CarrierModule):
         re.compile(r"[A-Z]{2}\d{9}DE"),  # international, registered mail
     )
     settings_fields = (
-        Field("api_key", type="secret", required=True),
+        Field("api_key", type="secret"),
         Field("default_postal_code", placeholder="53113"),
     )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
@@ -160,7 +258,7 @@ class DhlDe(CarrierModule):
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
         api_key = request.settings.get("api_key")
         if not api_key:
-            raise CarrierError("not_configured")
+            return await self._track_on_website(request, http)
         params = {
             "trackingNumber": request.tracking_number,
             "requesterCountryCode": "DE",
@@ -191,6 +289,68 @@ class DhlDe(CarrierModule):
         except ValueError as error:
             raise CarrierError("invalid_response", "not JSON") from error
         return parse_response(payload)
+
+    async def _track_on_website(
+        self, request: TrackRequest, http: httpx.AsyncClient
+    ) -> TrackingResult:
+        language = "de" if request.language == "de" else "en"
+        try:
+            response = await http.get(
+                f"{WEB_URL}/search",
+                params={"piececode": request.tracking_number, "language": language},
+                headers={"Accept": "application/json"},
+            )
+            result = parse_web_response(self._web_json(response))
+            postal_code = request.extra.get("postal_code")
+            if postal_code and result.status not in (Status.DELIVERED, Status.RETURNED):
+                detailed = await self._with_postal_code(request, http, language, postal_code)
+                result = detailed or result
+            return result
+        except httpx.HTTPError as error:
+            raise CarrierError("unavailable", type(error).__name__) from error
+
+    async def _with_postal_code(
+        self, request: TrackRequest, http: httpx.AsyncClient, language: str, postal_code: str
+    ) -> TrackingResult | None:
+        """What the page shows after the recipient's postal code is entered.
+
+        The page protects this form with a token; it is fetched the way the
+        page itself does. Any failure just leaves the plain answer in place.
+        """
+        try:
+            config = await http.get(
+                f"{WEB_URL}/config",
+                params={"domain": "de", "language": language},
+                headers={"Accept": "application/json"},
+            )
+            token = config.json().get("verfolgenCsrfToken")
+            if not token:
+                return None
+            response = await http.post(
+                f"{WEB_URL}/shipment",
+                params={"language": language},
+                json={
+                    "piececode": request.tracking_number,
+                    "zip": postal_code,
+                    "international": False,
+                },
+                headers={"Accept": "application/json", "verfolgen-csrf-token": token},
+            )
+            return parse_web_response(self._web_json(response))
+        except (httpx.HTTPError, CarrierError, ValueError, AttributeError):
+            return None
+
+    @staticmethod
+    def _web_json(response: httpx.Response) -> Any:
+        if response.status_code == 429:
+            raise CarrierError("rate_limited")
+        if response.status_code >= 400:
+            # The site also answers 404 when it turns an automated request away.
+            raise CarrierError("unavailable", f"dhl.de: HTTP {response.status_code}")
+        try:
+            return response.json()
+        except ValueError as error:
+            raise CarrierError("invalid_response", "dhl.de: not JSON") from error
 
 
 MODULE = DhlDe()

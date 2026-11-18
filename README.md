@@ -24,7 +24,7 @@ with one small module per carrier.
 
 | Country | Carrier | How | Needs |
 | --- | --- | --- | --- |
-| DE | DHL | Official "Shipment Tracking - Unified" API | Free API key from [developer.dhl.com](https://developer.dhl.com) |
+| DE | DHL | Reads the public tracking of dhl.de; with a key, the official "Shipment Tracking - Unified" API instead | Nothing. Optionally an API key from [developer.dhl.com](https://developer.dhl.com) |
 | DE | Amazon | Reads the order history of your account with [amazon-orders](https://github.com/alexdlaird/amazon-orders) | Account e-mail and password; the two-step secret key if two-step verification is on |
 
 A demo carrier (`DEMO` followed by digits) exists for the demo mode and for

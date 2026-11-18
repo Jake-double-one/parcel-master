@@ -7,7 +7,7 @@ import pytest
 
 from parcelmaster.carriers.base import CarrierError, TrackRequest
 from parcelmaster.carriers.de.dhl import MODULE as DHL
-from parcelmaster.carriers.de.dhl import parse_response
+from parcelmaster.carriers.de.dhl import parse_response, parse_web_response
 from parcelmaster.carriers.demo import MODULE as DEMO
 from parcelmaster.carriers.registry import discover
 from parcelmaster.status import Status, aggregate
@@ -99,14 +99,83 @@ async def test_dhl_errors_become_readable_codes(status, code):
     assert caught.value.code == code
 
 
-@pytest.mark.anyio
-async def test_dhl_without_key_makes_no_request():
-    def handler(req):
-        raise AssertionError("no request expected")
+def test_dhl_website_answer_is_mapped_to_the_common_model():
+    result = parse_web_response(json.loads((FIXTURES / "dhl_web_transit.json").read_text()))
+    assert result.status is Status.IN_TRANSIT
+    assert result.description.startswith("Die Sendung ist in der Region des Empfängers")
+    assert result.eta_from == datetime(2026, 11, 18, 0, 0)
+    assert result.eta_to == datetime(2026, 11, 18, 23, 59)
+    assert [event.status for event in result.events] == [
+        Status.IN_TRANSIT,
+        Status.IN_TRANSIT,
+        Status.IN_TRANSIT,
+        Status.REGISTERED,
+    ]
+    assert result.events[0].timestamp.isoformat() == "2026-11-18T02:11:56+01:00"
 
+
+def web_answer(**changes):
+    payload = json.loads((FIXTURES / "dhl_web_transit.json").read_text())
+    details = payload["sendungen"][0]["sendungsdetails"]
+    for key, value in changes.items():
+        if key in details["sendungsverlauf"]:
+            details["sendungsverlauf"][key] = value
+        else:
+            details[key] = value
+    return payload
+
+
+def test_dhl_website_states():
+    assert parse_web_response(web_answer(fortschritt=4)).status is Status.OUT_FOR_DELIVERY
+    delivered = parse_web_response(web_answer(fortschritt=5, istZugestellt=True))
+    assert delivered.status is Status.DELIVERED
+    assert delivered.eta_from is None
+    assert parse_web_response(web_answer(ruecksendung=True)).status is Status.RETURNED
     with pytest.raises(CarrierError) as caught:
-        await run_dhl(handler)
-    assert caught.value.code == "not_configured"
+        parse_web_response({"sendungen": [{"id": "1", "sendungNichtGefunden": {}}]})
+    assert caught.value.code == "not_found"
+    with pytest.raises(CarrierError) as caught:
+        parse_web_response({"sendungen": [], "rateLimited": True})
+    assert caught.value.code == "rate_limited"
+
+
+@pytest.mark.anyio
+async def test_dhl_without_key_reads_the_website_and_adds_the_postal_code():
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append((req.method, req.url.path))
+        assert "DHL-API-Key" not in req.headers
+        if req.url.path.endswith("/config"):
+            return httpx.Response(200, json={"verfolgenCsrfToken": "tok"})
+        if req.url.path.endswith("/shipment"):
+            assert req.headers["verfolgen-csrf-token"] == "tok"
+            assert json.loads(req.content)["zip"] == "50667"
+            return httpx.Response(200, json=web_answer(fortschritt=4))
+        assert req.url.params["piececode"] == "00340434161094042557"
+        return httpx.Response(200, json=web_answer())
+
+    result = await run_dhl(handler)
+    assert result.status is Status.OUT_FOR_DELIVERY
+    assert [path.rsplit("/", 1)[1] for _, path in calls] == ["search", "config", "shipment"]
+
+
+@pytest.mark.anyio
+async def test_dhl_website_keeps_the_plain_answer_if_the_postal_code_step_fails():
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/search"):
+            return httpx.Response(200, json=web_answer())
+        return httpx.Response(403, text="no")
+
+    assert (await run_dhl(handler)).status is Status.IN_TRANSIT
+
+
+@pytest.mark.anyio
+async def test_dhl_website_turning_us_away_is_reported():
+    with pytest.raises(CarrierError) as caught:
+        await run_dhl(lambda req: httpx.Response(404, text="<html>Not Found</html>"))
+    assert caught.value.code == "unavailable"
+    assert "404" in caught.value.detail
 
 
 @pytest.mark.parametrize(

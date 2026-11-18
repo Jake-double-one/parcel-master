@@ -1,0 +1,64 @@
+{
+  "sendungen": [
+    {
+      "id": "00340434161094042557",
+      "hasCompleteDetails": true,
+      "sendungsinfo": {
+        "gesuchteSendungsnummer": "00340434161094042557",
+        "sendungsrichtung": "ANKOMMEND"
+      },
+      "sendungsdetails": {
+        "sendungsnummern": {
+          "sendungsnummer": "00340434161094042557"
+        },
+        "sendungsverlauf": {
+          "datumAktuellerStatus": "2026-11-18T02:11:56+01:00",
+          "status": "Sendung ist in der Region des Empfängers angekommen.",
+          "fortschritt": 3,
+          "maximalFortschritt": 5,
+          "farbe": 0,
+          "iconId": "3",
+          "events": [
+            {
+              "datum": "2026-11-17T17:01:25+01:00",
+              "status": "Die Sendung wurde elektronisch angekündigt. Sobald die Sendung von uns bearbeitet wurde, erhalten Sie weitere Informationen.",
+              "ruecksendung": false
+            },
+            {
+              "datum": "2026-11-17T17:03:41+01:00",
+              "status": "Die Sendung wurde vom Absender in der Filiale eingeliefert.",
+              "ruecksendung": false
+            },
+            {
+              "datum": "2026-11-17T19:03:20+01:00",
+              "status": "Die Sendung wurde von DHL bearbeitet und wird für den Weitertransport in die Region des Empfängers vorbereitet.",
+              "ruecksendung": false
+            },
+            {
+              "datum": "2026-11-18T02:11:56+01:00",
+              "status": "Die Sendung ist in der Region des Empfängers angekommen und wird im nächsten Schritt zur Zustellbasis transportiert.",
+              "ruecksendung": false
+            }
+          ]
+        },
+        "zustellung": {
+          "zustellzeitfensterVon": "2026-11-18",
+          "zustellzeitfensterBis": "2026-11-18",
+          "abholcodeAvailable": false,
+          "benachrichtigtInFiliale": false
+        },
+        "zielland": "Deutschland",
+        "istZugestellt": false,
+        "ruecksendung": false,
+        "retoure": false,
+        "quelle": "PAKET",
+        "international": false
+      },
+      "versandDatumBenoetigt": false,
+      "reasonForRejection": "",
+      "paeckchen": false
+    }
+  ],
+  "mergedAnonymousShipmentListIds": [],
+  "rateLimited": false
+}
