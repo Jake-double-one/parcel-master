@@ -678,3 +678,16 @@ def test_companion_script_is_made_out_to_this_server_and_its_news_are_applied(cl
     assert parcel["eta_from"] == "2026-11-18T11:40:00+00:00"  # 12:40 in Germany
     # Rubbish and parcels we do not know change nothing.
     assert client.post("/api/companion/de.dhl", json={"payload": "x"}).json() == {"parcels": 0}
+
+
+def test_a_failed_apprise_test_says_why(client):
+    client.put(
+        "/api/settings",
+        json={"notifications": {"apprise_urls": ["gotify://127.0.0.1:9/token", "nonsense"]}},
+    )
+    report = client.post("/api/notifications/test").json()["apprise"]
+    assert report["ok"] is False
+    assert "1 address(es) not understood" in report["error"]
+    assert "Gotify" in report["error"]  # Apprise's own words about the refused connection
+    log = client.get("/api/log").json()["entries"]
+    assert any(e["source"] == "notify" and "Gotify" in e["message"] for e in log)

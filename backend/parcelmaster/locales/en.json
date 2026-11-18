@@ -206,7 +206,7 @@
     "test_push_ok": "Browser: {sent} of {total} ✓",
     "test_push_failed": "Browser: failed ({reason})",
     "test_apprise_ok": "Apprise: ✓",
-    "test_apprise_failed": "Apprise: failed, check the addresses",
+    "test_apprise_failed": "Apprise: failed ({reason})",
     "push_failed": "The browser could not sign up for notifications. {reason}",
     "app": "App",
     "app_install": "Install app",

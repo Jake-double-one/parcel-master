@@ -251,7 +251,11 @@
         );
       }
       if (report.apprise) {
-        parts.push(t(report.apprise.ok ? "settings.test_apprise_ok" : "settings.test_apprise_failed"));
+        parts.push(
+          report.apprise.ok
+            ? t("settings.test_apprise_ok")
+            : t("settings.test_apprise_failed", { reason: report.apprise.error || "?" }),
+        );
       }
       testState = parts.length ? parts.join(" · ") : t("settings.test_none");
     } catch (caught) {

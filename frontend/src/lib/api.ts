@@ -49,7 +49,7 @@ export interface LogReport {
 }
 
 export interface TestReport {
-  apprise: { ok: boolean } | null;
+  apprise: { ok: boolean; error: string } | null;
   push: { ok: boolean; sent: number; subscriptions: number; error: string } | null;
 }
 

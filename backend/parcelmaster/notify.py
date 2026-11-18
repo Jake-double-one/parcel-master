@@ -132,9 +132,30 @@ class Notifier:
         import apprise
 
         sender = apprise.Apprise()
-        accepted = sum(1 for url in urls if sender.add(url))
-        ok = bool(accepted) and bool(sender.notify(title=message["title"], body=message["body"]))
-        return {"ok": ok, "targets": accepted, "rejected": len(urls) - accepted}
+        # Apprise says why a service refused only in its own log; listen in.
+        with apprise.LogCapture(level=logging.INFO) as heard:
+            accepted = sum(1 for url in urls if sender.add(url))
+            ok = bool(accepted) and bool(
+                sender.notify(title=message["title"], body=message["body"])
+            )
+            said = [
+                line.split(" - ", 2)[-1].strip()
+                for line in heard.getvalue().splitlines()
+                if " - WARNING - " in line or " - ERROR - " in line
+            ]
+        rejected = len(urls) - accepted
+        if rejected:
+            said.insert(0, f"{rejected} address(es) not understood")
+        for line in said:
+            log.warning("apprise: %s", line)
+        if ok and not said:
+            log.info("apprise: sent to %d service(s)", accepted)
+        return {
+            "ok": ok and not rejected,
+            "targets": accepted,
+            "rejected": rejected,
+            "error": "; ".join(said)[:300],
+        }
 
     def _push(self, subscriptions: list[dict[str, Any]], message: dict[str, Any]) -> dict[str, Any]:
         from pywebpush import WebPushException, webpush
