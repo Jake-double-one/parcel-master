@@ -750,3 +750,22 @@ def test_a_shared_amazon_link_is_recognised_when_pasted(client):
     link = "https://amzn.eu/d/01AbCdEf"
     found = client.post("/api/detect", json={"text": f"Du kannst es hier verfolgen: {link}."})
     assert found.json()["matches"] == [{"carrier": "de.amazon", "tracking_number": link}]
+
+
+def test_the_bare_list_of_the_dhl_account_resets_nothing():
+    from parcelmaster.carriers.de.dhl import DhlDe
+
+    bare = {
+        "id": "00340434651803443220",
+        "sendungsinfo": {"sendungsname": "A shop", "sendungsrichtung": "ANKOMMEND"},
+        "sendungsdetails": {"istZugestellt": False, "sendungsnummern": {}},
+    }
+    full = {
+        "id": "00340434651803443221",
+        "sendungsdetails": {
+            "istZugestellt": False,
+            "sendungsverlauf": {"status": "In transit", "fortschritt": 3, "events": []},
+        },
+    }
+    found = DhlDe().take_from_companion({"sendungen": [bare, full]})
+    assert [number for number, _ in found] == ["00340434651803443221"]

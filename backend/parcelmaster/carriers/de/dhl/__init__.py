@@ -404,6 +404,11 @@ class DhlDe(CarrierModule):
         for piece in pieces if isinstance(pieces, list) else []:
             if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
                 continue
+            details = piece.get("sendungsdetails")
+            if not isinstance(details, dict) or not isinstance(
+                details.get("sendungsverlauf"), dict
+            ):
+                continue  # the account's bare list: numbers and names, no state
             try:
                 result = parse_web_response({"sendungen": [piece]})
             except CarrierError:
