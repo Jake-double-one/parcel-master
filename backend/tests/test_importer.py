@@ -919,3 +919,28 @@ def test_a_parcel_heard_of_twice_stays_one(world):
     sync(world, order(key="share:1", tracking_number="AB1"))
     assert len(store.list_shipments(False)[0]["parcels"]) == 1
     assert importer.shared_links(store, world[2]) == ()  # no link was filed with it
+
+
+def test_a_delivery_shared_with_oneself_ends_up_in_its_order(world):
+    store = world[0]
+    shared = ImportedShipment(
+        "share:abc",
+        "Amazon AB1",
+        [
+            ImportedParcel(
+                key="share:abc",
+                status=Status.IN_TRANSIT,
+                tracking_number="AB1",
+                url="https://amzn.eu/d/x",
+            )
+        ],
+    )
+    # Shared first: it stands alone until the account shows the order it belongs to.
+    sync(world, shared)
+    assert [s["reference"] for s in store.list_shipments(False)] == ["share:abc"]
+    sync(world, order(tracking_number="AB1"), shared)
+    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+    assert len(store.list_shipments(False)[0]["parcels"]) == 1
+    # Shared afterwards: nothing new appears.
+    sync(world, shared)
+    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]

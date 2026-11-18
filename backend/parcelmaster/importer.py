@@ -33,6 +33,8 @@ DISMISSED_KEY = "importers_dismissed"
 HAND_OVER_FROM = frozenset({Status.OUT_FOR_DELIVERY, Status.READY_FOR_PICKUP, Status.PROBLEM})
 #: Keys in a parcel's extra that tracking writes for itself.
 TRACKING_NOTES = ("window_told", "stops_left", "stops_about", "live_at", "live_lost")
+#: How the reference of a delivery begins that is only known through a shared link.
+SHARED = "share:"
 MAX_DISMISSED = 500
 #: Days a finished order still counts as recent when auto-archive is off.
 DEFAULT_RECENT_DAYS = 3
@@ -107,7 +109,7 @@ def shared_links(store: Store, module: ImporterModule) -> tuple[str, ...]:
     return tuple(
         parcel["extra"]["url"]
         for parcel in store.open_parcels()
-        if parcel["extra"].get("import_key", "").startswith("share:")
+        if parcel["extra"].get("import_key", "").startswith(SHARED)
         and parcel["extra"].get("url")
         and Status(parcel["status"]) not in FINAL
     )
@@ -125,6 +127,21 @@ def carrier_for(
     for module in candidates:
         if module.is_configured(carrier_settings.get(module.id, {})):
             return module
+    return None
+
+
+def _same_parcel_elsewhere(
+    store: Store, module: ImporterModule, item: ImportedShipment
+) -> dict[str, Any] | None:
+    """Another open shipment of this service that holds one of the item's parcels."""
+    numbers = {parcel.tracking_number for parcel in item.parcels if parcel.tracking_number}
+    if not numbers:
+        return None
+    for other in store.list_shipments(False):
+        if other["source"] != module.name or other["reference"] == item.reference:
+            continue
+        if any(parcel["tracking_number"] in numbers for parcel in other["parcels"]):
+            return other
     return None
 
 
@@ -151,6 +168,14 @@ def apply(
     recent_days = int(settings["polling"]["auto_archive_days"]) or DEFAULT_RECENT_DAYS
 
     for item in found:
+        # The same parcel may be heard of twice: in the account's order and through a
+        # link shared for it. The order is the fuller entry and wins either way.
+        twin = _same_parcel_elsewhere(store, module, item)
+        if twin is not None:
+            if item.reference.startswith(SHARED):
+                continue  # already there as part of its order
+            if twin["reference"].startswith(SHARED):
+                store.delete_shipment(twin["id"])  # the order takes its place
         shipment = store.find_by_reference(module.name, item.reference)
         if shipment and shipment["archived_at"]:
             if not wanted:
@@ -427,7 +452,12 @@ async def fetch_one(
             dismissed.remove([module.name, found.reference])
             store.set_value(DISMISSED_KEY, dismissed)
         apply(store, registry, module, [found], wanted=True)
-        return store.find_by_reference(module.name, found.reference)["id"]
+        filed = store.find_by_reference(module.name, found.reference)
+        # A shared link for a parcel of an order we already have leads to that order.
+        filed = filed or _same_parcel_elsewhere(store, module, found)
+        if filed is None:
+            raise CarrierError("not_found")
+        return filed["id"]
 
 
 async def follow_deliveries(
@@ -454,7 +484,7 @@ async def follow_deliveries(
         if not start - timedelta(minutes=30) <= now <= end + timedelta(hours=2):
             continue
         reference = (store.get_shipment(parcel["shipment_id"]) or {}).get("reference")
-        if parcel["extra"].get("import_key", "").startswith("share:"):
+        if parcel["extra"].get("import_key", "").startswith(SHARED):
             reference = parcel["extra"].get("url")  # a shared delivery is read by its link
         last = _followed.get((module.id, reference or ""))
         if (
