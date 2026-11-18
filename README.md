@@ -89,6 +89,64 @@ everything, including stored API keys. Do not expose it directly.
 Push notifications need HTTPS and a server that can reach the internet. On
 iPhone, add the app to the home screen first.
 
+## How often it asks
+
+All times below follow from one setting, the **interval** under Settings →
+General (default 120 minutes, never below 15). The background loop looks every
+30 seconds for what is due.
+
+A parcel that a carrier module tracks by its number:
+
+| State of the parcel | Asked again after | With the default |
+| --- | --- | --- |
+| On its way | the interval | 2 h |
+| No news for more than 3 days | twice the interval | 4 h |
+| Out for delivery | a quarter of the interval, at least 15 min | 30 min |
+| Ready for pickup | three times the interval | 6 h |
+| Only announced (saver on) | 6 h, or the interval if that is longer | 6 h |
+| Delivery more than 1.5 days away (saver on) | 12 h, or the interval if longer | 12 h |
+| Delivered, returned | never | |
+| After a failed lookup | 5, 15, 30, 60 min, then the interval (at least 60 min) | |
+
+The **saver** (on by default) also rests at night, 22:00 to 06:00: nothing is
+asked on its own then, and what became due waits for the morning.
+
+DHL on the day of delivery, while the parcel is out for delivery:
+
+| Source | Situation | Asked again after |
+| --- | --- | --- |
+| Parcel DE Tracking API (key and secret) | no window yet, or it starts in more than 30 min | 10 min |
+| | window starts within 30 min or is running | 5 min |
+| | window of 30 min or less, starting within 15 min | 1 min |
+| | more than 2 h past the window | 10 min |
+| dhl.de without the API | | as in the table above (30 min) |
+| Companion script, tab with the live tracking open | more than 5 stops left | 5 min |
+| | 5 stops or fewer | 1 min |
+
+The companion's live news stand for 10 minutes against an ordinary answer.
+
+Amazon, which is read as a whole account and not parcel by parcel:
+
+| What | How often |
+| --- | --- |
+| Sync of the orders | every 3 h; you can choose 30 min to 24 h under Settings → Carriers |
+| While Amazon itself has a parcel out for delivery | every 30 min at most |
+| An order whose delivery window is near (30 min before until 2 h after) | that one order every 10 min |
+| "Sync now" by hand | at most once a minute |
+| Companion script on Amazon's tracking page | reads the page every 15 s while it is open |
+
+A parcel that Amazon handed to a carrier ("Amazon via DHL") is asked about at
+that carrier like any other parcel.
+
+Limits that keep a mistake from asking without end: a parcel is not asked
+about twice within 10 seconds, a carrier gets at most 100 tries in any hour,
+and DHL gives at most 250 answers a day with an API key alone, 1000 otherwise
+(change it per carrier under Settings → Carriers).
+
+Housekeeping: delivered shipments move to the archive after 3 days (Settings →
+General), the bin is emptied after 14 days, and a parcel without news for 4
+days is reported as stuck.
+
 ## Develop
 
 Backend (Python 3.13+, [uv](https://docs.astral.sh/uv/)):
