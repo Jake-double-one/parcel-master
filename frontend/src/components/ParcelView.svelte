@@ -84,6 +84,9 @@
 
   {#if parcel.description}
     <p class="description">
+      {#if parcel.last_event_at}
+        <span class="mono since">{eventTime(parcel.last_event_at, now)}</span>
+      {/if}
       {parcel.description}{#if parcel.location}<span class="muted"> · {parcel.location}</span>{/if}
     </p>
   {/if}
@@ -148,6 +151,13 @@
 </div>
 
 <style>
+  .since {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+
   .top {
     display: flex;
     align-items: center;
