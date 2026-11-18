@@ -397,7 +397,7 @@ def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) 
         "yes" if shipment.shipment_id else "no",
         getattr(found, "carrier", None),
         getattr(found, "tracking_number", None),
-        len(parse_events(getattr(found, "parsed", None), date.today())),
+        len(parse_events(getattr(found, "parsed", None), date.today()) or []),
     )
     return found
 

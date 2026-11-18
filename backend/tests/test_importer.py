@@ -628,3 +628,20 @@ def test_with_the_saver_a_carrier_without_scarce_lookups_takes_over_at_once(worl
     store.save_settings(settings)
     sync(world, order(carrier_name="Post", tracking_number="PO123456"))
     assert store.list_shipments(False)[0]["parcels"][0]["carrier"] == "test.post"
+
+
+def test_a_parcel_without_a_tracking_page_is_still_read():
+    from types import SimpleNamespace
+
+    from parcelmaster.carriers.de.amazon import _read_tracking
+
+    # No link at all, and a link whose page cannot be parsed: neither may stop the sync.
+    bare = SimpleNamespace(shipment_id=None, tracking_link=None)
+    assert _read_tracking(None, None, "028-1", bare) is None
+    linked = SimpleNamespace(shipment_id=None, tracking_link="/gp/your-account/ship-track?itemId=1")
+    client = SimpleNamespace(config=None, _parse_tracking=lambda parsed, config: None)
+    session = SimpleNamespace(get=lambda url: SimpleNamespace(parsed=None))
+    assert _read_tracking(client, session, "028-1", linked) is None
+    found = SimpleNamespace(carrier="DHL", tracking_number="JJD1", parsed=None)
+    client = SimpleNamespace(config=None, _parse_tracking=lambda parsed, config: found)
+    assert _read_tracking(client, session, "028-1", linked) is found
