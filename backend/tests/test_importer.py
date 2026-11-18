@@ -765,3 +765,28 @@ def test_a_parcel_that_arrived_is_left_alone_by_later_syncs(world):
         before["tracking_number"],
         before["events"],
     )
+
+
+def test_a_window_of_hours_in_amazons_status_is_read_and_translated():
+    import json
+    from pathlib import Path
+
+    from parcelmaster.carriers.de import amazon
+
+    line = "Arriving today 2:45 pm - 5:45 pm"
+    assert amazon.parse_hours(line) == ((14, 45), (17, 45))
+    assert amazon._eta(line, date(2026, 11, 18)) == (
+        datetime(2026, 11, 18, 14, 45),
+        datetime(2026, 11, 18, 17, 45),
+    )
+    assert amazon._eta("Arriving tomorrow", date(2026, 11, 18)) == (datetime(2026, 11, 19), None)
+    german = json.loads((Path(amazon.__file__).parent / "locales" / "de.json").read_text())
+
+    def phrase(key):
+        section, name = key.split(".")
+        return german[section].get(name)
+
+    assert amazon.translate(line, phrase) == "Kommt heute zwischen 14:45 und 17:45 Uhr"
+    assert amazon.translate("Arriving tomorrow 9 am - 1 pm", phrase) == (
+        "Kommt morgen zwischen 9:00 und 13:00 Uhr"
+    )

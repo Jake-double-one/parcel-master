@@ -18,6 +18,7 @@
     "delivered": "Zugestellt",
     "arriving": "Kommt {when}",
     "arriving_between": "Kommt zwischen dem {from} und dem {to}",
+    "arriving_hours": "Kommt {when} zwischen {from} und {to} Uhr",
     "expected": "Erwartet {when}",
     "by": "bis {time} Uhr",
     "out_for_delivery": "In Zustellung",

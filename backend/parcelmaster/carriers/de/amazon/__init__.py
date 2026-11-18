@@ -239,9 +239,35 @@ def _when(text: str, phrase: Any, plain: bool = False) -> str | None:
     return template.replace("{day}", day).replace("{month}", name) if template and name else None
 
 
+_CLOCK = r"(\d{1,2})(?::(\d{2}))? ?([ap])\.?m\.?"
+#: "Arriving today 2:45 pm - 5:45 pm": a day and a window of hours.
+_HOURS = re.compile(rf"(?:now )?arriving {_WHEN} {_CLOCK} ?- ?{_CLOCK}")
+
+
+def _clock_24(hour: str, minute: str | None, half: str) -> tuple[int, int]:
+    return int(hour) % 12 + (12 if half == "p" else 0), int(minute or 0)
+
+
+def parse_hours(text: str | None) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """The hours of a status like "Arriving today 2:45 pm - 5:45 pm", as 24-hour times."""
+    match = _HOURS.fullmatch(" ".join((text or "").lower().split()).rstrip("."))
+    if not match:
+        return None
+    return _clock_24(*match.group(2, 3, 4)), _clock_24(*match.group(5, 6, 7))
+
+
 def translate(text: str, phrase: Any) -> str:
     """Amazon's English status line in the user's language; unknown lines stay as they are."""
     line = " ".join(text.lower().split()).rstrip(".")
+    hours = parse_hours(line)
+    if hours:
+        day = _when(_HOURS.fullmatch(line).group(1), phrase)
+        template = phrase("phrase.arriving_hours")
+        if not day or not template:
+            return text
+        start, end = (f"{hour}:{minute:02d}" for hour, minute in hours)
+        template = template.replace("{when}", day).replace("{from}", start).replace("{to}", end)
+        return template[:1].upper() + template[1:]
     for pattern, key in _PHRASES:
         match = pattern.fullmatch(line)
         if not match:
@@ -463,6 +489,19 @@ def _settle_status(from_text: Status, page: Any) -> Status:
     return step
 
 
+def _eta(text: str | None, today: date) -> tuple[datetime | None, datetime | None]:
+    """When a status line expects the parcel: a day, and the hours if it names them."""
+    day = parse_eta(text, today)
+    hours = parse_hours(text)
+    if not day or not hours:
+        return day, None
+    (from_hour, from_minute), (to_hour, to_minute) = hours
+    return (
+        day.replace(hour=from_hour, minute=from_minute),
+        day.replace(hour=to_hour, minute=to_minute),
+    )
+
+
 def _link_shape(link: str | None) -> str:
     """A tracking link without its values: enough to see which kind Amazon handed out."""
     if not link:
@@ -548,7 +587,8 @@ def to_shipments(
                     key=shipment_id or f"{number}/{index}",
                     status=_settle_status(parse_status(text), getattr(found, "parsed", None)),
                     description=text,
-                    eta_from=parse_eta(text, today),
+                    eta_from=_eta(text, today)[0],
+                    eta_to=_eta(text, today)[1],
                     status_time=parse_delivery_day(text, today),
                     carrier_name=tracking_facts(found)[0],
                     tracking_number=tracking_facts(found)[1],

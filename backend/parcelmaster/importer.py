@@ -265,6 +265,7 @@ def apply(
                     description=imported.description,
                     events=events,
                     eta_from=imported.eta_from,
+                    eta_to=imported.eta_to,
                 )
                 notices += record_result(store, parcel, result, base, zone, now, poll=False)
             elif parcel["last_success_at"] is None:
