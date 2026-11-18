@@ -442,7 +442,8 @@ async def _fetch_shipment(
                 const cfg = (state && state.config) || {};
                 const base = cfg.verfolgenDataPath || "/int-verfolgen/data";
                 const language = cfg.currentLanguage || "de";
-                const response = await fetch(base + "/shipment?language=" + encodeURIComponent(language), {
+                const url = base + "/shipment?language=" + encodeURIComponent(language);
+                const response = await fetch(url, {
                     method: "POST",
                     credentials: "include",
                     headers: {
@@ -483,7 +484,9 @@ async def _shipment_payload(
     try:
         # Listen before navigation: the search often returns before goto resolves.
         async with page.expect_response(
-            lambda response: "/int-verfolgen/data/search" in response.url and response.status == 200,
+            lambda response: (
+                "/int-verfolgen/data/search" in response.url and response.status == 200
+            ),
             timeout=20_000,
         ):
             await page.goto(
@@ -510,14 +513,15 @@ async def _shipment_payload(
     try:
         await field.fill(postal_code)
         async with page.expect_response(
-            lambda response: response.url.startswith(f"{WEB_URL}/shipment")
-            and response.request.method == "POST"
+            lambda response: (
+                response.url.startswith(f"{WEB_URL}/shipment") and response.request.method == "POST"
+            )
         ) as answer:
             await field.press("Enter")
         response = await answer.value
     except Exception:  # noqa: BLE001 - the form did not post; one fetch, not a second post
         seen.append("postal code form did not answer")
-        if any(item.startswith("got shipment") or item.startswith("asked shipment") for item in seen):
+        if any(item.startswith(("got shipment", "asked shipment")) for item in seen):
             return None
         return await _fetch_shipment(page, tracking_number, postal_code, seen)
     if response.status != 200:
