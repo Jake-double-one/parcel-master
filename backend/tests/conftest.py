@@ -43,15 +43,3 @@ def no_rest_between_lookups(monkeypatch):
     from parcelmaster.tracking import TRIES
 
     TRIES.clear()
-
-
-@pytest.fixture(autouse=True)
-def no_real_browser(monkeypatch):
-    """No test may open dhl.de in a browser; those that need a visit provide their own."""
-
-    async def nobody(tracking_number, postal_code):
-        return None
-
-    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", nobody)
-    monkeypatch.setattr("parcelmaster.carriers.de.dhl._BROWSER_RESTS_UNTIL", [0.0])
-    monkeypatch.setattr("parcelmaster.carriers.de.dhl._ROUNDS", {})

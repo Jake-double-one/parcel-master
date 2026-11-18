@@ -437,7 +437,6 @@ def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
         "api_key",
         "api_secret",
         "prefer",
-        "live",
         "default_postal_code",
     ]
     client.put("/api/settings", json={"carriers": {"de.dhl": {"default_postal_code": " 50667 "}}})

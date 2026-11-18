@@ -16,14 +16,6 @@
         "api": "Erst API, dann dhl.de"
       }
     },
-    "live": {
-      "label": "Live-Verfolgung am Zustelltag",
-      "help": "Versuch, standardmäßig aus: DHL bedient den eingebauten Browser bisher nicht. Eingeschaltet öffnet Parcel Master für Pakete in Zustellung mit Postleitzahl die Seite von DHL im Browser und liest, wie viele Stopps noch fehlen; ab Beginn des Zeitfensters alle fünf Minuten, bei fünf Stopps oder weniger jede Minute. Scheitert ein Besuch, ruht der Browser eine halbe Stunde.",
-      "option": {
-        "on": "An",
-        "off": "Aus"
-      }
-    },
     "default_postal_code": {
       "label": "Deine Postleitzahl",
       "help": "Wird bei eingehenden Paketen als Postleitzahl des Empfängers vorausgefüllt. Sie steht dann im Link „Bei DHL öffnen“ und geht an die API, falls du die nutzt."

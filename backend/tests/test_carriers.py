@@ -249,63 +249,6 @@ def test_dhl_reads_the_stops_left_from_live_tracking():
     assert result.eta_from.isoformat() == "2026-11-18T12:30:00+01:00"
 
 
-@pytest.mark.anyio
-async def test_dhl_follows_the_round_with_one_visit_for_all_parcels_of_a_van(monkeypatch):
-    visits = []
-
-    async def visit(tracking_number, postal_code):
-        visits.append((tracking_number, postal_code))
-        result = parse_web_response(web_answer(fortschritt=4))
-        result.stops_left, result.stops_about = 20, True
-        return result
-
-    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=web_answer(fortschritt=4))
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        first = await DHL.track(request(live="on"), http)
-        second = await DHL.track(request(live="on", number="00340434161094042558"), http)
-        quiet = await DHL.track(request(number="00340434161094042559"), http)  # off by default
-    assert visits == [("00340434161094042557", "50667")]  # the second parcel rides along
-    assert (first.stops_left, second.stops_left, quiet.stops_left) == (20, 20, None)
-    assert first.again_in_minutes == 5
-
-
-@pytest.mark.anyio
-async def test_dhl_looks_every_minute_once_the_van_is_almost_there(monkeypatch):
-    async def visit(tracking_number, postal_code):
-        result = parse_web_response(web_answer(fortschritt=4))
-        result.stops_left = 4
-        return result
-
-    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
-    result = await run_dhl(
-        lambda req: httpx.Response(200, json=web_answer(fortschritt=4)), live="on"
-    )
-    assert result.again_in_minutes == 1
-
-
-@pytest.mark.anyio
-async def test_dhl_lets_the_browser_rest_after_a_failed_visit(monkeypatch):
-    visits = []
-
-    async def visit(tracking_number, postal_code):
-        visits.append(tracking_number)
-        return None
-
-    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json=web_answer(fortschritt=4))
-
-    for _ in range(3):
-        result = await run_dhl(handler, live="on")
-        assert result.status is Status.OUT_FOR_DELIVERY  # the plain answer stands
-    assert len(visits) == 1
-
-
 def test_dhl_parcel_de_answer_is_mapped_to_the_common_model():
     result = parse_parcel_de((FIXTURES / "dhl_parcel_de.xml").read_text())
     assert result.status is Status.OUT_FOR_DELIVERY

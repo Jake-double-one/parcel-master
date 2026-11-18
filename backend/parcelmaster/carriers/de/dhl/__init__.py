@@ -11,7 +11,6 @@ import logging
 import re
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from time import monotonic
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree
@@ -353,266 +352,8 @@ def live_stops(live: dict[str, Any]) -> tuple[int | None, bool]:
     return (counts[0], False) if counts else (9, True)
 
 
-#: How long one look at a delivery round serves every parcel on it.
-ROUND_FRESH_SECONDS = 240
-#: From this many stops on, the round is looked at every minute.
+#: From this many stops on, the round is followed by the minute.
 CLOSE_STOPS = 5
-CLOSE_FRESH_SECONDS = 45
-#: After a failed visit the browser is left alone for this long.
-BROWSER_REST_SECONDS = 30 * 60
-PAGE_URL = "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html"
-_ROUNDS: dict[tuple[str, str, str], tuple[float, int | None, bool]] = {}
-_BROWSER_RESTS_UNTIL = [0.0]
-
-
-def _browser_client_hints(version: str) -> tuple[str, str]:
-    """Chrome user agent and sec-ch-ua for this Chromium, without HeadlessChrome.
-
-    The edge in front of dhl.de answers 404 (an Apache HTML page) when the
-    user agent is missing or the brand is HeadlessChrome. A normal Chrome
-    brand is handed the tracking JSON.
-    """
-    major = version.split(".", 1)[0] if version else "131"
-    full = version or f"{major}.0.0.0"
-    user_agent = (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        f"(KHTML, like Gecko) Chrome/{full} Safari/537.36"
-    )
-    sec_ch_ua = f'"Chromium";v="{major}", "Google Chrome";v="{major}", "Not_A Brand";v="24"'
-    return user_agent, sec_ch_ua
-
-
-async def _align_client_hints(page: Any, user_agent: str, version: str) -> None:
-    """Tell the page the same Chrome brand the requests already send.
-
-    Replacing the user-agent string is not enough: headless Chromium still
-    puts HeadlessChrome in navigator.userAgentData, and in sec-ch-ua, unless
-    the brand list is overridden too.
-    """
-    major = version.split(".", 1)[0] if version else "131"
-    full = version or f"{major}.0.0.0"
-    try:
-        client = await page.context.new_cdp_session(page)
-        await client.send(
-            "Network.setUserAgentOverride",
-            {
-                "userAgent": user_agent,
-                "acceptLanguage": "de-DE,de;q=0.9,en;q=0.8",
-                "platform": "Linux",
-                "userAgentMetadata": {
-                    "brands": [
-                        {"brand": "Chromium", "version": major},
-                        {"brand": "Google Chrome", "version": major},
-                        {"brand": "Not_A Brand", "version": "24"},
-                    ],
-                    "fullVersionList": [
-                        {"brand": "Chromium", "version": full},
-                        {"brand": "Google Chrome", "version": full},
-                        {"brand": "Not_A Brand", "version": "24.0.0.0"},
-                    ],
-                    "fullVersion": full,
-                    "platform": "Linux",
-                    "platformVersion": "6.8.0",
-                    "architecture": "x86",
-                    "model": "",
-                    "mobile": False,
-                    "bitness": "64",
-                    "wow64": False,
-                },
-            },
-        )
-    except Exception:  # noqa: BLE001 - the request headers already carry the brand
-        return
-
-
-async def _fetch_shipment(
-    page: Any, tracking_number: str, postal_code: str, seen: list[str]
-) -> dict[str, Any] | None:
-    """POST /shipment the way the page's own script does, from inside the page.
-
-    The postal-code field is only rendered when DHL asks for one. The request
-    is still the same: piececode, zip, international, and the CSRF token the
-    config (and the search answer) left on the page.
-    """
-    seen.append("in-page shipment")
-    try:
-        posted = await page.evaluate(
-            """async ({ piece, zip }) => {
-                const state = window.__INITIAL_APP_STATE__;
-                const cfg = (state && state.config) || {};
-                const base = cfg.verfolgenDataPath || "/int-verfolgen/data";
-                const language = cfg.currentLanguage || "de";
-                const url = base + "/shipment?language=" + encodeURIComponent(language);
-                const response = await fetch(url, {
-                    method: "POST",
-                    credentials: "include",
-                    headers: {
-                        Accept: "application/json",
-                        "Content-Type": "application/json",
-                        "verfolgen-CSRF-token": cfg.verfolgenCsrfToken || ""
-                    },
-                    body: JSON.stringify({ piececode: piece, zip: zip, international: false })
-                });
-                const text = await response.text();
-                let payload = null;
-                try { payload = JSON.parse(text); } catch (e) { payload = null; }
-                const error = payload && payload.error ? String(payload.error) : "";
-                return { status: response.status, payload, error };
-            }""",
-            {"piece": tracking_number, "zip": postal_code},
-        )
-    except Exception as error:  # noqa: BLE001 - the caller logs the visit and returns None
-        seen.append(f"in-page shipment failed {type(error).__name__}")
-        return None
-    status = posted.get("status") if isinstance(posted, dict) else None
-    if status != 200:
-        if isinstance(posted, dict) and posted.get("error"):
-            seen.append(f"shipment {status} {str(posted['error'])[:120]}")
-        log.warning("dhl.de: the page's postal code step got HTTP %s", status)
-        return None
-    payload = posted.get("payload") if isinstance(posted, dict) else None
-    if not isinstance(payload, dict):
-        seen.append("shipment not json")
-        return None
-    return payload
-
-
-async def _shipment_payload(
-    page: Any, tracking_number: str, postal_code: str, seen: list[str]
-) -> dict[str, Any] | None:
-    """Loads the tracking page and returns the postal-code JSON, or None."""
-    try:
-        # Listen before navigation: the search often returns before goto resolves.
-        async with page.expect_response(
-            lambda response: (
-                "/int-verfolgen/data/search" in response.url and response.status == 200
-            ),
-            timeout=20_000,
-        ):
-            await page.goto(
-                f"{PAGE_URL}?piececode={tracking_number}", wait_until="domcontentloaded"
-            )
-            # A visitor first answers the question about cookies: only the necessary ones.
-            consent = page.get_by_text("Nur notwendige Technologien").first
-            try:
-                await consent.click(timeout=5_000)
-            except Exception:  # noqa: BLE001 - no banner, no click
-                seen.append("no consent banner")
-    except Exception as error:  # noqa: BLE001 - the in-page request below may still answer
-        seen.append(f"search not ok {type(error).__name__}")
-
-    field = page.locator('[data-testid="shipment-details"] form input').first
-    try:
-        # The widget paints the field only after a search it accepts, and only
-        # when this shipment actually asks for a postal code.
-        await field.wait_for(state="visible", timeout=5_000)
-    except Exception:  # noqa: BLE001 - ask the endpoint ourselves
-        seen.append("no postal code field")
-        return await _fetch_shipment(page, tracking_number, postal_code, seen)
-
-    try:
-        await field.fill(postal_code)
-        async with page.expect_response(
-            lambda response: (
-                response.url.startswith(f"{WEB_URL}/shipment") and response.request.method == "POST"
-            )
-        ) as answer:
-            await field.press("Enter")
-        response = await answer.value
-    except Exception:  # noqa: BLE001 - the form did not post; one fetch, not a second post
-        seen.append("postal code form did not answer")
-        if any(item.startswith(("got shipment", "asked shipment")) for item in seen):
-            return None
-        return await _fetch_shipment(page, tracking_number, postal_code, seen)
-    if response.status != 200:
-        log.warning("dhl.de: the page's postal code step got HTTP %s", response.status)
-        return None
-    return await response.json()
-
-
-async def _visit_page(tracking_number: str, postal_code: str) -> TrackingResult | None:
-    """Opens the tracking page like a visitor, enters the postal code and reads the answer.
-
-    Headless Chromium announces itself, and dhl.de then answers 404, so the
-    browser is presented as Chrome. Returns None for any failure.
-    """
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        return None
-    started = monotonic()
-    seen: list[str] = []  # what the page asked DHL and how that went, for the log
-
-    def note(prefix: str, url: str, outcome: Any) -> None:
-        if "/int-verfolgen/data/" in url and len(seen) < 30:
-            seen.append(f"{prefix} {url.split('/int-verfolgen/data/')[1].split('?')[0]} {outcome}")
-
-    try:
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(
-                args=["--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
-                ignore_default_args=["--enable-automation"],
-            )
-            try:
-                version = getattr(browser, "version", None) or "131.0.0.0"
-                user_agent, sec_ch_ua = _browser_client_hints(version)
-                context = await browser.new_context(
-                    user_agent=user_agent,
-                    locale="de-DE",
-                    timezone_id="Europe/Berlin",
-                    viewport={"width": 1366, "height": 768},
-                    extra_http_headers={
-                        "sec-ch-ua": sec_ch_ua,
-                        "sec-ch-ua-mobile": "?0",
-                        "sec-ch-ua-platform": '"Linux"',
-                    },
-                )
-                page = await context.new_page()
-                page.set_default_timeout(20_000)
-                await page.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => false})"
-                )
-                await _align_client_hints(page, user_agent, version)
-                page.on("request", lambda request: note("asked", request.url, ""))
-                page.on("response", lambda response: note("got", response.url, response.status))
-                page.on(
-                    "requestfailed",
-                    lambda request: note("lost", request.url, request.failure or ""),
-                )
-                payload = await _shipment_payload(page, tracking_number, postal_code, seen)
-                if payload is None:
-                    widget = page.locator("#nolp")
-                    shown = (await widget.inner_text())[:200] if await widget.count() else "none"
-                    account = await page.evaluate("typeof window.ciam")
-                    log.warning(
-                        "dhl.de: the page showed no shipment in the browser. Requests: %s. "
-                        "Tracking widget: %r. Account script: %s",
-                        "; ".join(seen) or "none",
-                        " ".join(shown.split()),
-                        account,
-                    )
-                    return None
-            finally:
-                await browser.close()
-        details = payload["sendungen"][0].get("sendungsdetails") or {}
-        result = parse_web_response(payload)
-        log.info(
-            "dhl.de live %s: %s after %.1fs -> stops %s%s",
-            tracking_number,
-            {k: v for k, v in (details.get("liveTracking") or {}).items() if k != "position"},
-            monotonic() - started,
-            result.stops_left,
-            "+" if result.stops_about else "",
-        )
-        return result
-    except Exception as error:  # noqa: BLE001 - the plain answer stands without this
-        log.warning(
-            "dhl.de: the visit with the browser failed after %.1fs (%s: %s)",
-            monotonic() - started,
-            type(error).__name__,
-            str(error).splitlines()[0][:200] if str(error) else "",
-        )
-        return None
 
 
 class DhlDe(CarrierModule):
@@ -631,7 +372,6 @@ class DhlDe(CarrierModule):
         Field("api_key", type="secret"),
         Field("api_secret", type="secret"),
         Field("prefer", type="choice", options=("website", "api")),
-        Field("live", type="choice", options=("off", "on")),
         Field("default_postal_code", placeholder="53113"),
     )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
@@ -705,18 +445,6 @@ class DhlDe(CarrierModule):
         return ("api", "website") if settings.get("prefer") == "api" else ("website", "api")
 
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
-        result = await self._ask(request, http)
-        postal_code = (request.extra.get("postal_code") or "").strip()
-        if (
-            result.status is Status.OUT_FOR_DELIVERY
-            and postal_code
-            and request.settings.get("live") == "on"
-        ):
-            # Whichever way answered: the stops are only on the page itself.
-            result = await self._on_the_round(request, postal_code, result)
-        return result
-
-    async def _ask(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
         first, *rest = self._plan(request.settings)
         ways = {"api": self._track_with_api, "website": self._track_on_website}
         try:
@@ -830,43 +558,6 @@ class DhlDe(CarrierModule):
         except httpx.HTTPError as error:
             raise CarrierError("unavailable", type(error).__name__) from error
         return parse_web_response(self._web_json(response))
-
-    async def _on_the_round(
-        self, request: TrackRequest, postal_code: str, plain: TrackingResult
-    ) -> TrackingResult:
-        """Adds what dhl.de shows on the delivery day once the postal code is entered.
-
-        That is the number of stops left, and it is only handed to the page
-        itself, so the page is opened in a browser. Parcels with the same
-        postal code and delivery window ride in one van: one visit serves them
-        all for a few minutes. If the visit fails, the plain answer stays and
-        the browser rests for a while.
-        """
-        key = (postal_code, str(plain.eta_from), str(plain.eta_to))
-        now = monotonic()
-        seen = _ROUNDS.get(key)
-        # Close to the door the picture changes by the minute, as on the page itself.
-        close = seen is not None and seen[1] is not None and seen[1] <= CLOSE_STOPS
-        if seen and now - seen[0] < (CLOSE_FRESH_SECONDS if close else ROUND_FRESH_SECONDS):
-            plain.stops_left, plain.stops_about = seen[1], seen[2]
-        elif now >= _BROWSER_RESTS_UNTIL[0]:
-            detailed = await _visit_page(request.tracking_number, postal_code)
-            if detailed is None:
-                _BROWSER_RESTS_UNTIL[0] = now + BROWSER_REST_SECONDS
-            else:
-                _ROUNDS[key] = (now, detailed.stops_left, detailed.stops_about)
-                for old in [k for k, v in _ROUNDS.items() if now - v[0] > 3600]:
-                    del _ROUNDS[old]
-                plain.stops_left, plain.stops_about = detailed.stops_left, detailed.stops_about
-        if plain.stops_left is not None:
-            started = plain.eta_from is None or plain.eta_from <= datetime.now(
-                plain.eta_from.tzinfo
-            ) + timedelta(minutes=15)
-            pace = 1 if plain.stops_left <= CLOSE_STOPS else 5
-            if pace == 1 or started or plain.stops_left <= 20:
-                # Almost there, or on its way to us: follow it, never slower than already planned.
-                plain.again_in_minutes = min(pace, plain.again_in_minutes or pace)
-        return plain
 
     @staticmethod
     def _web_json(response: httpx.Response) -> Any:

@@ -16,14 +16,6 @@
         "api": "The API first, then dhl.de"
       }
     },
-    "live": {
-      "label": "Live tracking on the delivery day",
-      "help": "An experiment, off by default: so far DHL does not serve the built-in browser. Switched on, Parcel Master opens DHL's page in the browser for parcels with a postal code that are out for delivery and reads how many stops are left; every five minutes once the delivery window has begun, every minute from five stops on. After a failed visit the browser rests for half an hour.",
-      "option": {
-        "on": "On",
-        "off": "Off"
-      }
-    },
     "default_postal_code": {
       "label": "Your postal code",
       "help": "Pre-filled as the recipient's postal code for incoming parcels. It goes into the \"Open at DHL\" link and to the API, if you use it."
