@@ -101,6 +101,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
             "ready_for_pickup": True,
             "delivered": True,
             "delivery_window": True,
+            "stops": True,
             "problem": True,
             "stale": True,
             "pickup_reminder": True,

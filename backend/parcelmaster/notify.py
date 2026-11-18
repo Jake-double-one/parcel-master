@@ -25,7 +25,7 @@ def in_quiet_hours(settings: dict[str, Any], now: datetime | None = None) -> boo
 
 def wanted(settings: dict[str, Any], kind: str) -> bool:
     events = settings["notifications"]["events"]
-    if kind in ("stale", "pickup_reminder", "delivery_window"):
+    if kind in ("stale", "pickup_reminder", "delivery_window", "stops"):
         return bool(events.get(kind))
     return bool(events.get("any_change") or (kind in STATUS_KINDS and events.get(kind)))
 
@@ -65,6 +65,7 @@ class Notifier:
         shipment = self.store.get_shipment(parcel["shipment_id"]) or {}
         module = self.registry.get(parcel["carrier"])
         details = dict(notice.params)
+        variant = details.pop("variant", None) or "body"  # a sentence of its own for a case
         if module and details.get("description"):
             details["description"] = self.translations.localize(
                 module, str(details["description"]), language
@@ -76,8 +77,8 @@ class Notifier:
             **details,
         }
         t = self.translations.t
-        body = t(language, f"notify.{notice.kind}.body", **params)
-        if body == f"notify.{notice.kind}.body":  # a status without its own sentence
+        body = t(language, f"notify.{notice.kind}.{variant}", **params)
+        if body == f"notify.{notice.kind}.{variant}":  # a status without its own sentence
             body = t(language, "notify.change.body", **params)
         return {
             "kind": notice.kind,

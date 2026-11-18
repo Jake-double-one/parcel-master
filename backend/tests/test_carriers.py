@@ -224,3 +224,67 @@ def test_dhl_budget_depends_on_the_way_it_asks():
     assert DHL.budget({"api_key": "k", "prefer": "api"}) == 250
     assert DHL.source({"api_key": "k"}) == "website_api"
     assert DHL.source({"prefer": "api"}) == "website"
+
+
+def test_dhl_reads_the_stops_left_from_live_tracking():
+    from parcelmaster.carriers.de.dhl import live_stops
+
+    assert live_stops({"state": "OK", "countdownTextKey": "CD20"}) == (20, True)
+    assert live_stops({"state": "ok", "countdownTextKey": "CD01"}) == (1, False)
+    assert live_stops({"state": "ok", "countdownTextKey": "CD02", "countdown": 4}) == (4, False)
+    assert live_stops({"state": "ok", "countdownTextKey": "CD02"}) == (9, True)
+    assert live_stops({"state": "notavailable", "countdownTextKey": "CD20"}) == (None, False)
+    assert live_stops({"state": "ok"}) == (None, False)
+
+    payload = web_answer(fortschritt=4)
+    payload["sendungen"][0]["sendungsdetails"]["liveTracking"] = {
+        "state": "ok",
+        "countdownTextKey": "CD10",
+        "timeframe": {"from": "2026-11-18T12:30:00+01:00", "to": "2026-11-18T14:00:00+01:00"},
+    }
+    result = parse_web_response(payload)
+    assert (result.stops_left, result.stops_about) == (10, True)
+    assert result.eta_from.isoformat() == "2026-11-18T12:30:00+01:00"
+
+
+@pytest.mark.anyio
+async def test_dhl_follows_the_round_with_one_visit_for_all_parcels_of_a_van(monkeypatch):
+    visits = []
+
+    async def visit(tracking_number, postal_code):
+        visits.append((tracking_number, postal_code))
+        result = parse_web_response(web_answer(fortschritt=4))
+        result.stops_left, result.stops_about = 20, True
+        return result
+
+    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=web_answer(fortschritt=4))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        first = await DHL.track(request(), http)
+        second = await DHL.track(request(number="00340434161094042558"), http)
+        quiet = await DHL.track(request(live="off", number="00340434161094042559"), http)
+    assert visits == [("00340434161094042557", "50667")]  # the second parcel rides along
+    assert (first.stops_left, second.stops_left, quiet.stops_left) == (20, 20, None)
+    assert first.again_in_minutes == 5
+
+
+@pytest.mark.anyio
+async def test_dhl_lets_the_browser_rest_after_a_failed_visit(monkeypatch):
+    visits = []
+
+    async def visit(tracking_number, postal_code):
+        visits.append(tracking_number)
+        return None
+
+    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=web_answer(fortschritt=4))
+
+    for _ in range(3):
+        result = await run_dhl(handler)
+        assert result.status is Status.OUT_FOR_DELIVERY  # the plain answer stands
+    assert len(visits) == 1

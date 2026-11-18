@@ -80,7 +80,10 @@
     "refresh_same": "Abgerufen. Kein neuer Stand.",
     "refresh_new": "Abgerufen. Es gibt Neues.",
     "contents": "Inhalt",
-    "through": "über {source}"
+    "through": "über {source}",
+    "stops": "Noch {count} Stopps",
+    "stops_about": "Noch etwas mehr als {count} Stopps",
+    "stops_one": "Nur noch 1 Stopp"
   },
   "dialog": {
     "create_title": "Sendung anlegen",
@@ -220,7 +223,8 @@
     "health_off": "Nicht eingerichtet",
     "health_untested": "Noch nicht abgefragt",
     "health_ok": "Läuft",
-    "health_failing": "Gestört"
+    "health_failing": "Gestört",
+    "event_stops": "die Zahl der Stopps bis zur Zustellung sinkt"
   },
   "login": {
     "password": "Passwort",
@@ -311,6 +315,11 @@
     },
     "delivery_window": {
       "body": "{carrier} nennt Zustellfenster: {window}"
+    },
+    "stops": {
+      "body": "{carrier}: nur noch {count} Stopps bis zu dir.",
+      "about": "{carrier}: noch etwas mehr als {count} Stopps bis zu dir.",
+      "one": "{carrier}: nur noch 1 Stopp bis zu dir."
     }
   },
   "scanner": {

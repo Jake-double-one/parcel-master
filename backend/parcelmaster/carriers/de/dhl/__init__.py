@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
+from time import monotonic
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -209,7 +210,7 @@ def parse_web_response(payload: Any) -> TrackingResult:
     status = _web_status(description, history.get("fortschritt"), delivered, returning)
     delivery = details.get("zustellung")
     delivery = delivery if isinstance(delivery, dict) else {}
-    return TrackingResult(
+    result = TrackingResult(
         status=status,
         description=description,
         location=events[0].location if events else None,
@@ -217,6 +218,107 @@ def parse_web_response(payload: Any) -> TrackingResult:
         eta_from=None if delivered else _web_time(delivery.get("zustellzeitfensterVon")),
         eta_to=None if delivered else _web_time(delivery.get("zustellzeitfensterBis"), True),
     )
+    live = details.get("liveTracking")
+    if isinstance(live, dict) and not delivered:
+        result.stops_left, result.stops_about = live_stops(live)
+        frame = live.get("timeframe")
+        if isinstance(frame, dict) and _parse_time(frame.get("from")) and frame.get("to"):
+            # The round's own window is closer to the truth than the planned one.
+            result.eta_from = _parse_time(frame.get("from"))
+            result.eta_to = _parse_time(frame.get("to")) or result.eta_to
+    return result
+
+
+def live_stops(live: dict[str, Any]) -> tuple[int | None, bool]:
+    """Stops left before this parcel, and whether that is a lower bound.
+
+    The page gets a key like "CD20" ("a bit more than 20 stops"), "CD01"
+    ("one stop") or "CD02" ("only N stops") together with the number N.
+    """
+    if str(live.get("state") or "").lower() not in ("ok", "reduced"):
+        return None, False
+    match = re.fullmatch(r"CD(\d{2})", str(live.get("countdownTextKey") or ""))
+    if not match:
+        return None, False
+    step = int(match.group(1))
+    if step >= 10:
+        return step, True
+    if step == 1:
+        return 1, False
+    counts = [
+        value
+        for key, value in live.items()
+        if isinstance(value, int)
+        and not isinstance(value, bool)
+        and re.search(r"count|stop", key, re.I)
+        and 0 < value < 10
+    ]
+    # Without the number the key still says "fewer than ten".
+    return (counts[0], False) if counts else (9, True)
+
+
+#: How long one look at a delivery round serves every parcel on it.
+ROUND_FRESH_SECONDS = 240
+#: After a failed visit the browser is left alone for this long.
+BROWSER_REST_SECONDS = 30 * 60
+PAGE_URL = "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html"
+_ROUNDS: dict[tuple[str, str, str], tuple[float, int | None, bool]] = {}
+_BROWSER_RESTS_UNTIL = [0.0]
+
+
+async def _visit_page(tracking_number: str, postal_code: str) -> TrackingResult | None:
+    """Opens the tracking page like a visitor, enters the postal code and reads the answer.
+
+    An ordinary browser, as it is: if the site does not serve it, there is no
+    live tracking. Returns None for any failure.
+    """
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        return None
+    started = monotonic()
+    try:
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(args=["--disable-dev-shm-usage"])
+            try:
+                page = await browser.new_page(locale="de-DE")
+                page.set_default_timeout(20_000)
+                await page.goto(
+                    f"{PAGE_URL}?piececode={tracking_number}", wait_until="domcontentloaded"
+                )
+                field = page.locator('[data-testid="shipment-details"] form input').first
+                await field.wait_for(state="visible")
+                await field.fill(postal_code)
+                async with page.expect_response(
+                    lambda r: r.url.startswith(f"{WEB_URL}/shipment") and r.request.method == "POST"
+                ) as answer:
+                    await field.press("Enter")
+                response = await answer.value
+                if response.status != 200:
+                    log.warning("dhl.de: the page's postal code step got HTTP %s", response.status)
+                    return None
+                payload = await response.json()
+            finally:
+                await browser.close()
+        details = payload["sendungen"][0].get("sendungsdetails") or {}
+        result = parse_web_response(payload)
+        log.info(
+            "dhl.de live %s: %s after %.1fs -> stops %s%s",
+            tracking_number,
+            {k: v for k, v in (details.get("liveTracking") or {}).items() if k != "position"},
+            monotonic() - started,
+            result.stops_left,
+            "+" if result.stops_about else "",
+        )
+        return result
+    except Exception as error:  # noqa: BLE001 - the plain answer stands without this
+        log.warning(
+            "dhl.de: the visit with the browser failed after %.1fs (%s: %s)",
+            monotonic() - started,
+            type(error).__name__,
+            str(error).splitlines()[0][:200] if str(error) else "",
+        )
+        return None
 
 
 class DhlDe(CarrierModule):
@@ -234,6 +336,7 @@ class DhlDe(CarrierModule):
     settings_fields = (
         Field("api_key", type="secret"),
         Field("prefer", type="choice", options=("website", "api")),
+        Field("live", type="choice", options=("on", "off")),
         Field("default_postal_code", placeholder="53113"),
     )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
@@ -347,7 +450,48 @@ class DhlDe(CarrierModule):
             )
         except httpx.HTTPError as error:
             raise CarrierError("unavailable", type(error).__name__) from error
-        return parse_web_response(self._web_json(response))
+        result = parse_web_response(self._web_json(response))
+        postal_code = (request.extra.get("postal_code") or "").strip()
+        if (
+            result.status is Status.OUT_FOR_DELIVERY
+            and postal_code
+            and request.settings.get("live") != "off"
+        ):
+            result = await self._on_the_round(request, postal_code, result)
+        return result
+
+    async def _on_the_round(
+        self, request: TrackRequest, postal_code: str, plain: TrackingResult
+    ) -> TrackingResult:
+        """Adds what dhl.de shows on the delivery day once the postal code is entered.
+
+        That is the number of stops left, and it is only handed to the page
+        itself, so the page is opened in a browser. Parcels with the same
+        postal code and delivery window ride in one van: one visit serves them
+        all for a few minutes. If the visit fails, the plain answer stays and
+        the browser rests for a while.
+        """
+        key = (postal_code, str(plain.eta_from), str(plain.eta_to))
+        now = monotonic()
+        seen = _ROUNDS.get(key)
+        if seen and now - seen[0] < ROUND_FRESH_SECONDS:
+            plain.stops_left, plain.stops_about = seen[1], seen[2]
+        elif now >= _BROWSER_RESTS_UNTIL[0]:
+            detailed = await _visit_page(request.tracking_number, postal_code)
+            if detailed is None:
+                _BROWSER_RESTS_UNTIL[0] = now + BROWSER_REST_SECONDS
+            else:
+                _ROUNDS[key] = (now, detailed.stops_left, detailed.stops_about)
+                for old in [k for k, v in _ROUNDS.items() if now - v[0] > 3600]:
+                    del _ROUNDS[old]
+                plain = detailed
+        if plain.stops_left is not None:
+            started = plain.eta_from is None or plain.eta_from <= datetime.now(
+                plain.eta_from.tzinfo
+            ) + timedelta(minutes=15)
+            if started or plain.stops_left <= 20:
+                plain.again_in_minutes = 5  # the van is close: follow it
+        return plain
 
     @staticmethod
     def _web_json(response: httpx.Response) -> Any:

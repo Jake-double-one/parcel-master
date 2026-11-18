@@ -335,3 +335,36 @@ def test_a_failure_is_retried_soon_and_never_rarer_than_the_usual_interval(world
         waits.append(round((due - datetime.now(UTC)).total_seconds() / 60))
     assert waits[:4] == [5, 15, 30, 60]
     assert max(waits) <= 120  # the default interval
+
+
+def test_stops_left_are_kept_and_reported_at_marks_on_the_way_down(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+
+    def van(stops, about=False):
+        return TrackingResult(
+            Status.OUT_FOR_DELIVERY, "On the van", stops_left=stops, stops_about=about
+        )
+
+    # This round takes more lookups than the test budget.
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    module.answers = [van(20, True), van(20, True), van(10, True), van(4), van(1)]
+    module.answers.append(TrackingResult(Status.DELIVERED, "Done"))
+    told = []
+    for _ in range(6):
+        told.append(
+            [
+                (n.params["count"], n.params["variant"])
+                for n in refresh(store, registry, parcel_id)
+                if n.kind == "stops"
+            ]
+        )
+    assert told == [[(20, "about")], [], [(10, "about")], [(4, "body")], [(1, "one")], []]
+    assert "stops_left" not in store.get_parcel(parcel_id)["extra"]  # gone once delivered
+
+
+def test_a_module_may_ask_to_be_asked_again_soon(world):
+    store, module, registry, _, parcel_id = world
+    module.answers = [TrackingResult(Status.OUT_FOR_DELIVERY, "x", again_in_minutes=1)]
+    refresh(store, registry, parcel_id)
+    due = datetime.fromisoformat(store.get_parcel(parcel_id)["next_check_at"])
+    assert 4 <= (due - datetime.now(UTC)).total_seconds() / 60 <= 5.1  # never under five minutes

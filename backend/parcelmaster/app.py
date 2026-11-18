@@ -191,6 +191,15 @@ def create_app(config: Config) -> FastAPI:
             "carrier_name": parcel["extra"].get("carrier_name")
             or (module.name if module else parcel["carrier"]),
             "contents": contents_of(parcel),
+            # Stops left on the delivery round, where the carrier tells.
+            "stops": (
+                {
+                    "left": int(parcel["extra"]["stops_left"]),
+                    "about": bool(parcel["extra"].get("stops_about")),
+                }
+                if parcel["extra"].get("stops_left", "").isdigit()
+                else None
+            ),
             # Whose website the link below opens.
             "site_name": module.name if module else parcel["carrier"],
             "tracking_url": (

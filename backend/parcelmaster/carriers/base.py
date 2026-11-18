@@ -47,6 +47,12 @@ class TrackingResult:
     events: list[TrackingEvent] = field(default_factory=list)
     eta_from: datetime | None = None
     eta_to: datetime | None = None
+    #: Stops the vehicle still makes before this parcel, where the carrier tells.
+    stops_left: int | None = None
+    #: The number is a lower bound ("a bit more than 20"), not a count.
+    stops_about: bool = False
+    #: The module's wish to be asked again sooner than usual, e.g. while a van is close.
+    again_in_minutes: float | None = None
 
 
 @dataclass(frozen=True)

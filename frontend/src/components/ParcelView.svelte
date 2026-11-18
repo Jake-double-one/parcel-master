@@ -77,6 +77,15 @@
     {:else if parcel.eta_from && !finished}
       <span>{t("shipment.eta", { date: etaLabel(parcel.eta_from, parcel.eta_to, now) })}</span>
     {/if}
+    {#if parcel.stops && !finished}
+      <span>
+        {parcel.stops.left <= 1
+          ? t("shipment.stops_one")
+          : t(parcel.stops.about ? "shipment.stops_about" : "shipment.stops", {
+              count: parcel.stops.left,
+            })}
+      </span>
+    {/if}
     <span class="muted">
       {parcel.last_checked_at
         ? t("shipment.checked", { time: ago(parcel.last_checked_at, now) })

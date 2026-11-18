@@ -28,6 +28,10 @@ ANNOUNCED_MINUTES = 6 * 60
 FAR_AWAY_MINUTES = 12 * 60
 #: A parcel is not asked about twice within this time, whoever wants it.
 MIN_GAP_SECONDS = 10
+#: The shortest wait a module may ask for between two lookups of one parcel.
+MIN_LIVE_MINUTES = 5
+#: Stops left at which a message goes out, each once on the way down.
+STOP_MARKS = (20, 10, 5, 2, 1)
 #: Tries per carrier within any hour, failed ones included.
 TRIES_PER_HOUR = 100
 #: Minutes to wait after the first, second, ... failure in a row; then the usual interval.
@@ -205,6 +209,8 @@ def record_result(
         parse_iso(eta_from_iso),
         saver_on(store.get_settings()),
     )
+    if result.again_in_minutes and delay:
+        delay = min(delay, max(MIN_LIVE_MINUTES, result.again_in_minutes))
     store.update_parcel(
         parcel["id"],
         status=str(status),
@@ -235,8 +241,25 @@ def record_result(
     )
     store.replace_events(parcel["id"], events)
 
+    # Stops left on the delivery round: kept with the parcel while it is on the van.
+    extra = dict(parcel["extra"])
+    before = extra.pop("stops_left", None)
+    extra.pop("stops_about", None)
+    stops = result.stops_left if status is Status.OUT_FOR_DELIVERY else None
+    if stops is not None:
+        extra["stops_left"] = str(stops)
+        if result.stops_about:
+            extra["stops_about"] = "1"
+    if extra != parcel["extra"]:
+        store.set_parcel_extra(parcel["id"], extra)
+
     updated = store.get_parcel(parcel["id"])
     notices: list[Notice] = []
+    if stops is not None:
+        earlier = int(before) if before and before.isdigit() else None
+        if any(stops <= mark and (earlier is None or earlier > mark) for mark in STOP_MARKS):
+            variant = "one" if stops <= 1 else "about" if result.stops_about else "body"
+            notices.append(Notice("stops", updated, {"count": stops, "variant": variant}))
     # A delivery window is news whenever the carrier names a new one, unless the
     # user is looking at a parcel they added moments ago.
     window = delivery_window(eta_from_iso, eta_to_iso, zone, now)

@@ -35,6 +35,7 @@
   const EVENTS = [
     "out_for_delivery",
     "delivery_window",
+    "stops",
     "ready_for_pickup",
     "delivered",
     "problem",
