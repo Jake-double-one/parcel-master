@@ -67,9 +67,25 @@
     }
   }
 
+  /** The moment as the viewer's clock shows it, with the offset so it stays unambiguous. */
+  function localStamp(time: string): string {
+    const at = new Date(time);
+    if (Number.isNaN(at.getTime())) return time;
+    const two = (n: number) => String(Math.trunc(Math.abs(n))).padStart(2, "0");
+    const off = -at.getTimezoneOffset();
+    return (
+      `${at.getFullYear()}-${two(at.getMonth() + 1)}-${two(at.getDate())}` +
+      `T${two(at.getHours())}:${two(at.getMinutes())}:${two(at.getSeconds())}` +
+      `${off < 0 ? "-" : "+"}${two(off / 60)}:${two(off % 60)}`
+    );
+  }
+
   function journalText(): string {
     return (journal?.entries ?? [])
-      .map((entry) => `${entry.time} ${entry.level.toUpperCase()} ${entry.source}: ${entry.message}`)
+      .map(
+        (entry) =>
+          `${localStamp(entry.time)} ${entry.level.toUpperCase()} ${entry.source}: ${entry.message}`,
+      )
       .join("\n");
   }
 
