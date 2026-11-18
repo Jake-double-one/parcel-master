@@ -2,7 +2,15 @@
   "settings": {
     "api_key": {
       "label": "API-Schlüssel",
-      "help": "Optional. Ohne Schlüssel liest Parcel Master die Sendungsverfolgung von dhl.de. Mit einem Schlüssel der API „Shipment Tracking - Unified“ von developer.dhl.com nutzt es stattdessen diese."
+      "help": "Optional. Ein Schlüssel der API „Shipment Tracking - Unified“ von developer.dhl.com. Ohne ihn liest Parcel Master die Sendungsverfolgung von dhl.de."
+    },
+    "prefer": {
+      "label": "Bevorzugter Weg",
+      "help": "Gilt nur, wenn ein API-Schlüssel eingetragen ist. Scheitert der bevorzugte Weg, wird der andere versucht.",
+      "option": {
+        "website": "Erst dhl.de, dann API",
+        "api": "Erst API, dann dhl.de"
+      }
     },
     "default_postal_code": {
       "label": "Deine Postleitzahl",
@@ -16,7 +24,8 @@
     }
   },
   "source": {
-    "api": "API, sonst dhl.de",
-    "website": "dhl.de"
+    "website": "dhl.de",
+    "website_api": "dhl.de, sonst API",
+    "api_website": "API, sonst dhl.de"
   }
 }

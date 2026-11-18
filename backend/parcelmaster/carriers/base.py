@@ -24,9 +24,11 @@ class Field:
     """A value the user enters: a module setting or a per-parcel extra."""
 
     key: str
-    type: str = "text"  # "text" or "secret"
+    type: str = "text"  # "text", "secret" or "choice"
     required: bool = False
     placeholder: str = ""
+    #: For a "choice": the values to pick from; the first one is the default.
+    options: tuple[str, ...] = ()
 
 
 @dataclass

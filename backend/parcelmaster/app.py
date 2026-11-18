@@ -725,6 +725,8 @@ def create_app(config: Config) -> FastAPI:
                     value = str(given[field.key] or "").strip()
                     if field.type == "secret" and value == SECRET_MASK:
                         continue  # unchanged: the browser never saw the real value
+                    if field.type == "choice" and value not in field.options:
+                        value = ""  # means the default
                     own[field.key] = value
                 if "daily_budget" in given:
                     budget = given["daily_budget"]

@@ -426,7 +426,11 @@ def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
         return next(c for c in client.get("/api/carriers").json() if c["id"] == "de.dhl")
 
     assert dhl()["parcel_defaults"] == {}
-    assert [f["key"] for f in dhl()["settings_fields"]] == ["api_key", "default_postal_code"]
+    assert [f["key"] for f in dhl()["settings_fields"]] == [
+        "api_key",
+        "prefer",
+        "default_postal_code",
+    ]
     client.put("/api/settings", json={"carriers": {"de.dhl": {"default_postal_code": " 50667 "}}})
     assert dhl()["parcel_defaults"] == {"postal_code": "50667"}
     assert dhl()["configured"] is True  # works without a key, by reading dhl.de
@@ -628,6 +632,9 @@ def test_carrier_health_says_how_the_last_lookup_went_and_which_way_it_asks(clie
 
     assert dhl() == {"state": "untested", "source": "website"}
     client.put("/api/settings", json={"carriers": {"de.dhl": {"api_key": "k"}}})
-    assert dhl() == {"state": "untested", "source": "api"}
+    assert dhl() == {"state": "untested", "source": "website_api"}
     status = client.get("/api/status").json()
-    assert next(m for m in status["modules"] if m["id"] == "de.dhl")["health"]["source"] == "api"
+    assert (
+        next(m for m in status["modules"] if m["id"] == "de.dhl")["health"]["source"]
+        == "website_api"
+    )

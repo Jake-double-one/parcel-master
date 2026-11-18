@@ -234,6 +234,7 @@ class DhlDe(CarrierModule):
     )
     settings_fields = (
         Field("api_key", type="secret"),
+        Field("prefer", type="choice", options=("website", "api")),
         Field("default_postal_code", placeholder="53113"),
     )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
@@ -243,10 +244,10 @@ class DhlDe(CarrierModule):
     def budget(self, settings: dict[str, Any]) -> int | None:
         # The API allows 250 a day. The website names no number; this only
         # keeps a mistake from asking without end.
-        return 250 if settings.get("api_key") else WEB_DAILY_BUDGET
+        return 250 if self._plan(settings)[0] == "api" else WEB_DAILY_BUDGET
 
     def source(self, settings: dict[str, Any]) -> str | None:
-        return "api" if settings.get("api_key") else "website"
+        return "_".join(self._plan(settings))
 
     def extract_from_url(self, url: str) -> str | None:
         parsed = urlparse(url)
@@ -268,10 +269,35 @@ class DhlDe(CarrierModule):
             url += f"&zip={extra['postal_code']}"
         return url
 
+    @staticmethod
+    def _plan(settings: dict[str, Any]) -> tuple[str, ...]:
+        """The ways to ask, in the order to try them."""
+        if not settings.get("api_key"):
+            return ("website",)
+        return ("api", "website") if settings.get("prefer") == "api" else ("website", "api")
+
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
-        api_key = request.settings.get("api_key")
-        if not api_key:
-            return await self._track_on_website(request, http)
+        first, *rest = self._plan(request.settings)
+        ways = {"api": self._track_with_api, "website": self._track_on_website}
+        try:
+            return await ways[first](request, http)
+        except CarrierError as error:
+            # "Not found" is an answer; everything else is worth a try the other way.
+            if not rest or error.code == "not_found":
+                raise
+            log.warning(
+                "DHL %s failed for %s (%s%s); trying the %s",
+                first,
+                request.tracking_number,
+                error.code,
+                f": {error.detail}" if error.detail else "",
+                rest[0],
+            )
+            return await ways[rest[0]](request, http)
+
+    async def _track_with_api(
+        self, request: TrackRequest, http: httpx.AsyncClient
+    ) -> TrackingResult:
         params = {
             "trackingNumber": request.tracking_number,
             "requesterCountryCode": "DE",
@@ -284,17 +310,13 @@ class DhlDe(CarrierModule):
             response = await http.get(
                 API_URL,
                 params=params,
-                headers={"DHL-API-Key": api_key, "Accept": "application/json"},
+                headers={"DHL-API-Key": request.settings["api_key"], "Accept": "application/json"},
             )
         except httpx.HTTPError as error:
             raise CarrierError("unavailable", type(error).__name__) from error
 
         if response.status_code in (401, 403):
-            # A key DHL has not approved, or has withdrawn, must not stop tracking.
-            log.warning(
-                "DHL refused the API key (HTTP %s); reading dhl.de instead", response.status_code
-            )
-            return await self._track_on_website(request, http)
+            raise CarrierError("unauthorized")
         if response.status_code == 404:
             raise CarrierError("not_found")
         if response.status_code == 429:

@@ -62,9 +62,11 @@ export interface Shipment {
 
 export interface FieldSpec {
   key: string;
-  type: "text" | "secret";
+  type: "text" | "secret" | "choice";
   required: boolean;
   placeholder: string;
+  /** For a "choice": the values to pick from; the first one is the default. */
+  options: string[];
 }
 
 export interface SyncState {

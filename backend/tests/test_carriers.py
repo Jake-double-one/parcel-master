@@ -81,7 +81,7 @@ async def test_dhl_sends_key_and_postal_code():
         seen["params"] = dict(req.url.params)
         return httpx.Response(200, json=json.loads((FIXTURES / "dhl_transit.json").read_text()))
 
-    result = await run_dhl(handler, api_key="secret")
+    result = await run_dhl(handler, api_key="secret", prefer="api")
     assert result.status is Status.OUT_FOR_DELIVERY
     assert seen["key"] == "secret"
     assert seen["params"]["recipientPostalCode"] == "50667"
@@ -95,7 +95,7 @@ async def test_dhl_sends_key_and_postal_code():
 )
 async def test_dhl_errors_become_readable_codes(status, code):
     with pytest.raises(CarrierError) as caught:
-        await run_dhl(lambda req: httpx.Response(status, json={}), api_key="secret")
+        await run_dhl(lambda req: httpx.Response(status, json={}), api_key="secret", prefer="api")
     assert caught.value.code == code
 
 
@@ -241,9 +241,27 @@ async def test_dhl_falls_back_to_the_website_if_the_key_is_refused():
             return httpx.Response(200, json=web_answer())
         return httpx.Response(403, text="no")
 
-    assert (await run_dhl(handler, api_key="refused")).status is Status.IN_TRANSIT
+    assert (await run_dhl(handler, api_key="refused", prefer="api")).status is Status.IN_TRANSIT
+
+
+@pytest.mark.anyio
+async def test_dhl_prefers_the_website_and_keeps_the_api_in_reserve():
+    hosts = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        hosts.append(req.url.host)
+        if req.url.host == "www.dhl.de":
+            return httpx.Response(404, text="<html>Not Found</html>")
+        return httpx.Response(200, json=json.loads((FIXTURES / "dhl_transit.json").read_text()))
+
+    assert (await run_dhl(handler, api_key="k")).status is Status.OUT_FOR_DELIVERY
+    assert hosts[0] == "www.dhl.de"
+    assert hosts[-1] == "api-eu.dhl.com"
 
 
 def test_dhl_budget_depends_on_the_way_it_asks():
     assert DHL.budget({}) == 1000
-    assert DHL.budget({"api_key": "k"}) == 250
+    assert DHL.budget({"api_key": "k"}) == 1000
+    assert DHL.budget({"api_key": "k", "prefer": "api"}) == 250
+    assert DHL.source({"api_key": "k"}) == "website_api"
+    assert DHL.source({"prefer": "api"}) == "website"

@@ -542,13 +542,26 @@
             {#each carrier.settings_fields as field}
               <label class="field">
                 <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)}</span>
-                <input
-                  type={field.type === "secret" ? "password" : "text"}
-                  class="mono"
-                  autocomplete="off"
-                  placeholder={field.placeholder}
-                  bind:value={own[field.key]}
-                />
+                {#if field.type === "choice"}
+                  <select
+                    value={own[field.key] || field.options[0]}
+                    onchange={(event) => (own[field.key] = event.currentTarget.value)}
+                  >
+                    {#each field.options as option}
+                      <option value={option}>
+                        {tOr(`carrier.${carrier.id}.settings.${field.key}.option.${option}`, option)}
+                      </option>
+                    {/each}
+                  </select>
+                {:else}
+                  <input
+                    type={field.type === "secret" ? "password" : "text"}
+                    class="mono"
+                    autocomplete="off"
+                    placeholder={field.placeholder}
+                    bind:value={own[field.key]}
+                  />
+                {/if}
                 <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
               </label>
             {/each}

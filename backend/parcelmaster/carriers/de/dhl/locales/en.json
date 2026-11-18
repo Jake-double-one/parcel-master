@@ -2,7 +2,15 @@
   "settings": {
     "api_key": {
       "label": "API key",
-      "help": "Optional. Without a key Parcel Master reads the tracking of dhl.de. With a key for the \"Shipment Tracking - Unified\" API from developer.dhl.com it uses that instead."
+      "help": "Optional. A key for the \"Shipment Tracking - Unified\" API from developer.dhl.com. Without it Parcel Master reads the tracking of dhl.de."
+    },
+    "prefer": {
+      "label": "Preferred way",
+      "help": "Only matters if an API key is entered. If the preferred way fails, the other one is tried.",
+      "option": {
+        "website": "dhl.de first, then the API",
+        "api": "The API first, then dhl.de"
+      }
     },
     "default_postal_code": {
       "label": "Your postal code",
@@ -16,7 +24,8 @@
     }
   },
   "source": {
-    "api": "API, else dhl.de",
-    "website": "dhl.de"
+    "website": "dhl.de",
+    "website_api": "dhl.de, else API",
+    "api_website": "API, else dhl.de"
   }
 }
