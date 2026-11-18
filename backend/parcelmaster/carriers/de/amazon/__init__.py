@@ -502,6 +502,17 @@ def _eta(text: str | None, today: date) -> tuple[datetime | None, datetime | Non
     )
 
 
+def promise_line(page: Any) -> str | None:
+    """The headline of a tracking page ("Arriving today 3:45 pm - 5:45 pm"), without its tooltip."""
+    if page is None:
+        return None
+    tag = page.select_one(".pt-promise-main-slot")
+    if tag is None:
+        return None
+    words = " ".join(" ".join(tag.find_all(string=True)).split())
+    return words or None
+
+
 def _link_shape(link: str | None) -> str:
     """A tracking link without its values: enough to see which kind Amazon handed out."""
     if not link:
@@ -579,6 +590,13 @@ def to_shipments(
             if not text and not shipment_id:
                 continue  # Amazon no longer shows this shipment: long delivered
             found = tracking.get((number, shipment_id or f"{number}/{index}"))
+            # The parcel's own page is the fresher source: its headline carries
+            # the window as it is now, the order list the one from earlier.
+            headline = promise_line(getattr(found, "parsed", None))
+            if headline and (
+                parse_status(headline) is not Status.UNKNOWN or _eta(headline, today)[0]
+            ):
+                text = headline
             link = getattr(shipment, "tracking_link", None) or ""
             if link.startswith("/"):
                 link = f"https://www.{DOMAIN}{link}"

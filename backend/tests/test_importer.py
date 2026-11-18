@@ -834,3 +834,43 @@ def test_an_order_is_followed_closely_while_the_shop_brings_its_parcel(world, mo
     assert [n.kind for n in notices] == ["delivered"]
     follow()
     assert fetched == ["302-1"]  # arrived: nothing left to follow
+
+
+def test_the_headline_of_the_tracking_page_outranks_the_order_list():
+    from types import SimpleNamespace
+
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import promise_line, to_shipments
+
+    def page(html):
+        return SimpleNamespace(
+            carrier="Amazon", tracking_number="DE1", parsed=BeautifulSoup(html, "html.parser")
+        )
+
+    fresh = page(
+        '<h1 class="pt-promise-main-slot">Arriving today <span class="nowrap">3:45 pm - 5:45 pm'
+        '<a title="Windows may change." href="#"><div class="pt-pdw-info-icon"></div></a>'
+        "</span></h1>"
+    )
+    assert promise_line(fresh.parsed) == "Arriving today 3:45 pm - 5:45 pm"
+
+    def read(found):
+        shipment = SimpleNamespace(
+            delivery_status="Arriving today 3:30 pm - 5:30 pm",
+            shipment_id="S1",
+            tracking_link=None,
+            items=[],
+        )
+        orders = [
+            SimpleNamespace(order_number="302-1", cancelled=False, items=[], shipments=[shipment])
+        ]
+        (found_shipment,) = to_shipments(orders, {("302-1", "S1"): found}, date(2026, 11, 18))
+        return found_shipment.parcels[0]
+
+    parcel = read(fresh)
+    assert parcel.description == "Arriving today 3:45 pm - 5:45 pm"
+    assert parcel.eta_from == datetime(2026, 11, 18, 15, 45)
+    # A headline that cannot be read (another language, a new wording) changes nothing.
+    german = page('<h1 class="pt-promise-main-slot">Zustellung heute 15:45 - 17:45</h1>')
+    assert read(german).eta_from == datetime(2026, 11, 18, 15, 30)
