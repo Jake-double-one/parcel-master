@@ -43,6 +43,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
+export interface LogReport {
+  level: string;
+  entries: { time: string; level: string; source: string; message: string }[];
+}
+
 export interface TestReport {
   apprise: { ok: boolean } | null;
   push: { ok: boolean; sent: number; subscriptions: number; error: string } | null;
@@ -75,6 +80,7 @@ export const api = {
     request<void>("POST", "/api/push/subscriptions", subscription),
   pushUnsubscribe: (endpoint: string) => request<void>("POST", "/api/push/unsubscribe", { endpoint }),
   status: () => request<SystemStatus>("GET", "/api/status"),
+  log: () => request<LogReport>("GET", "/api/log"),
   takeNotices: () => request<{ auto_archived: number }>("POST", "/api/notices/take"),
   syncImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/sync`),
   connectImporter: (id: string, credentials: Record<string, string>) =>

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+from time import monotonic
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -280,9 +281,22 @@ async def refresh_parcel(
         language=settings["language"],
         created_at=parse_iso(parcel["created_at"]) or now,
     )
+    started = monotonic()
+
+    def took() -> str:
+        return f"{monotonic() - started:.1f}s"
+
     try:
         result = await module.track(request, http)
     except CarrierError as error:
+        log.warning(
+            "%s %s: %s%s after %s",
+            module.id,
+            request.tracking_number,
+            error.code,
+            f" ({error.detail})" if error.detail else "",
+            took(),
+        )
         if error.code == "unauthorized":
             retry = 6 * 60
         elif error.code == "rate_limited":
@@ -297,6 +311,14 @@ async def refresh_parcel(
         log.exception("carrier module %s failed", module.id)
         return fail("module_error", type(error).__name__, base)
 
+    log.info(
+        "%s %s: %s, %d events, after %s",
+        module.id,
+        request.tracking_number,
+        result.status.value,
+        len(result.events),
+        took(),
+    )
     return record_result(store, parcel, result, base, zone, now)
 
 

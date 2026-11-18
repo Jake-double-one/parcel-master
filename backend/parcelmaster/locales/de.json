@@ -209,7 +209,13 @@
     "app_ready": "Legt Parcel Master auf den Startbildschirm, mit eigenem Fenster und Benachrichtigungen.",
     "app_installed": "Läuft als installierte App.",
     "app_ios": "Auf iPhone und iPad: Seite in Safari öffnen, auf Teilen tippen, dann „Zum Home-Bildschirm“.",
-    "app_manual": "Öffne das Browser-Menü und wähl „App installieren“ oder „Zum Startbildschirm hinzufügen“. Ist sie schon installiert, öffne sie von dort."
+    "app_manual": "Öffne das Browser-Menü und wähl „App installieren“ oder „Zum Startbildschirm hinzufügen“. Ist sie schon installiert, öffne sie von dort.",
+    "log": "Protokoll",
+    "log_help": "Neueste Zeilen zuerst. Stufe: {level}. Für mehr Details am Container PM_LOG_LEVEL=debug setzen.",
+    "log_empty": "Noch nichts protokolliert.",
+    "log_copy": "Kopieren",
+    "log_copied": "Kopiert ✓",
+    "log_reload": "Neu laden"
   },
   "login": {
     "password": "Passwort",

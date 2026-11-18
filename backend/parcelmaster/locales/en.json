@@ -209,7 +209,13 @@
     "app_ready": "Puts Parcel Master on the home screen, with its own window and notifications.",
     "app_installed": "Running as an installed app.",
     "app_ios": "On iPhone and iPad: open this page in Safari, tap Share, then \"Add to Home Screen\".",
-    "app_manual": "Open the browser menu and choose \"Install app\" or \"Add to home screen\". If it is already installed, open it from there."
+    "app_manual": "Open the browser menu and choose \"Install app\" or \"Add to home screen\". If it is already installed, open it from there.",
+    "log": "Log",
+    "log_help": "The newest lines first. Level: {level}. Set PM_LOG_LEVEL=debug on the container for more detail.",
+    "log_empty": "Nothing logged yet.",
+    "log_copy": "Copy",
+    "log_copied": "Copied ✓",
+    "log_reload": "Reload"
   },
   "login": {
     "password": "Password",

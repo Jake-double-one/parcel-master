@@ -25,6 +25,8 @@ from .carriers.registry import Registry, discover
 from .config import Config
 from .db import Store, merge, now_iso
 from .i18n import Translations
+from .journal import JOURNAL
+from .journal import setup as setup_logging
 from .notify import Notifier, vapid_keys
 from .scheduler import Scheduler
 from .sessions import COOKIE, DEMO_TTL, LOGIN_TTL, DemoSessions, LoginThrottle, Signer
@@ -95,6 +97,7 @@ def fail(status: int, code: str, **extra: Any) -> HTTPException:
 
 
 def create_app(config: Config) -> FastAPI:
+    log_level = setup_logging()
     registry = discover()
     store = Store(config.data_dir / "parcelmaster.db")
     translations = Translations(registry.locales, config.data_dir / "locales")
@@ -747,6 +750,15 @@ def create_app(config: Config) -> FastAPI:
         ctx.store.remove_push_subscription(endpoint)
 
     # -- status, export, import -------------------------------------------
+
+    @app.get("/api/log")
+    def log_entries(ctx: RealContext) -> dict[str, Any]:
+        import logging
+
+        return {
+            "level": logging.getLevelName(log_level).lower(),
+            "entries": list(reversed(JOURNAL.entries)),
+        }
 
     @app.get("/api/status")
     def status(ctx: Context) -> dict[str, Any]:

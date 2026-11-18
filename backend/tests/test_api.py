@@ -608,3 +608,15 @@ def test_device_test_only_reaches_that_browser(client, monkeypatch):
         "/api/notifications/test", json={"endpoint": "https://push.example/none"}
     ).json()
     assert unknown["push"] is None
+
+
+def test_log_shows_what_the_server_did(client):
+    import logging
+
+    logging.getLogger("parcelmaster.tracking").warning("de.dhl 123: unavailable (dhl.de: HTTP 404)")
+    report = client.get("/api/log").json()
+    assert report["level"] == "info"
+    newest = report["entries"][0]
+    assert newest["level"] == "warning"
+    assert newest["source"] == "tracking"
+    assert "HTTP 404" in newest["message"]

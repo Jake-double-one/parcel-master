@@ -81,6 +81,7 @@ environment only holds what belongs to the deployment:
 | `PM_PUSH_CONTACT` | `mailto:parcelmaster@localhost` | Contact address sent to browser push services. Use a real `mailto:` or `https:` address of yours. |
 | `PM_DATA_DIR` | `/data` | Where the database and extra language files live. |
 | `PM_SCHEDULER` | `true` | Run the background checks. |
+| `PM_LOG_LEVEL` | `info` | How much goes into the log (`debug`, `info`, `warning`). The newest lines are also shown under Settings → Status → Log. |
 
 Without `PM_PASSWORD` anyone who can reach the port can read and change
 everything, including stored API keys. Do not expose it directly.

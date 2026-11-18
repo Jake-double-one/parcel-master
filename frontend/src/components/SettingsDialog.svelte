@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, ApiError } from "../lib/api";
+  import { api, ApiError, type LogReport } from "../lib/api";
   import { ago, until } from "../lib/format";
   import { i18n, t, tOr } from "../lib/i18n.svelte";
   import { install } from "../lib/install.svelte";
@@ -54,6 +54,28 @@
   let saveState = $state<"idle" | "saving" | "saved">("idle");
   let testState = $state("");
   let deviceTest = $state("");
+  let journal = $state<LogReport | null>(null);
+  let copied = $state(false);
+
+  async function loadJournal() {
+    try {
+      journal = await api.log();
+    } catch (caught) {
+      fail(caught);
+    }
+  }
+
+  function journalText(): string {
+    return (journal?.entries ?? [])
+      .map((entry) => `${entry.time} ${entry.level.toUpperCase()} ${entry.source}: ${entry.message}`)
+      .join("\n");
+  }
+
+  async function copyJournal() {
+    await navigator.clipboard.writeText(journalText());
+    copied = true;
+    setTimeout(() => (copied = false), 2000);
+  }
   let importState = $state("");
   let error = $state("");
   let working = $state("");
@@ -699,6 +721,38 @@
           {/if}
         </section>
       {/each}
+
+      {#if !meta.demo}
+        <details class="journal" ontoggle={(event) => event.currentTarget.open && loadJournal()}>
+          <summary>
+            <svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M3 1l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.6" />
+            </svg>
+            {t("settings.log")}
+          </summary>
+          {#if journal}
+            <p class="note">{t("settings.log_help", { level: journal.level })}</p>
+            <div class="row">
+              <button type="button" class="chip" onclick={loadJournal}>{t("settings.log_reload")}</button>
+              <button type="button" class="chip" onclick={copyJournal} disabled={!journal.entries.length}>
+                {copied ? t("settings.log_copied") : t("settings.log_copy")}
+              </button>
+            </div>
+            {#if journal.entries.length}
+              <ol class="lines">
+                {#each journal.entries as entry}
+                  <li class:warn={entry.level === "warning"} class:bad={entry.level === "error"}>
+                    <span class="when">{new Date(entry.time).toLocaleTimeString()}</span>
+                    <span class="what">{entry.source}: {entry.message}</span>
+                  </li>
+                {/each}
+              </ol>
+            {:else}
+              <p class="note">{t("settings.log_empty")}</p>
+            {/if}
+          {/if}
+        </details>
+      {/if}
     {:else if tab === "data"}
       <div class="row">
         <button type="button" class="chip" onclick={exportData}>{t("settings.export")}</button>
@@ -731,6 +785,50 @@
 </dialog>
 
 <style>
+  .journal {
+    margin-top: 22px;
+  }
+
+  .journal .note {
+    margin: 10px 0;
+  }
+
+  .lines {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    max-height: 50vh;
+    overflow: auto;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-field);
+    font-family: var(--mono);
+    font-size: 0.72rem;
+  }
+
+  .lines li {
+    display: flex;
+    gap: 10px;
+    padding: 3px 0;
+  }
+
+  .lines .when {
+    flex: 0 0 auto;
+    color: var(--muted);
+  }
+
+  .lines .what {
+    overflow-wrap: anywhere;
+  }
+
+  .lines .warn .what {
+    color: var(--warn);
+  }
+
+  .lines .bad .what {
+    color: var(--alert);
+  }
+
   .tabs {
     padding: 12px clamp(18px, 4vw, 28px);
     border-bottom: 1px solid var(--line);

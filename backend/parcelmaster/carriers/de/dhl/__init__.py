@@ -7,6 +7,7 @@ Unified" API instead, which DHL hands out only on request.
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import date, datetime, time
 from typing import Any
@@ -23,6 +24,8 @@ from parcelmaster.carriers.base import (
     TrackRequest,
 )
 from parcelmaster.status import Status
+
+log = logging.getLogger(__name__)
 
 API_URL = "https://api-eu.dhl.com/track/shipments"
 
@@ -325,6 +328,7 @@ class DhlDe(CarrierModule):
             )
             token = config.json().get("verfolgenCsrfToken")
             if not token:
+                log.warning("dhl.de: no form token in /config (HTTP %s)", config.status_code)
                 return None
             response = await http.post(
                 f"{WEB_URL}/shipment",
@@ -337,20 +341,40 @@ class DhlDe(CarrierModule):
                 headers={"Accept": "application/json", "verfolgen-csrf-token": token},
             )
             return parse_web_response(self._web_json(response))
-        except (httpx.HTTPError, CarrierError, ValueError, AttributeError):
+        except (httpx.HTTPError, CarrierError, ValueError, AttributeError) as error:
+            log.warning(
+                "dhl.de: the postal code step failed for %s (%s: %s); keeping the plain answer",
+                request.tracking_number,
+                type(error).__name__,
+                error,
+            )
             return None
 
     @staticmethod
     def _web_json(response: httpx.Response) -> Any:
+        kind = response.headers.get("content-type", "")
+        if response.status_code >= 300 or "json" not in kind:
+            log.warning(
+                "dhl.de answered %s %s with HTTP %s (%s, server %s): %r",
+                response.request.method,
+                response.request.url.path,
+                response.status_code,
+                kind or "no content type",
+                response.headers.get("server", "?"),
+                response.text[:300],
+            )
         if response.status_code == 429:
             raise CarrierError("rate_limited")
-        if response.status_code >= 400:
-            # The site also answers 404 when it turns an automated request away.
+        if response.status_code >= 300:
+            # The site also answers 404, or a redirect to an error page, when it
+            # turns an automated request away.
             raise CarrierError("unavailable", f"dhl.de: HTTP {response.status_code}")
         try:
-            return response.json()
+            payload = response.json()
         except ValueError as error:
             raise CarrierError("invalid_response", "dhl.de: not JSON") from error
+        log.debug("dhl.de %s: %s", response.request.url.path, response.text[:4000])
+        return payload
 
 
 MODULE = DhlDe()
