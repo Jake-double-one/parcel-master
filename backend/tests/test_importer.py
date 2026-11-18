@@ -645,3 +645,26 @@ def test_a_parcel_without_a_tracking_page_is_still_read():
     found = SimpleNamespace(carrier="DHL", tracking_number="JJD1", parsed=None)
     client = SimpleNamespace(config=None, _parse_tracking=lambda parsed, config: found)
     assert _read_tracking(client, session, "028-1", linked) is found
+
+
+def test_carrier_and_number_are_read_from_the_words_if_the_markup_is_unknown():
+    from types import SimpleNamespace
+
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import tracking_facts
+
+    def page(html):
+        soup = BeautifulSoup(html, "html.parser")
+        return SimpleNamespace(carrier=None, tracking_number=None, parsed=soup)
+
+    german = page(
+        "<div><h2>Versendet mit DHL</h2><p>Trackingnummer JJD000390016811040829</p></div>"
+    )
+    assert tracking_facts(german) == ("DHL", "JJD000390016811040829")
+    english = page("<div><h2>Shipped with DHL</h2><span>Tracking ID: JJD0003900168</span></div>")
+    assert tracking_facts(english) == ("DHL", "JJD0003900168")
+    assert tracking_facts(page("<p>Arriving Monday</p>")) == (None, None)
+    known = SimpleNamespace(carrier="UPS", tracking_number="1Z999", parsed=None)
+    assert tracking_facts(known) == ("UPS", "1Z999")
+    assert tracking_facts(None) == (None, None)

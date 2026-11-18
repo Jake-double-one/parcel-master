@@ -360,6 +360,48 @@ def describe_item(item: Any) -> str:
     return f"{quantity} × {title}" if isinstance(quantity, int) and quantity > 1 else title
 
 
+# The library finds carrier and number by the page's markup, which differs
+# between Amazon's page variants. The words next to them are steadier.
+_CARRIER_WORDS = re.compile(
+    r"(?:Shipped with|Delivered by|Delivery by|Versendet mit|Versand durch|Zugestellt von"
+    r"|Lieferung durch)\s+([A-Z][\w.&-]*(?: (?!Tracking|Sendungs|Alle|See|All)[A-Z][\w.&-]*){0,2})"
+)
+_NUMBER_WORDS = re.compile(
+    r"(?:Tracking ID|Tracking number|Tracking-ID|Trackingnummer|Sendungsnummer)\s*:?\s*"
+    r"([A-Z0-9]{8,40})\b"
+)
+
+
+def tracking_facts(found: Any) -> tuple[str | None, str | None]:
+    """Carrier and tracking number of a tracking page: the library's reading, else the words."""
+    carrier = getattr(found, "carrier", None)
+    number = getattr(found, "tracking_number", None)
+    page = getattr(found, "parsed", None)
+    if page is not None and not (carrier and number):
+        text = " ".join(page.get_text(" ", strip=True).split())
+        if not carrier and (match := _CARRIER_WORDS.search(text)):
+            carrier = match.group(1)
+        if not number and (match := _NUMBER_WORDS.search(text)):
+            number = match.group(1)
+    return carrier or None, number or None
+
+
+def _page_clues(page: Any) -> str:
+    """What a tracking page is made of, for the log, when it could not be read."""
+    if page is None:
+        return "no page"
+    names = sorted(
+        {
+            name
+            for tag in page.find_all(True)
+            for name in (tag.get("class") or [])
+            if re.search(r"track|event|milestone|carrier|delivery|progress", name, re.I)
+        }
+    )
+    text = " ".join(page.get_text(" ", strip=True).split())
+    return f"classes {names[:60]}; text {text[:1500]!r}"
+
+
 def _link_shape(link: str | None) -> str:
     """A tracking link without its values: enough to see which kind Amazon handed out."""
     if not link:
@@ -390,15 +432,19 @@ def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) 
             "amazon %s: tracking page (%s) failed: %s", order_number, shape, _first_line(error)
         )
         return None
+    carrier, number = tracking_facts(found)
+    lines = len(parse_events(getattr(found, "parsed", None), date.today()) or [])
     log.info(
         "amazon %s: tracking link %s, shipment id %s -> carrier %r, number %r, %d history lines",
         order_number,
         shape,
         "yes" if shipment.shipment_id else "no",
-        getattr(found, "carrier", None),
-        getattr(found, "tracking_number", None),
-        len(parse_events(getattr(found, "parsed", None), date.today()) or []),
+        carrier,
+        number,
+        lines,
     )
+    if found is not None and not (carrier and number and lines):
+        log.info("amazon %s: page %s", order_number, _page_clues(getattr(found, "parsed", None)))
     return found
 
 
@@ -437,8 +483,8 @@ def to_shipments(
                     description=text,
                     eta_from=parse_eta(text, today),
                     status_time=parse_delivery_day(text, today),
-                    carrier_name=getattr(found, "carrier", None),
-                    tracking_number=getattr(found, "tracking_number", None),
+                    carrier_name=tracking_facts(found)[0],
+                    tracking_number=tracking_facts(found)[1],
                     url=link
                     or f"https://www.{DOMAIN}/gp/your-account/order-details?orderID={number}",
                     items=[
