@@ -7,7 +7,7 @@ import pytest
 
 from parcelmaster.carriers.base import CarrierError, TrackRequest
 from parcelmaster.carriers.de.dhl import MODULE as DHL
-from parcelmaster.carriers.de.dhl import parse_response, parse_web_response
+from parcelmaster.carriers.de.dhl import parse_parcel_de, parse_response, parse_web_response
 from parcelmaster.carriers.demo import MODULE as DEMO
 from parcelmaster.carriers.registry import discover
 from parcelmaster.status import Status, aggregate
@@ -222,6 +222,8 @@ def test_dhl_budget_depends_on_the_way_it_asks():
     assert DHL.budget({}) == 1000
     assert DHL.budget({"api_key": "k"}) == 1000
     assert DHL.budget({"api_key": "k", "prefer": "api"}) == 250
+    assert DHL.budget({"api_key": "k", "api_secret": "s", "prefer": "api"}) == 1000
+    assert not DHL.scarce({"api_key": "k", "api_secret": "s", "prefer": "api"})
     assert DHL.source({"api_key": "k"}) == "website_api"
     assert DHL.source({"prefer": "api"}) == "website"
 
@@ -302,3 +304,38 @@ async def test_dhl_lets_the_browser_rest_after_a_failed_visit(monkeypatch):
         result = await run_dhl(handler, live="on")
         assert result.status is Status.OUT_FOR_DELIVERY  # the plain answer stands
     assert len(visits) == 1
+
+
+def test_dhl_parcel_de_answer_is_mapped_to_the_common_model():
+    result = parse_parcel_de((FIXTURES / "dhl_parcel_de.xml").read_text())
+    assert result.status is Status.OUT_FOR_DELIVERY
+    assert result.description.startswith("Die Sendung wurde in das Zustellfahrzeug geladen")
+    assert (result.eta_from, result.eta_to) == (
+        datetime(2026, 11, 18, 12, 30),
+        datetime(2026, 11, 18, 14, 0),
+    )
+    assert [(e.timestamp, e.location) for e in result.events][-2:] == [
+        (datetime(2026, 11, 17, 14, 55), "Leipzig"),
+        (datetime(2026, 11, 17, 3, 36), None),
+    ]
+    assert result.events[-1].status is Status.REGISTERED
+    with pytest.raises(CarrierError) as caught:
+        parse_parcel_de('<data><data name="piece-status-public-list" code="100"/></data>')
+    assert caught.value.code == "not_found"
+
+
+@pytest.mark.anyio
+async def test_dhl_with_key_and_secret_asks_parcel_de_tracking():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["host"], seen["auth"] = req.url.host, req.headers["Authorization"]
+        seen["xml"] = req.url.params["xml"]
+        return httpx.Response(200, text=(FIXTURES / "dhl_parcel_de.xml").read_text())
+
+    result = await run_dhl(handler, api_key="key", api_secret="secret", prefer="api")
+    assert result.status is Status.OUT_FOR_DELIVERY
+    assert seen["host"] == "api-eu.dhl.com"
+    assert seen["auth"] == "Basic a2V5OnNlY3JldA=="  # key:secret
+    assert 'piece-code="00340434161094042557" zip-code="50667"' in seen["xml"]
+    assert 'request="get-status-for-public-user"' in seen["xml"]

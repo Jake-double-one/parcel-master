@@ -2,7 +2,11 @@
   "settings": {
     "api_key": {
       "label": "API-Schlüssel",
-      "help": "Optional. Ein Schlüssel der API „Shipment Tracking - Unified“ von developer.dhl.com. Ohne ihn liest Parcel Master die Sendungsverfolgung von dhl.de."
+      "help": "Optional. Der „API Key“ deiner App auf developer.dhl.com. Ohne ihn liest Parcel Master die Sendungsverfolgung von dhl.de."
+    },
+    "api_secret": {
+      "label": "API-Secret",
+      "help": "Das „API Secret“ derselben App. Mit Schlüssel und Secret nutzt Parcel Master die API „Parcel DE Tracking“; sie braucht kein Geschäftskundenkonto. Nur mit Schlüssel wird „Shipment Tracking - Unified“ versucht."
     },
     "prefer": {
       "label": "Bevorzugter Weg",

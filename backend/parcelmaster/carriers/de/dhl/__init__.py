@@ -13,6 +13,8 @@ from datetime import date, datetime, time, timedelta
 from time import monotonic
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from xml.etree import ElementTree
+from xml.sax.saxutils import quoteattr
 
 import httpx
 
@@ -123,6 +125,77 @@ def parse_response(payload: Any) -> TrackingResult:
         events=events,
         eta_from=_parse_time(frame.get("estimatedFrom")) or estimate,
         eta_to=_parse_time(frame.get("estimatedThrough")) or estimate,
+    )
+
+
+PARCEL_DE_URL = "https://api-eu.dhl.com/parcel/de/tracking/v0/shipments"
+_DELIVERED = re.compile(
+    r"wurde (erfolgreich )?zugestellt|zustellung erfolgreich|has been (successfully )?delivered"
+    r"|delivery successful",
+    re.I,
+)
+
+
+def _local_time(value: Any) -> datetime | None:
+    """A time as Parcel DE Tracking writes it: "18.11.2026 10:18", local to Germany."""
+    try:
+        return datetime.strptime(str(value or "").strip(), "%d.%m.%Y %H:%M")
+    except ValueError:
+        return None
+
+
+def _parcel_de_status(node: Any, text: str) -> Status:
+    if node.get("delivery-event-flag") == "1" or _DELIVERED.search(text):
+        return Status.DELIVERED
+    if node.get("ruecksendung") == "true":
+        return Status.RETURNED
+    if node.get("standard-event-code") == "VA":
+        return Status.REGISTERED  # only announced by the sender so far
+    return _web_status(text, None, False, False)
+
+
+def parse_parcel_de(text: str) -> TrackingResult:
+    """Maps the XML of "Parcel DE Tracking" (public status) onto the common model."""
+    try:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError as error:
+        raise CarrierError("invalid_response", "not XML") from error
+    piece = next(
+        (node for node in root.iter("data") if node.get("name") == "piece-status-public"), None
+    )
+    if piece is None or piece.get("error-status") not in (None, "", "0"):
+        raise CarrierError("not_found")
+    events = [
+        TrackingEvent(
+            timestamp=_local_time(node.get("event-timestamp")),
+            status=_parcel_de_status(node, node.get("event-status") or ""),
+            description=(node.get("event-status") or node.get("event-text") or "").strip(),
+            location=(node.get("event-location") or "").strip() or None,
+        )
+        for node in piece.iter("data")
+        if node.get("name") == "piece-event"
+    ]
+    events.reverse()  # newest first, like everywhere else
+    headline = (piece.get("status") or "").strip()
+    description = events[0].description if events and events[0].description else headline
+    status = _parcel_de_status(piece, f"{headline} {description}")
+    eta_from = eta_to = None
+    try:
+        day = datetime.strptime(piece.get("delivery-date") or "", "%d.%m.%Y").date()
+    except ValueError:
+        day = None
+    if day and status is not Status.DELIVERED:
+        start = _local_time(f"{day:%d.%m.%Y} {piece.get('delivery-timeframe-from')}")
+        end = _local_time(f"{day:%d.%m.%Y} {piece.get('delivery-timeframe-to')}")
+        eta_from = start or datetime.combine(day, time(0, 0))
+        eta_to = end or datetime.combine(day, time(23, 59))
+    return TrackingResult(
+        status=status,
+        description=description,
+        location=events[0].location if events else None,
+        events=events,
+        eta_from=eta_from,
+        eta_to=eta_to,
     )
 
 
@@ -338,6 +411,7 @@ class DhlDe(CarrierModule):
     )
     settings_fields = (
         Field("api_key", type="secret"),
+        Field("api_secret", type="secret"),
         Field("prefer", type="choice", options=("website", "api")),
         Field("live", type="choice", options=("off", "on")),
         Field("default_postal_code", placeholder="53113"),
@@ -349,10 +423,18 @@ class DhlDe(CarrierModule):
     def budget(self, settings: dict[str, Any]) -> int | None:
         # The API allows 250 a day. The website names no number; this only
         # keeps a mistake from asking without end.
-        return 250 if self._plan(settings)[0] == "api" else WEB_DAILY_BUDGET
+        return 250 if self._unified_first(settings) else WEB_DAILY_BUDGET
 
     def scarce(self, settings: dict[str, Any]) -> bool:
-        return self._plan(settings)[0] == "api"
+        return self._unified_first(settings)
+
+    def _unified_first(self, settings: dict[str, Any]) -> bool:
+        """Whether the API with the tight quota of 250 a day is asked first.
+
+        "Parcel DE Tracking" names no such quota; if it does slow us down,
+        the module falls back to dhl.de.
+        """
+        return self._plan(settings)[0] == "api" and not settings.get("api_secret")
 
     def source(self, settings: dict[str, Any]) -> str | None:
         return "_".join(self._plan(settings))
@@ -406,6 +488,8 @@ class DhlDe(CarrierModule):
     async def _track_with_api(
         self, request: TrackRequest, http: httpx.AsyncClient
     ) -> TrackingResult:
+        if request.settings.get("api_secret"):
+            return await self._track_with_parcel_de(request, http)
         params = {
             "trackingNumber": request.tracking_number,
             "requesterCountryCode": "DE",
@@ -436,6 +520,44 @@ class DhlDe(CarrierModule):
         except ValueError as error:
             raise CarrierError("invalid_response", "not JSON") from error
         return parse_response(payload)
+
+    async def _track_with_parcel_de(
+        self, request: TrackRequest, http: httpx.AsyncClient
+    ) -> TrackingResult:
+        """ "Parcel DE Tracking", the API of DHL Paket: the app's key and secret are enough
+        for the status every recipient may see."""
+        piece = f"piece-code={quoteattr(request.tracking_number)}"
+        if request.extra.get("postal_code"):
+            # With the recipient's postal code the events name their places.
+            piece += f" zip-code={quoteattr(request.extra['postal_code'].strip())}"
+        language = "de" if request.language == "de" else "en"
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="no"?>'
+            f'<data appname="" language-code="{language}" password="" '
+            f'request="get-status-for-public-user"><data {piece}/></data>'
+        )
+        try:
+            response = await http.get(
+                PARCEL_DE_URL,
+                params={"xml": xml},
+                headers={"Accept": "application/xml"},
+                auth=(request.settings["api_key"], request.settings["api_secret"]),
+            )
+        except httpx.HTTPError as error:
+            raise CarrierError("unavailable", type(error).__name__) from error
+        if response.status_code in (401, 403):
+            raise CarrierError("unauthorized")
+        if response.status_code == 429:
+            raise CarrierError("rate_limited")
+        if response.status_code >= 300:
+            log.warning(
+                "DHL Parcel DE Tracking answered HTTP %s: %r",
+                response.status_code,
+                response.text[:300],
+            )
+            raise CarrierError("unavailable", f"HTTP {response.status_code}")
+        log.debug("DHL Parcel DE Tracking: %s", response.text[:4000])
+        return parse_parcel_de(response.text)
 
     async def _track_on_website(
         self, request: TrackRequest, http: httpx.AsyncClient

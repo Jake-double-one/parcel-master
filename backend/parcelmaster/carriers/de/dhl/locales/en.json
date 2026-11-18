@@ -2,7 +2,11 @@
   "settings": {
     "api_key": {
       "label": "API key",
-      "help": "Optional. A key for the \"Shipment Tracking - Unified\" API from developer.dhl.com. Without it Parcel Master reads the tracking of dhl.de."
+      "help": "Optional. The \"API Key\" of your app at developer.dhl.com. Without it Parcel Master reads the tracking of dhl.de."
+    },
+    "api_secret": {
+      "label": "API secret",
+      "help": "The \"API Secret\" of the same app. With key and secret Parcel Master uses the \"Parcel DE Tracking\" API; it needs no business account. With the key alone, \"Shipment Tracking - Unified\" is tried."
     },
     "prefer": {
       "label": "Preferred way",

@@ -126,7 +126,11 @@ def test_secrets_are_masked_and_survive_an_unrelated_save(client):
         "/api/settings",
         json={"carriers": {"de.dhl": {"api_key": "top-secret", "daily_budget": 100}}},
     ).json()
-    assert saved["carriers"]["de.dhl"] == {"api_key": SECRET_MASK, "daily_budget": 100}
+    assert saved["carriers"]["de.dhl"] == {
+        "api_key": SECRET_MASK,
+        "api_secret": "",
+        "daily_budget": 100,
+    }
     # The browser sends the mask back together with another change.
     client.put(
         "/api/settings",
@@ -428,6 +432,7 @@ def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
     assert dhl()["parcel_defaults"] == {}
     assert [f["key"] for f in dhl()["settings_fields"]] == [
         "api_key",
+        "api_secret",
         "prefer",
         "live",
         "default_postal_code",
