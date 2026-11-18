@@ -642,9 +642,22 @@ def test_a_parcel_without_a_tracking_page_is_still_read():
     client = SimpleNamespace(config=None, _parse_tracking=lambda parsed, config: None)
     session = SimpleNamespace(get=lambda url: SimpleNamespace(parsed=None))
     assert _read_tracking(client, session, "028-1", linked) is None
-    found = SimpleNamespace(carrier="DHL", tracking_number="JJD1", parsed=None)
-    client = SimpleNamespace(config=None, _parse_tracking=lambda parsed, config: found)
-    assert _read_tracking(client, session, "028-1", linked) is found
+
+    from bs4 import BeautifulSoup
+
+    # The card from amazon.de, outside of what the library keeps of the page.
+    html = (
+        '<section class="pt-card delivery-card"><h3>Versendet mit DHL</h3>'
+        '<div class="pt-delivery-card-trackingId">Trackingnummer JJD000390016811040829</div>'
+        "</section>"
+    )
+    session = SimpleNamespace(
+        get=lambda url: SimpleNamespace(parsed=BeautifulSoup(html, "html.parser"))
+    )
+    from parcelmaster.carriers.de.amazon import tracking_facts
+
+    found = _read_tracking(client, session, "028-1", linked)
+    assert tracking_facts(found) == ("DHL", "JJD000390016811040829")
 
 
 def test_carrier_and_number_are_read_from_the_words_if_the_markup_is_unknown():

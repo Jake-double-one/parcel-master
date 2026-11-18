@@ -12,6 +12,7 @@ import importlib.util
 import logging
 import re
 from datetime import date, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -413,20 +414,26 @@ def _link_shape(link: str | None) -> str:
 def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) -> Any:
     """The carrier page of one parcel, or None if Amazon shows none that can be read.
 
-    The library asks by shipment id. Some links carry none; their page is then
-    fetched as it is and read with the same parser.
+    The page is fetched through the parcel's own link and kept whole: the
+    library only keeps the part it knows, and carrier and number may sit
+    outside of it. Without a link the library asks by shipment id.
     """
     link = getattr(shipment, "tracking_link", None)
     shape = _link_shape(link)
     found = None
     try:
-        if shipment.shipment_id:
+        url = f"https://www.{DOMAIN}{link}" if link and link.startswith("/") else link
+        if url and urlparse(url).hostname == f"www.{DOMAIN}":
+            page = session.get(url).parsed
+            known = client._parse_tracking(page, client.config) if page is not None else None
+            if page is not None:
+                found = SimpleNamespace(
+                    carrier=getattr(known, "carrier", None),
+                    tracking_number=getattr(known, "tracking_number", None),
+                    parsed=page,
+                )
+        elif shipment.shipment_id:
             found = client.get_tracking(order_number, shipment.shipment_id)
-        elif link:
-            url = f"https://www.{DOMAIN}{link}" if link.startswith("/") else link
-            if urlparse(url).hostname == f"www.{DOMAIN}":
-                response = session.get(url)
-                found = client._parse_tracking(response.parsed, client.config)
     except Exception as error:  # noqa: BLE001 - a parcel without its page is still a parcel
         log.warning(
             "amazon %s: tracking page (%s) failed: %s", order_number, shape, _first_line(error)
