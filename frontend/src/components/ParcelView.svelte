@@ -55,11 +55,9 @@
         {copied ? t("shipment.copied") : parcel.tracking_number}
       </button>
     </div>
-    <!-- Who delivers it, the same size as the status next to it. -->
-    <div class="tags">
-      <span class="who-delivers">{parcel.carrier_name}</span>
-      {#if showStatus}<StatusTag status={parcel.status} />{/if}
-    </div>
+    {#if showStatus}
+      <div class="tags"><StatusTag status={parcel.status} /></div>
+    {/if}
   </div>
 
   <Rail status={parcel.status} />
@@ -113,10 +111,26 @@
 
   <!-- The buttons keep their place; what they open appears below the row. -->
   <div class="row below">
+    <!-- Who delivers it; the name opens the parcel on that service's website. -->
     {#if parcel.tracking_url}
-      <a class="chip" href={parcel.tracking_url} target="_blank" rel="noopener noreferrer">
-        {t("shipment.open_carrier", { carrier: parcel.site_name })} ↗
+      <a
+        class="chip carrier"
+        href={parcel.tracking_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={t("shipment.open_carrier", { carrier: parcel.site_name })}
+        aria-label={t("shipment.open_carrier", { carrier: parcel.site_name })}
+      >
+        <span class="name">{parcel.site_name}</span>
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+          stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 1.5h3.5V5" />
+          <path d="M10.5 1.5 5.5 6.5" />
+          <path d="M9 7.5v2.25c0 .4-.35.75-.75.75h-6c-.4 0-.75-.35-.75-.75v-6c0-.4.35-.75.75-.75H4.5" />
+        </svg>
       </a>
+    {:else}
+      <span class="chip carrier still"><span class="name">{parcel.carrier_name}</span></span>
     {/if}
     {#if parcel.contents.length}
       <button
@@ -188,18 +202,19 @@
     gap: 6px;
   }
 
-  .who-delivers {
-    font-family: var(--mono);
-    font-size: 0.68rem;
+  .carrier .name {
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--ink);
-    background: var(--surface-2);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 3px 10px;
-    white-space: nowrap;
+  }
+
+  .carrier svg {
+    opacity: 0.75;
+  }
+
+  .carrier.still {
+    cursor: default;
   }
 
   .who {
@@ -304,6 +319,17 @@
 
   .none {
     margin-top: 12px;
+  }
+
+  /* On the narrowest phones the three buttons still share one line. */
+  @media (max-width: 400px) {
+    .below {
+      gap: 6px;
+    }
+
+    .below .chip {
+      padding-inline: 9px;
+    }
   }
 
   @media (max-width: 560px) {

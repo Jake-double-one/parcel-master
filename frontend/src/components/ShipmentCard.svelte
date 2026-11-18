@@ -198,6 +198,13 @@
     border-top: 2px solid var(--line);
   }
 
+  @media (max-width: 400px) {
+    .parcels li {
+      margin-left: 2px;
+      padding-left: 12px;
+    }
+  }
+
   .parcels li + li {
     border-top: 0;
   }
