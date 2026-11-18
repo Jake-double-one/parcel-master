@@ -715,3 +715,27 @@ def test_history_is_read_from_the_window_behind_all_updates():
         (datetime(2026, 11, 18, 4, 32), None),
         (datetime(2026, 11, 18, 9, 35), "DE"),
     ]
+
+
+def test_the_progress_bar_tells_the_step_in_any_language():
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import _settle_status, milestone_status
+
+    def bar(reached, steps=4):
+        return BeautifulSoup(
+            "".join(
+                f'<div class="pt-status-milestone" data-reached="{str(i < reached).lower()}">'
+                '<div class="pt-status-milestone-label">x</div></div>'
+                for i in range(steps)
+            ),
+            "html.parser",
+        )
+
+    assert milestone_status(bar(2)) is Status.IN_TRANSIT
+    assert milestone_status(bar(3)) is Status.OUT_FOR_DELIVERY
+    assert milestone_status(bar(4)) is Status.DELIVERED
+    assert milestone_status(bar(2, steps=5)) is None  # an unknown bar is not guessed at
+    assert _settle_status(Status.UNKNOWN, bar(3)) is Status.OUT_FOR_DELIVERY
+    assert _settle_status(Status.PROBLEM, bar(2)) is Status.PROBLEM
+    assert _settle_status(Status.IN_TRANSIT, None) is Status.IN_TRANSIT

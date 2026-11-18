@@ -422,6 +422,36 @@ def _page_clues(page: Any) -> str:
     return f"classes {names[:60]}; text {text[:1500]!r}"
 
 
+#: The four steps of the progress bar on the tracking page, whatever the language.
+_MILESTONES = (Status.REGISTERED, Status.IN_TRANSIT, Status.OUT_FOR_DELIVERY, Status.DELIVERED)
+
+
+def milestone_status(page: Any) -> Status | None:
+    """The step the tracking page's progress bar has reached, if it shows the usual four."""
+    if page is None:
+        return None
+    steps = [
+        tag for tag in page.find_all(True) if "pt-status-milestone" in (tag.get("class") or [])
+    ]
+    if len(steps) != len(_MILESTONES):
+        return None
+    reached = [i for i, step in enumerate(steps) if step.get("data-reached") == "true"]
+    return _MILESTONES[max(reached)] if reached else None
+
+
+def _settle_status(from_text: Status, page: Any) -> Status:
+    """The status line names special cases; for the plain course the progress bar is surer."""
+    step = milestone_status(page)
+    if step is None or from_text in (
+        Status.PROBLEM,
+        Status.RETURNED,
+        Status.READY_FOR_PICKUP,
+        Status.DELIVERED,
+    ):
+        return from_text
+    return step
+
+
 def _link_shape(link: str | None) -> str:
     """A tracking link without its values: enough to see which kind Amazon handed out."""
     if not link:
@@ -505,7 +535,7 @@ def to_shipments(
             parcels.append(
                 ImportedParcel(
                     key=shipment_id or f"{number}/{index}",
-                    status=parse_status(text),
+                    status=_settle_status(parse_status(text), getattr(found, "parsed", None)),
                     description=text,
                     eta_from=parse_eta(text, today),
                     status_time=parse_delivery_day(text, today),
