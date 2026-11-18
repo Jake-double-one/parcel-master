@@ -565,6 +565,17 @@
     margin-right: auto;
   }
 
+  /* On a phone the name gets a line of its own and the menu sits below it. */
+  @media (max-width: 520px) {
+    .top {
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      flex-basis: 100%;
+    }
+  }
+
   .brand span {
     color: var(--sun);
   }
