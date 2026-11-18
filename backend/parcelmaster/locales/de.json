@@ -333,7 +333,7 @@
   "scanner": {
     "open": "Code mit der Kamera scannen",
     "title": "Code scannen",
-    "hint": "Halt den Strichcode oder QR-Code des Etiketts vor die Kamera.",
+    "hint": "Halt den Strichcode der Sendungsnummer in den Rahmen. Andere Codes auf dem Etikett werden übersprungen.",
     "unknown": "Gelesen, aber keine bekannte Sendungsnummer:",
     "blocked": "Die Kamera ist für diese Seite blockiert. Erlaub sie in den Browser-Einstellungen.",
     "no_camera": "Auf diesem Gerät wurde keine Kamera gefunden.",

@@ -230,6 +230,41 @@ textarea::placeholder {
   width: 9ch;
 }
 
+/* The scan button sits inside the field, at its right edge. */
+.with-scan {
+  position: relative;
+  display: block;
+}
+
+.with-scan input {
+  padding-right: 52px;
+}
+
+.scan {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 48px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0 var(--r-field) var(--r-field) 0;
+  cursor: pointer;
+}
+
+.scan:hover {
+  color: var(--ink);
+}
+/* A card the user was just led to. */
+.card.found {
+  outline: 2px solid var(--sun);
+  outline-offset: 3px;
+}
+
 /* Hint: gold edge informs, red edge says something is wrong. */
 .hint {
   display: flex;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { t } from "../lib/i18n.svelte";
-  import { createDetector, type Detector } from "../lib/scanner";
+  import { aimAt, createDetector, type Detector } from "../lib/scanner";
 
   /**
    * Shows the camera and reports what it reads. `onread` decides whether a
@@ -43,9 +43,12 @@
             : t("scanner.failed");
       return;
     }
+    const canvas = document.createElement("canvas");
     while (!stopped) {
       try {
-        for (const code of await detector.detect(video)) {
+        // Only what lies inside the band counts, so the code aimed at is the one read.
+        const codes = aimAt(video, canvas) ? await detector.detect(canvas) : [];
+        for (const code of codes) {
           const text = code.rawValue.trim();
           if (!text || rejected.has(text)) continue;
           if (await onread(text)) {
@@ -91,7 +94,10 @@
     {/if}
     <!-- The video stays in the page even after a failure: the camera start refers to it. -->
     <!-- svelte-ignore a11y_media_has_caption -->
-    <video bind:this={video} class:visually-hidden={!!problem} playsinline muted></video>
+    <div class="view" class:visually-hidden={!!problem}>
+      <video bind:this={video} playsinline muted></video>
+      <div class="band" aria-hidden="true"></div>
+    </div>
     {#if !problem}
       <p class="note">{t("scanner.hint")}</p>
       {#if last}
@@ -104,15 +110,35 @@
 </dialog>
 
 <style>
-  video {
-    display: block;
-    width: 100%;
+  .view {
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: 1;
     max-height: 60dvh;
-    object-fit: cover;
+    width: 100%;
     background: var(--surface-2);
     border: 1px solid var(--line);
     border-radius: var(--r-field);
     margin-bottom: 12px;
+  }
+
+  video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* The aiming band: one code goes in here, the rest of the picture is dimmed. */
+  .band {
+    position: absolute;
+    left: 3%;
+    right: 3%;
+    top: 33%;
+    height: 34%;
+    border: 2px solid var(--sun);
+    border-radius: var(--r-hint);
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5);
   }
 
   .unknown {

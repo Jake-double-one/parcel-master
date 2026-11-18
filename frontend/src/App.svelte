@@ -7,6 +7,8 @@
   import { api, ApiError } from "./lib/api";
   import { browserLanguage, i18n, t, tOr } from "./lib/i18n.svelte";
   import { groupOf, groupShipments, matches } from "./lib/time";
+  import { cameraAvailable, recognise } from "./lib/scanner";
+  import Scanner from "./components/Scanner.svelte";
   import type { Carrier, Meta, Shipment } from "./lib/types";
 
   const REFRESH_MS = 30_000;
@@ -23,6 +25,8 @@
   let settingsOpen = $state(false);
   let busy = $state<number[]>([]);
   let refreshing = $state<number[]>([]);
+  let scanning = $state(false);
+  const canScan = cameraAvailable();
   const REFRESH_REST_MS = 10_000;
   let toast = $state<{ text: string; action?: { label: string; run: () => void } } | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -54,11 +58,27 @@
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
   }
 
-  function jumpTo(target: Shipment | undefined) {
+  /** A code scanned from the overview: lead to the parcel if it is known, else offer to add it. */
+  async function scanned(text: string): Promise<boolean> {
+    const found = await recognise(text);
+    if (!found) return false;
+    const known = shipments.find((shipment) =>
+      shipment.parcels.some((parcel) => parcel.tracking_number === found.tracking_number),
+    );
+    if (known) jumpTo(known, true);
+    else editing = { shipment: null, prefill: found.tracking_number };
+    return true;
+  }
+
+  function jumpTo(target: Shipment | undefined, mark = false) {
     if (!target) return;
     query = ""; // a filter could be hiding the card
     requestAnimationFrame(() => {
       const card = document.getElementById(`shipment-${target.id}`);
+      if (mark && card) {
+        card.classList.add("found");
+        setTimeout(() => card.classList.remove("found"), 4000);
+      }
       // Show the group heading above the card as well.
       (card?.closest(".group") ?? card)?.scrollIntoView({ behavior: smooth(), block: "start" });
     });
@@ -295,13 +315,33 @@
     {/if}
 
     <div class="row tools">
-      <input
-        type="search"
-        class="search"
-        placeholder={t("overview.search")}
-        aria-label={t("overview.search")}
-        bind:value={query}
-      />
+      <span class="with-scan search">
+        <input
+          type="search"
+          placeholder={t("overview.search")}
+          aria-label={t("overview.search")}
+          bind:value={query}
+        />
+        {#if canScan && !showArchive}
+          <button
+            type="button"
+            class="scan"
+            aria-label={t("scanner.open")}
+            title={t("scanner.open")}
+            onclick={() => (scanning = true)}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v2h-2zM16 16h2v2h-2zM14 18h2v2h-2zM18 18h2v2h-2z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        {/if}
+      </span>
       {#if !showArchive}
         <button
           type="button"
@@ -402,6 +442,10 @@
       <path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" />
     </svg>
   </button>
+{/if}
+
+{#if scanning}
+  <Scanner onread={scanned} onclose={() => (scanning = false)} />
 {/if}
 
 {#if toast}

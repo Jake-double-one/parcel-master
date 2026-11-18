@@ -2,7 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { api, ApiError } from "../lib/api";
   import { t, tOr } from "../lib/i18n.svelte";
-  import { cameraAvailable } from "../lib/scanner";
+  import { cameraAvailable, recognise } from "../lib/scanner";
   import type { Carrier, Direction, ParcelDraft, Shipment, ShipmentDraft } from "../lib/types";
   import Scanner from "./Scanner.svelte";
 
@@ -54,11 +54,11 @@
   async function scanned(text: string): Promise<boolean> {
     const index = scanning;
     if (index === null || !parcels[index]) return true;
-    const { matches } = await api.detect(text).catch(() => ({ matches: [] }));
-    if (!matches.length) return false;
-    parcels[index].carrier = matches[0].carrier;
-    parcels[index].tracking_number = matches[0].tracking_number;
-    hints[index] = t("dialog.detected", { carrier: carrierOf(matches[0].carrier)?.name ?? "" });
+    const found = await recognise(text);
+    if (!found) return false;
+    parcels[index].carrier = found.carrier;
+    parcels[index].tracking_number = found.tracking_number;
+    hints[index] = t("dialog.detected", { carrier: carrierOf(found.carrier)?.name ?? "" });
     applyDefaults();
     return true;
   }
@@ -414,36 +414,6 @@
     height: 1px;
     overflow: hidden;
     clip-path: inset(50%);
-  }
-
-  /* The scan button sits inside the field, at its right edge. */
-  .with-scan {
-    position: relative;
-    display: block;
-  }
-
-  .with-scan :global(input) {
-    padding-right: 52px;
-  }
-
-  .scan {
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 48px;
-    display: grid;
-    place-items: center;
-    color: var(--muted);
-    background: none;
-    border: 0;
-    border-left: 1px solid var(--line);
-    border-radius: 0 var(--r-field) var(--r-field) 0;
-    cursor: pointer;
-  }
-
-  .scan:hover {
-    color: var(--ink);
   }
 
   .imported {
