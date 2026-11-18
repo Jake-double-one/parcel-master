@@ -140,58 +140,17 @@ def test_dhl_website_states():
 
 
 @pytest.mark.anyio
-async def test_dhl_without_key_visits_the_website_like_the_page_does():
-    calls = []
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        name = req.url.path.rsplit("/", 1)[1]
-        calls.append(name)
-        assert "DHL-API-Key" not in req.headers
-        if name == "config":
-            assert "Cookie" not in req.headers  # every visit starts fresh
-            return httpx.Response(
-                200, json={"verfolgenCsrfToken": "first"}, headers={"Set-Cookie": "visit=1; Path=/"}
-            )
-        assert req.headers["Cookie"] == "visit=1"
-        if name == "search":
-            assert req.headers["Verfolgen-CSRF-Token"] == "first"
-            assert req.url.params["piececode"] == "00340434161094042557"
-            return httpx.Response(
-                200, json=web_answer(), headers={"Verfolgen-CSRF-Token": "second"}
-            )
-        assert req.headers["Verfolgen-CSRF-Token"] == "second"
-        assert json.loads(req.content)["zip"] == "50667"
-        return httpx.Response(200, json=web_answer(fortschritt=4))
-
-    for _ in range(2):
-        result = await run_dhl(handler)
-        assert result.status is Status.OUT_FOR_DELIVERY
-    assert calls == ["config", "search", "shipment"] * 2
-
-
-@pytest.mark.anyio
-async def test_dhl_without_postal_code_asks_once():
+async def test_dhl_without_key_asks_the_website_once():
     calls = []
 
     def handler(req: httpx.Request) -> httpx.Response:
         calls.append(req.url.path.rsplit("/", 1)[1])
+        assert "DHL-API-Key" not in req.headers
+        assert req.url.params["piececode"] == "00340434161094042557"
         return httpx.Response(200, json=web_answer())
 
-    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        plain = request()
-        plain.extra.clear()
-        assert (await DHL.track(plain, http)).status is Status.IN_TRANSIT
-    assert calls == ["search"]
-
-
-@pytest.mark.anyio
-async def test_dhl_website_keeps_the_plain_answer_if_the_postal_code_step_fails():
-    def handler(req: httpx.Request) -> httpx.Response:
-        if req.url.path.endswith("/search"):
-            return httpx.Response(200, json=web_answer())
-        return httpx.Response(403, text="no")
-
     assert (await run_dhl(handler)).status is Status.IN_TRANSIT
+    assert calls == ["search"]
 
 
 @pytest.mark.anyio

@@ -49,7 +49,8 @@ export function until(iso: string, now: Date): string {
 export function eventTime(iso: string | null, now: Date): string {
   if (!iso) return "";
   const date = new Date(iso);
-  return `${dayLabel(date, now)} ${clock(date)}`;
+  // Midnight sharp means the source named a day and no time.
+  return hasTime(date) ? `${dayLabel(date, now)} ${clock(date)}` : dayLabel(date, now);
 }
 
 /** Days left to pick a parcel up, as a short sentence. */

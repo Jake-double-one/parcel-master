@@ -399,6 +399,15 @@ def tracking_facts(found: Any) -> tuple[str | None, str | None]:
     page = getattr(found, "parsed", None)
     if page is not None and not (carrier and number):
         text = " ".join(page.get_text(" ", strip=True).split())
+        if not carrier:
+            # The heading above the history reads "Shipped with DHL", "Dispatched
+            # with DHL", "Versendet mit DHL", ...: the name follows the last such word.
+            for heading in page.select(".tracking-event-carrier-header, .delivery-card h3"):
+                words = " ".join(heading.get_text(" ", strip=True).split())
+                name = re.sub(r"^.*\b(?:with|by|mit|durch|von)\s+", "", words, flags=re.I)
+                if name and name != words and len(name) <= 40:
+                    carrier = name
+                    break
         if not carrier and (match := _CARRIER_WORDS.search(text)):
             carrier = match.group(1)
         if not number and (match := _NUMBER_WORDS.search(text)):
@@ -418,8 +427,10 @@ def _page_clues(page: Any) -> str:
             if re.search(r"track|event|milestone|carrier|delivery|progress", name, re.I)
         }
     )
-    text = " ".join(page.get_text(" ", strip=True).split())
-    return f"classes {names[:60]}; text {text[:1500]!r}"
+    # Only the parcel's own cards: the rest of the page is menus and the account.
+    cards = page.select(".delivery-card, .tracking-event-carrier-header, .pt-status-main-status")
+    text = " | ".join(" ".join(card.get_text(" ", strip=True).split()) for card in cards)
+    return f"classes {names[:60]}; cards {text[:400]!r}"
 
 
 #: The four steps of the progress bar on the tracking page, whatever the language.

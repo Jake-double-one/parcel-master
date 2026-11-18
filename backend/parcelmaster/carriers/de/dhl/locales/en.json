@@ -14,13 +14,13 @@
     },
     "default_postal_code": {
       "label": "Your postal code",
-      "help": "Pre-filled as the recipient postal code of incoming parcels, so DHL shows delivery details."
+      "help": "Pre-filled as the recipient's postal code for incoming parcels. It goes into the \"Open at DHL\" link and to the API, if you use it."
     }
   },
   "parcel": {
     "postal_code": {
       "label": "Recipient postal code",
-      "help": "Optional. DHL only shows delivery details with it."
+      "help": "Optional. Goes into the \"Open at DHL\" link, so DHL shows delivery details there, and to the API, if you use it."
     }
   },
   "source": {

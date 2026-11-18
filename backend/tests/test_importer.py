@@ -677,6 +677,11 @@ def test_carrier_and_number_are_read_from_the_words_if_the_markup_is_unknown():
     assert tracking_facts(german) == ("DHL", "JJD000390016811040829")
     english = page("<div><h2>Shipped with DHL</h2><span>Tracking ID: JJD0003900168</span></div>")
     assert tracking_facts(english) == ("DHL", "JJD0003900168")
+    british = page(
+        '<div class="tracking-event-carrier-header"><h2>Dispatched with DHL</h2></div>'
+        '<div class="pt-delivery-card-trackingId">Tracking ID: JJD0003900168</div>'
+    )
+    assert tracking_facts(british) == ("DHL", "JJD0003900168")
     assert tracking_facts(page("<p>Arriving Monday</p>")) == (None, None)
     known = SimpleNamespace(carrier="UPS", tracking_number="1Z999", parsed=None)
     assert tracking_facts(known) == ("UPS", "1Z999")

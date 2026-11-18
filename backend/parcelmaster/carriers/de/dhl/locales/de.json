@@ -14,13 +14,13 @@
     },
     "default_postal_code": {
       "label": "Deine Postleitzahl",
-      "help": "Wird bei eingehenden Paketen als Postleitzahl des Empfängers vorausgefüllt, damit DHL Zustelldetails zeigt."
+      "help": "Wird bei eingehenden Paketen als Postleitzahl des Empfängers vorausgefüllt. Sie steht dann im Link „Bei DHL öffnen“ und geht an die API, falls du die nutzt."
     }
   },
   "parcel": {
     "postal_code": {
       "label": "Postleitzahl des Empfängers",
-      "help": "Optional. Nur damit zeigt DHL Zustelldetails."
+      "help": "Optional. Steht im Link „Bei DHL öffnen“, damit DHL dort Zustelldetails zeigt, und geht an die API, falls du die nutzt."
     }
   },
   "source": {
