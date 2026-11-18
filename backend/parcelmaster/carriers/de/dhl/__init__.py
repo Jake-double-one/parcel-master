@@ -489,6 +489,18 @@ class DhlDe(CarrierModule):
         return ("api", "website") if settings.get("prefer") == "api" else ("website", "api")
 
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
+        result = await self._ask(request, http)
+        postal_code = (request.extra.get("postal_code") or "").strip()
+        if (
+            result.status is Status.OUT_FOR_DELIVERY
+            and postal_code
+            and request.settings.get("live") == "on"
+        ):
+            # Whichever way answered: the stops are only on the page itself.
+            result = await self._on_the_round(request, postal_code, result)
+        return result
+
+    async def _ask(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
         first, *rest = self._plan(request.settings)
         ways = {"api": self._track_with_api, "website": self._track_on_website}
         try:
@@ -601,15 +613,7 @@ class DhlDe(CarrierModule):
             )
         except httpx.HTTPError as error:
             raise CarrierError("unavailable", type(error).__name__) from error
-        result = parse_web_response(self._web_json(response))
-        postal_code = (request.extra.get("postal_code") or "").strip()
-        if (
-            result.status is Status.OUT_FOR_DELIVERY
-            and postal_code
-            and request.settings.get("live") == "on"
-        ):
-            result = await self._on_the_round(request, postal_code, result)
-        return result
+        return parse_web_response(self._web_json(response))
 
     async def _on_the_round(
         self, request: TrackRequest, postal_code: str, plain: TrackingResult
@@ -637,15 +641,15 @@ class DhlDe(CarrierModule):
                 _ROUNDS[key] = (now, detailed.stops_left, detailed.stops_about)
                 for old in [k for k, v in _ROUNDS.items() if now - v[0] > 3600]:
                     del _ROUNDS[old]
-                plain = detailed
+                plain.stops_left, plain.stops_about = detailed.stops_left, detailed.stops_about
         if plain.stops_left is not None:
             started = plain.eta_from is None or plain.eta_from <= datetime.now(
                 plain.eta_from.tzinfo
             ) + timedelta(minutes=15)
-            if plain.stops_left <= CLOSE_STOPS:
-                plain.again_in_minutes = 1  # almost there; the page itself looks every minute
-            elif started or plain.stops_left <= 20:
-                plain.again_in_minutes = 5  # the van is on its way to us: follow it
+            pace = 1 if plain.stops_left <= CLOSE_STOPS else 5
+            if pace == 1 or started or plain.stops_left <= 20:
+                # Almost there, or on its way to us: follow it, never slower than already planned.
+                plain.again_in_minutes = min(pace, plain.again_in_minutes or pace)
         return plain
 
     @staticmethod
