@@ -146,6 +146,10 @@ class CarrierModule:
         """Tracking number and result for each parcel in what a companion script sent."""
         return []
 
+    def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
+        """Lines for the log about what a companion script sent; no personal data."""
+        return []
+
     def source(self, settings: dict[str, Any]) -> str | None:
         """Which way the module asks, if it knows more than one; named in ``locales``."""
         return None

@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      1
-// @description  Passes on to your Parcel Master what the DHL tracking page shows you: the live delivery window and the stops left.
+// @version      2
+// @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
+// @match        https://www.dhl.de/*/kundenkonto/*
 // @grant        GM_xmlhttpRequest
 // @grant        unsafeWindow
 // @connect      __HOST__
@@ -38,9 +39,15 @@
     const answer = original.apply(this, args);
     try {
       const url = String(args[0] && args[0].url ? args[0].url : args[0]);
-      if (url.includes("/int-verfolgen/data/")) {
+      // Any answer of dhl.de itself that carries shipments; which address the
+      // page uses for them differs between tracking and the customer account.
+      const own = url.startsWith("/") || new URL(url, location.href).hostname.endsWith("dhl.de");
+      if (own) {
         answer
-          .then((response) => response.clone().json())
+          .then((response) => {
+            const kind = response.headers.get("content-type") || "";
+            return kind.includes("json") ? response.clone().json() : null;
+          })
           .then(passOn)
           .catch(() => {});
       }

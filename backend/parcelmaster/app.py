@@ -480,8 +480,13 @@ def create_app(config: Config) -> FastAPI:
         now = datetime.now(UTC)
         base = int(settings["polling"]["interval_minutes"])
         taken = 0
+        mine = ctx.store.open_parcels()
+        known = {p["tracking_number"] for p in mine if p["carrier"] == module.id}
+        # A first step towards finding parcels by themselves: note what the page knows.
+        for line in module.describe_companion_news(payload, known):
+            journal.info("%s companion saw %s", module.id, line)
         for number, result in module.take_from_companion(payload)[:20]:
-            for parcel in ctx.store.open_parcels():
+            for parcel in mine:
                 if (parcel["carrier"], parcel["tracking_number"]) != (module.id, number):
                     continue
                 if Status(parcel["status"]) in FINAL:

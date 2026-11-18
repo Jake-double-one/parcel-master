@@ -414,6 +414,36 @@ class DhlDe(CarrierModule):
             found.append((self.normalize(piece["id"]), result))
         return found
 
+    def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
+        """What arrived, piece by piece: its number, whether we track it, and how the
+        answer is built. Names of fields only, except the sender's name and the state."""
+        lines = []
+        pieces = payload.get("sendungen") if isinstance(payload, dict) else None
+        for piece in (pieces if isinstance(pieces, list) else [])[:30]:
+            if not isinstance(piece, dict):
+                continue
+            number = self.normalize(str(piece.get("id") or ""))
+            details = piece.get("sendungsdetails")
+            details = details if isinstance(details, dict) else {}
+            info = piece.get("sendungsinfo")
+            info = info if isinstance(info, dict) else {}
+            history = details.get("sendungsverlauf")
+            history = history if isinstance(history, dict) else {}
+            named = {
+                key: value
+                for source in (piece, info, details)
+                for key, value in source.items()
+                if isinstance(value, str) and re.search(r"sendungsname|absender|shipper", key, re.I)
+            }
+            lines.append(
+                f"{number or '?'}: {'tracked' if number in known else 'NOT tracked'}, "
+                f"direction {info.get('sendungsrichtung')}, "
+                f"delivered {details.get('istZugestellt')}, "
+                f"status {str(history.get('status') or '')[:60]!r}, names {named}, "
+                f"fields {sorted(piece)}, info {sorted(info)}, details {sorted(details)}"
+            )
+        return lines
+
     def source(self, settings: dict[str, Any]) -> str | None:
         return "_".join(self._plan(settings))
 

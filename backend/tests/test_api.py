@@ -675,6 +675,14 @@ def test_companion_script_is_made_out_to_this_server_and_its_news_are_applied(cl
     assert shipment["id"] and parcel["status"] == "out_for_delivery"
     assert parcel["stops"] == {"left": 10, "about": True}
     assert parcel["eta_from"] == "2026-11-18T11:40:00+00:00"  # 12:40 in Germany
+    seen = [e["message"] for e in client.get("/api/log").json()["entries"] if "saw" in e["message"]]
+    assert seen and "00340434161094042557: tracked, direction ANKOMMEND" in seen[0]
+    stranger = json.loads(fixture.read_text())
+    stranger["sendungen"][0]["id"] = "00340434161094049999"
+    stranger["sendungen"][0]["sendungsname"] = "Fahrradladen"
+    assert client.post("/api/companion/de.dhl", json={"payload": stranger}).json() == {"parcels": 0}
+    seen = [e["message"] for e in client.get("/api/log").json()["entries"] if "saw" in e["message"]]
+    assert "00340434161094049999: NOT tracked" in seen[0] and "Fahrradladen" in seen[0]
     # Rubbish and parcels we do not know change nothing.
     assert client.post("/api/companion/de.dhl", json={"payload": "x"}).json() == {"parcels": 0}
 
