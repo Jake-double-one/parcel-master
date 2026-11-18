@@ -790,3 +790,19 @@ def test_a_window_of_hours_in_amazons_status_is_read_and_translated():
     assert amazon.translate("Arriving tomorrow 9 am - 1 pm", phrase) == (
         "Kommt morgen zwischen 9:00 und 13:00 Uhr"
     )
+
+
+def test_the_shop_is_asked_more_often_while_it_delivers_a_parcel_itself_today(world):
+    store, _, shop, _ = world
+    own = store.get_settings()["carriers"]["test.shop"]
+    sync(world, order())
+    assert importer.pace_minutes(store, shop, own) == 180  # on its way: the usual interval
+    sync(world, order(status=Status.OUT_FOR_DELIVERY, description="Arriving today"))
+    assert importer.pace_minutes(store, shop, own) == 30
+    arrived = {
+        "status": Status.DELIVERED,
+        "description": "Delivered",
+        "status_time": datetime.now(),
+    }
+    sync(world, order(**arrived))
+    assert importer.pace_minutes(store, shop, own) == 180

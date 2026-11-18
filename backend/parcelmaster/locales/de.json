@@ -185,7 +185,7 @@
     "sync_every": "Abgleichen alle",
     "sync_every_help": "Leer lassen für den Standard. Nicht öfter als alle 30 Minuten, damit die Anmeldungen nicht verdächtig wirken.",
     "pace_tracker": "Abruf alle {minutes} Minuten; in Zustellung alle {fast}, stillstehende und abholbereite Pakete seltener.",
-    "pace_importer": "Abgleich alle {minutes} Minuten.",
+    "pace_importer": "Abgleich alle {minutes} Minuten; alle 30, solange der Dienst selbst ein Paket in Zustellung hat.",
     "next_sync": "Nächster Abgleich {time}",
     "no_next_sync": "Kein Abgleich geplant.",
     "saver": "Sparmodus",

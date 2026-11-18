@@ -185,7 +185,7 @@
     "sync_every": "Sync every",
     "sync_every_help": "Leave empty for the default. Not more often than every 30 minutes, so the sign-ins do not look suspicious.",
     "pace_tracker": "Checked every {minutes} minutes; out for delivery every {fast}, parcels standing still or waiting for pickup less often.",
-    "pace_importer": "Synced every {minutes} minutes.",
+    "pace_importer": "Sync every {minutes} minutes; every 30 while the service itself has a parcel out for delivery.",
     "next_sync": "Next sync {time}",
     "no_next_sync": "No sync scheduled.",
     "saver": "Saver",

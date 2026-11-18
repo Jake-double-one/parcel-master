@@ -42,6 +42,8 @@ MIN_MANUAL_GAP = timedelta(seconds=60)
 #: Bounds for a user-chosen sync interval. A shop account is not asked more
 #: often than every half hour, so the sign-in does not look like an attack.
 MIN_SYNC_MINUTES = 30
+#: While the service delivers a parcel itself today, it is asked this often.
+DELIVERY_DAY_SYNC_MINUTES = 30
 MAX_SYNC_MINUTES = 24 * 60
 
 _locks: dict[str, asyncio.Lock] = {}
@@ -288,6 +290,20 @@ def interval_minutes(module: ImporterModule, carrier_settings: dict[str, Any]) -
     return max(MIN_SYNC_MINUTES, min(MAX_SYNC_MINUTES, chosen))
 
 
+def pace_minutes(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) -> int:
+    """Minutes until the next sync: the usual interval, shorter on a delivery day.
+
+    While the service itself brings a parcel today, its status and window
+    change within the hour, and nobody else is asked about that parcel.
+    """
+    usual = interval_minutes(module, carrier_settings)
+    on_the_van = any(
+        parcel["carrier"] == module.id and parcel["status"] == Status.OUT_FOR_DELIVERY
+        for parcel in store.open_parcels()
+    )
+    return min(usual, DELIVERY_DAY_SYNC_MINUTES) if on_the_van else usual
+
+
 def next_sync_at(
     store: Store, module: ImporterModule, carrier_settings: dict[str, Any]
 ) -> str | None:
@@ -298,7 +314,7 @@ def next_sync_at(
     last = parse_iso(state.get("last_attempt_at"))
     if last is None:
         return None
-    due_at = last + timedelta(minutes=interval_minutes(module, carrier_settings))
+    due_at = last + timedelta(minutes=pace_minutes(store, module, carrier_settings))
     return due_at.isoformat(timespec="seconds")
 
 
@@ -310,7 +326,7 @@ def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) 
     if state.get("blocked"):
         return False  # wait until the credentials change or the user asks
     last = parse_iso(state.get("last_attempt_at"))
-    interval = timedelta(minutes=interval_minutes(module, carrier_settings))
+    interval = timedelta(minutes=pace_minutes(store, module, carrier_settings))
     return last is None or datetime.now(UTC) - last >= interval
 
 
