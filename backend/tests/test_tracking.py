@@ -301,3 +301,22 @@ def test_a_date_without_a_time_is_not_a_window():
     assert delivery_window("2026-11-18T09:00:00+00:00", "2026-11-18T11:00:00+00:00", zone, now) == (
         "18.11. 10:00–12:00"
     )
+
+
+def test_a_parcel_is_not_asked_about_twice_within_seconds(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr("parcelmaster.tracking.MIN_GAP_SECONDS", 10)
+    module.answers = [TrackingResult(Status.IN_TRANSIT, "x")] * 2
+    refresh(store, registry, parcel_id)
+    refresh(store, registry, parcel_id)
+    assert module.calls == 1
+
+
+def test_failed_tries_have_a_ceiling_of_their_own(world):
+    store, module, registry, _, parcel_id = world
+    module.answers = [CarrierError("unavailable")] * 20
+    for _ in range(20):
+        refresh(store, registry, parcel_id)
+    assert module.calls == 9  # three times the daily budget of 3
+    assert store.usage_today("test") == 0  # none of them was an answer
+    assert store.get_parcel(parcel_id)["last_error"]["code"] == "budget_exhausted"

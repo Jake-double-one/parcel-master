@@ -22,6 +22,8 @@
   let editing = $state<{ shipment: Shipment | null; prefill: string } | null>(null);
   let settingsOpen = $state(false);
   let busy = $state<number[]>([]);
+  let refreshing = $state<number[]>([]);
+  const REFRESH_REST_MS = 10_000;
   let toast = $state<{ text: string; action?: { label: string; run: () => void } } | null>(null);
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
@@ -152,6 +154,7 @@
 
   async function refresh(shipment: Shipment) {
     busy.push(shipment.id);
+    refreshing.push(shipment.id);
     // What would look different on the card if the carrier had news.
     const picture = (item: Shipment) =>
       JSON.stringify(item.parcels.map((p) => [p.status, p.description, p.eta_from, p.last_error?.code]));
@@ -162,7 +165,9 @@
     } catch (caught) {
       report(caught);
     } finally {
-      busy = busy.filter((id) => id !== shipment.id);
+      // The button rests a little: nothing changes within seconds, and the carrier is spared.
+      setTimeout(() => (busy = busy.filter((id) => id !== shipment.id)), REFRESH_REST_MS);
+      refreshing = refreshing.filter((id) => id !== shipment.id);
     }
   }
 
@@ -330,6 +335,7 @@
         {shipment}
         {now}
         busy={busy.includes(shipment.id)}
+        refreshing={refreshing.includes(shipment.id)}
         onedit={() => (editing = { shipment, prefill: "" })}
         onrefresh={() => refresh(shipment)}
         onarchive={(archived) => archive(shipment, archived)}

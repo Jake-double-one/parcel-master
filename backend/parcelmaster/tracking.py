@@ -25,6 +25,11 @@ AUTO_ARCHIVED_KEY = "auto_archived"
 #: and of one whose delivery is still days away.
 ANNOUNCED_MINUTES = 6 * 60
 FAR_AWAY_MINUTES = 12 * 60
+#: A parcel is not asked about twice within this time, whoever wants it.
+MIN_GAP_SECONDS = 10
+#: Tries per day, failed ones included, as a multiple of the daily budget.
+TRIES_PER_BUDGET = 3
+DEFAULT_TRIES = 1000
 #: "Next check" of a parcel that is never looked up on its own.
 NEVER = "9999-12-31T00:00:00+00:00"
 
@@ -255,6 +260,10 @@ async def refresh_parcel(
         )
         return []
 
+    asked = parse_iso(parcel["last_checked_at"])
+    if asked and timedelta(0) <= now - asked < timedelta(seconds=MIN_GAP_SECONDS):
+        return []  # just asked; nothing can have changed, and the carrier is spared
+
     module = registry.get(parcel["carrier"])
     if module is None:
         return fail("unknown_carrier", parcel["carrier"], 24 * 60, count_error=False)
@@ -272,6 +281,13 @@ async def refresh_parcel(
         )
         minutes = (tomorrow - now.astimezone(zone)).total_seconds() / 60
         return fail("budget_exhausted", str(budget), minutes, count_error=False)
+
+    # Failed tries do not use the budget up, so they get a ceiling of their own:
+    # whatever goes wrong, a carrier is never asked more than this often a day.
+    tries = f"{module.id}#tries"
+    if store.usage_today(tries) >= (budget or DEFAULT_TRIES) * TRIES_PER_BUDGET:
+        return fail("budget_exhausted", "tries", 6 * 60, count_error=False)
+    store.count_usage(tries)
 
     request = TrackRequest(
         tracking_number=parcel["tracking_number"],

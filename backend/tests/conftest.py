@@ -34,3 +34,9 @@ def new_shipment(client, *numbers, **fields):
         **fields,
     }
     return client.post("/api/shipments", json=payload)
+
+
+@pytest.fixture(autouse=True)
+def no_rest_between_lookups(monkeypatch):
+    """Tests ask again at once; the pause between two lookups has its own test."""
+    monkeypatch.setattr("parcelmaster.tracking.MIN_GAP_SECONDS", 0)

@@ -8,6 +8,7 @@
     shipment,
     now,
     busy = false,
+    refreshing = false,
     onedit,
     onrefresh,
     onarchive,
@@ -16,6 +17,7 @@
     shipment: Shipment;
     now: Date;
     busy?: boolean;
+    refreshing?: boolean;
     onedit: () => void;
     onrefresh: () => void;
     onarchive: (archived: boolean) => void;
@@ -90,7 +92,7 @@
     <button type="button" class="chip" onclick={onedit}>{t("shipment.edit")}</button>
     {#if !finished && !archived}
       <button type="button" class="chip" onclick={onrefresh} disabled={busy}>
-        {busy ? t("overview.refreshing") : t("shipment.refresh")}
+        {refreshing ? t("overview.refreshing") : t("shipment.refresh")}
       </button>
     {/if}
     <button type="button" class="chip" onclick={() => onarchive(!archived)}>
