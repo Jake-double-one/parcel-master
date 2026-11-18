@@ -306,7 +306,7 @@ def test_amazon_arrival_dates():
 
 
 def test_amazon_orders_are_turned_into_shipments():
-    item = SimpleNamespace(title="Stainless steel kettle with a very long product name " * 3)
+    item = SimpleNamespace(title="Stainless steel kettle with a very long product name " * 5)
     orders = [
         SimpleNamespace(
             order_number="302-1111111-2222222",
@@ -331,7 +331,7 @@ def test_amazon_orders_are_turned_into_shipments():
     }
     (shipment,) = to_shipments(orders, tracking, date(2026, 11, 17))
     assert shipment.reference == "302-1111111-2222222"
-    assert len(shipment.title) <= 80 and shipment.title.endswith("…")
+    assert len(shipment.title) <= 200 and shipment.title.endswith("…")
     (parcel,) = shipment.parcels
     assert (parcel.key, parcel.status) == ("SHIP1", Status.IN_TRANSIT)
     assert (parcel.carrier_name, parcel.tracking_number) == ("DHL", "0034")
@@ -744,3 +744,24 @@ def test_the_progress_bar_tells_the_step_in_any_language():
     assert _settle_status(Status.UNKNOWN, bar(3)) is Status.OUT_FOR_DELIVERY
     assert _settle_status(Status.PROBLEM, bar(2)) is Status.PROBLEM
     assert _settle_status(Status.IN_TRANSIT, None) is Status.IN_TRANSIT
+
+
+def test_a_parcel_that_arrived_is_left_alone_by_later_syncs(world):
+    from parcelmaster.importer import settled_keys
+
+    store = world[0]
+    arrived = {
+        "status": Status.DELIVERED,
+        "description": "Delivered",
+        "status_time": datetime.now(),
+    }
+    sync(world, order(tracking_number="AB1", **arrived))
+    before = store.list_shipments(False)[0]["parcels"][0]
+    assert settled_keys(store) == {before["extra"]["import_key"]}
+    # The shop's page for it is no longer read, so the next sync knows less. Nothing is lost.
+    sync(world, order(**arrived))
+    after = store.list_shipments(False)[0]["parcels"][0]
+    assert (after["tracking_number"], after["events"]) == (
+        before["tracking_number"],
+        before["events"],
+    )

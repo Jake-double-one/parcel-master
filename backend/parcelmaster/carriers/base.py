@@ -182,6 +182,8 @@ class SyncRequest:
     language: str
     #: A directory of its own where the module may keep session files.
     state_dir: Path
+    #: Keys of parcels that are filed as arrived: nothing more needs to be read about them.
+    settled: frozenset[str] = frozenset()
 
 
 class ImporterModule(CarrierModule):

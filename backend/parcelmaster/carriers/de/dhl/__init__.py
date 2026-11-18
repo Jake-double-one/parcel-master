@@ -339,7 +339,7 @@ class DhlDe(CarrierModule):
     settings_fields = (
         Field("api_key", type="secret"),
         Field("prefer", type="choice", options=("website", "api")),
-        Field("live", type="choice", options=("on", "off")),
+        Field("live", type="choice", options=("off", "on")),
         Field("default_postal_code", placeholder="53113"),
     )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
@@ -458,7 +458,7 @@ class DhlDe(CarrierModule):
         if (
             result.status is Status.OUT_FOR_DELIVERY
             and postal_code
-            and request.settings.get("live") != "off"
+            and request.settings.get("live") == "on"
         ):
             result = await self._on_the_round(request, postal_code, result)
         return result

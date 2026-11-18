@@ -14,7 +14,7 @@
     },
     "live": {
       "label": "Live tracking on the delivery day",
-      "help": "While a parcel with a postal code is out for delivery, Parcel Master opens DHL's page in the built-in browser and reads how many stops are left; every five minutes once the delivery window has begun, every minute from five stops on. Only works without an API key or with \"dhl.de first\".",
+      "help": "An experiment, off by default: so far DHL does not serve the built-in browser. Switched on, Parcel Master opens DHL's page in the browser for parcels with a postal code that are out for delivery and reads how many stops are left; every five minutes once the delivery window has begun, every minute from five stops on. After a failed visit the browser rests for half an hour.",
       "option": {
         "on": "On",
         "off": "Off"

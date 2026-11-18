@@ -83,6 +83,17 @@ def dismiss(store: Store, source: str, reference: str) -> None:
         store.set_value(DISMISSED_KEY, [*dismissed, [source, reference]][-MAX_DISMISSED:])
 
 
+def settled_keys(store: Store) -> frozenset[str]:
+    """Import keys of the parcels that have arrived or gone back, archived ones included."""
+    return frozenset(
+        parcel["extra"]["import_key"]
+        for archived in (False, True)
+        for shipment in store.list_shipments(archived)
+        for parcel in shipment["parcels"]
+        if parcel["extra"].get("import_key") and Status(parcel["status"]) in FINAL
+    )
+
+
 def carrier_for(
     registry: Registry, name: str | None, number: str, carrier_settings: dict[str, Any]
 ) -> CarrierModule | None:
@@ -154,6 +165,12 @@ def apply(
         }
         for position, imported in enumerate(item.parcels, start=1):
             parcel = known.get(imported.key)
+            if (
+                parcel is not None
+                and Status(parcel["status"]) in FINAL
+                and imported.status in FINAL
+            ):
+                continue  # arrived and filed: there is nothing left to bring in line
             taker = (
                 carrier_for(
                     registry, imported.carrier_name, imported.tracking_number, settings["carriers"]
@@ -393,7 +410,9 @@ async def run(
         return []
     async with lock:
         _set_state(store, module.id, last_attempt_at=now)
-        request = SyncRequest(own, settings["language"], data_dir / "modules" / module.id)
+        request = SyncRequest(
+            own, settings["language"], data_dir / "modules" / module.id, settled_keys(store)
+        )
         try:
             found = await asyncio.to_thread(module.sync, request)
         except CarrierError as error:

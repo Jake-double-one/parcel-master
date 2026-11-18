@@ -62,7 +62,8 @@
         {t(`direction.${shipment.direction}`)}{#if shipment.reference}
           · {t("shipment.reference", { reference: shipment.reference })}{/if}
       </p>
-      <h3>{title}</h3>
+      <!-- One line; the pointer shows the rest. -->
+      <h3 {title}>{title}</h3>
     </div>
     {#if grouped}
       <div class="summary">
@@ -122,7 +123,9 @@
     font-size: 1.12rem;
     font-weight: 600;
     letter-spacing: -0.01em;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .summary {

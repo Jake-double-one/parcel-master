@@ -565,8 +565,8 @@ def to_shipments(
         if not titles:
             titles = [item.title for item in getattr(order, "items", []) if item.title]
         title = titles[0] if titles else ""
-        if len(title) > 80:
-            title = title[:77].rstrip() + "…"
+        if len(title) > 200:  # the card shows one line and the rest on hover
+            title = title[:197].rstrip() + "…"
         if not parcels:
             if not keep_empty:
                 continue
@@ -698,6 +698,12 @@ class AmazonDe(ImporterModule):
                         order.order_number,
                         shipment.shipment_id or f"{order.order_number}/{index}",
                     )
+                    arrived = parse_status(shipment.delivery_status or "") in (
+                        Status.DELIVERED,
+                        Status.RETURNED,
+                    )
+                    if arrived and key[1] in request.settled:
+                        continue  # filed as arrived: its page has nothing new to tell
                     found = _read_tracking(client, session, order.order_number, shipment)
                     if found is not None:
                         tracking[key] = found

@@ -263,9 +263,9 @@ async def test_dhl_follows_the_round_with_one_visit_for_all_parcels_of_a_van(mon
         return httpx.Response(200, json=web_answer(fortschritt=4))
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
-        first = await DHL.track(request(), http)
-        second = await DHL.track(request(number="00340434161094042558"), http)
-        quiet = await DHL.track(request(live="off", number="00340434161094042559"), http)
+        first = await DHL.track(request(live="on"), http)
+        second = await DHL.track(request(live="on", number="00340434161094042558"), http)
+        quiet = await DHL.track(request(number="00340434161094042559"), http)  # off by default
     assert visits == [("00340434161094042557", "50667")]  # the second parcel rides along
     assert (first.stops_left, second.stops_left, quiet.stops_left) == (20, 20, None)
     assert first.again_in_minutes == 5
@@ -279,7 +279,9 @@ async def test_dhl_looks_every_minute_once_the_van_is_almost_there(monkeypatch):
         return result
 
     monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
-    result = await run_dhl(lambda req: httpx.Response(200, json=web_answer(fortschritt=4)))
+    result = await run_dhl(
+        lambda req: httpx.Response(200, json=web_answer(fortschritt=4)), live="on"
+    )
     assert result.again_in_minutes == 1
 
 
@@ -297,6 +299,6 @@ async def test_dhl_lets_the_browser_rest_after_a_failed_visit(monkeypatch):
         return httpx.Response(200, json=web_answer(fortschritt=4))
 
     for _ in range(3):
-        result = await run_dhl(handler)
+        result = await run_dhl(handler, live="on")
         assert result.status is Status.OUT_FOR_DELIVERY  # the plain answer stands
     assert len(visits) == 1
