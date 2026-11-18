@@ -84,7 +84,8 @@
     "stops": "Noch {count} Stopps",
     "stops_about": "Noch etwas mehr als {count} Stopps",
     "stops_one": "Nur noch 1 Stopp",
-    "stops_next": "Du bist der nächste Halt"
+    "stops_next": "Du bist der nächste Halt",
+    "live_lost": "Live-Ansicht unterbrochen"
   },
   "dialog": {
     "create_title": "Sendung anlegen",
@@ -325,7 +326,8 @@
       "body": "{carrier}: nur noch {count} Stopps bis zu dir.",
       "about": "{carrier}: noch etwas mehr als {count} Stopps bis zu dir.",
       "one": "{carrier}: nur noch 1 Stopp bis zu dir.",
-      "next": "{carrier}: Du bist der nächste Halt."
+      "next": "{carrier}: Du bist der nächste Halt.",
+      "lost": "{carrier}: Die Live-Ansicht ist weg, zuletzt waren es {count} Stopps. Vielleicht eine Pause oder eine geänderte Tour."
     }
   },
   "scanner": {

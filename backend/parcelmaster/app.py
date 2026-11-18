@@ -198,6 +198,8 @@ def create_app(config: Config) -> FastAPI:
             "carrier_name": parcel["extra"].get("carrier_name")
             or (module.name if module else parcel["carrier"]),
             "contents": contents_of(parcel),
+            # The live view of the round vanished while the parcel is still on the van.
+            "live_lost": bool(parcel["extra"].get("live_lost")),
             # Stops left on the delivery round, where the carrier tells.
             "stops": (
                 {

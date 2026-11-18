@@ -36,6 +36,8 @@ export interface Parcel {
   tracking_url: string | null;
   /** Stops left on the delivery round, where the carrier tells; `about` marks a lower bound. */
   stops: { left: number; about: boolean } | null;
+  /** The live view of the round vanished while the parcel is still on the van. */
+  live_lost: boolean;
   /** What is inside, where an importer knows it. */
   contents: string[];
   /** Whose website `tracking_url` opens. */

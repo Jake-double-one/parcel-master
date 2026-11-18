@@ -84,7 +84,8 @@
     "stops": "{count} stops to go",
     "stops_about": "A bit more than {count} stops to go",
     "stops_one": "Only 1 stop to go",
-    "stops_next": "You are the next stop"
+    "stops_next": "You are the next stop",
+    "live_lost": "Live view interrupted"
   },
   "dialog": {
     "create_title": "Add shipment",
@@ -325,7 +326,8 @@
       "body": "{carrier}: only {count} stops before yours.",
       "about": "{carrier}: a bit more than {count} stops before yours.",
       "one": "{carrier}: only 1 stop before yours.",
-      "next": "{carrier}: you are the next stop."
+      "next": "{carrier}: you are the next stop.",
+      "lost": "{carrier}: the live view is gone; it was {count} stops last. Perhaps a break or a changed round."
     }
   },
   "scanner": {

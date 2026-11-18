@@ -55,6 +55,8 @@ class TrackingResult:
     again_in_minutes: float | None = None
     #: Only the live notes (stops, window) are news; status and history stay as filed.
     live_only: bool = False
+    #: The live view of the round is gone though the parcel is still on its way.
+    live_lost: bool = False
 
 
 @dataclass(frozen=True)

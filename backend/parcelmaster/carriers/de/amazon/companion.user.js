@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: Amazon live tracking
 // @namespace    parcel-master
-// @version      1
+// @version      2
 // @description  Passes on to your Parcel Master what Amazon's tracking page shows you: the delivery window and how many stops are left.
 // @match        https://www.amazon.de/*progress-tracker/package*
 // @match        https://www.amazon.de/*ship-track*
@@ -24,6 +24,7 @@
 
   function look() {
     const steps = document.querySelectorAll(".pt-status-milestone");
+    const map = document.querySelector("#mapTracker");
     const payload = {
       // "Trackingnummer DE6053615519": the server picks the number out.
       tracking: text(".pt-delivery-card-trackingId") || text(".tracking-event-trackingId-text"),
@@ -31,6 +32,8 @@
       status: text(".pt-status-main-status"),
       // The bubble on the map: "Du bist der nächste Halt", "… Stopps entfernt".
       bubble: text(".mapTracker-da-bubble .H_ib_content"),
+      // Whether the map is on the page at all; it can vanish in the middle of a round.
+      map: !!(map && map.offsetParent !== null),
       reached: Array.from(steps).filter((step) => step.dataset.reached === "true").length,
       steps: steps.length,
     };

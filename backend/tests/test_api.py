@@ -729,5 +729,18 @@ def test_amazon_companion_brings_the_stops_from_the_map(client, monkeypatch):
     parcel = client.get("/api/shipments").json()[0]["parcels"][0]
     assert parcel["stops"] == {"left": 0, "about": False}
     assert parcel["description"] == "Kommt heute"
+    # Eight stops, then the map vanishes: the number goes, and that is said.
+    client.post(
+        "/api/companion/de.amazon", json={"payload": {**news, "bubble": "8 Stopps entfernt"}}
+    )
+    gone = {"tracking": news["tracking"], "bubble": "", "map": False}
+    assert client.post("/api/companion/de.amazon", json={"payload": gone}).json() == {"parcels": 1}
+    parcel = client.get("/api/shipments").json()[0]["parcels"][0]
+    assert (parcel["stops"], parcel["live_lost"]) == (None, True)
+    client.post(
+        "/api/companion/de.amazon", json={"payload": {**news, "bubble": "6 Stopps entfernt"}}
+    )
+    parcel = client.get("/api/shipments").json()[0]["parcels"][0]
+    assert (parcel["stops"]["left"], parcel["live_lost"]) == (6, False)
     script = client.get("/api/companion/de.amazon.user.js").text
     assert "https://www.amazon.de/" in script and "http://testserver" in script

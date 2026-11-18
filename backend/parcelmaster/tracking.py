@@ -263,6 +263,8 @@ def record_result(
     if not keep_live:
         for note in ("stops_left", "stops_about", "live_at"):
             extra.pop(note, None)
+    if status is not Status.OUT_FOR_DELIVERY:
+        extra.pop("live_lost", None)
     if stops is not None:
         extra["stops_left"] = str(stops)
         extra["live_at"] = now_iso
@@ -326,16 +328,26 @@ def record_live(
     stops = result.stops_left
     if stops is not None or changes:
         extra["live_at"] = now.isoformat(timespec="seconds")
+    lost = result.live_lost and before is not None
     if stops is not None:
         extra["stops_left"] = str(stops)
         extra.pop("stops_about", None)
+        extra.pop("live_lost", None)
         if result.stops_about:
             extra["stops_about"] = "1"
+    elif lost:
+        # A moment ago the van was so many stops away, now the view is gone:
+        # the number no longer holds, and that is news of its own.
+        extra.pop("stops_left", None)
+        extra.pop("stops_about", None)
+        extra["live_lost"] = "1"
     if changes:
         store.update_parcel(parcel["id"], **changes)
     if extra != parcel["extra"]:
         store.set_parcel_extra(parcel["id"], extra)
     updated = store.get_parcel(parcel["id"])
+    if lost:
+        return [Notice("stops", updated, {"count": int(before), "variant": "lost"})]
     if stops is None:
         return []
     earlier = int(before) if before and before.isdigit() else None

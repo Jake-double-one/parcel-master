@@ -695,7 +695,9 @@ class AmazonDe(ImporterModule):
     def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
         if not isinstance(payload, dict):
             return []
-        shown = {key: str(payload.get(key))[:120] for key in ("tracking", "headline", "bubble")}
+        shown = {
+            key: str(payload.get(key))[:120] for key in ("tracking", "headline", "bubble", "map")
+        }
         return [f"{shown}, step {payload.get('reached')} of {payload.get('steps')}"]
 
     def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
@@ -708,6 +710,8 @@ class AmazonDe(ImporterModule):
             return []
         result = TrackingResult(status=Status.UNKNOWN, live_only=True)
         result.stops_left = stops_on_map(payload.get("bubble"))
+        # The map can vanish in the middle of a round, for a break or a changed tour.
+        result.live_lost = payload.get("map") is False and result.stops_left is None
         headline = str(payload.get("headline") or "")
         hours = hours_in_headline(headline)
         if hours and re.search(r"today|heute", headline, re.I):

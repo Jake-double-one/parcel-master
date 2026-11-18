@@ -77,6 +77,9 @@
     {:else if parcel.eta_from && !finished}
       <span>{t("shipment.eta", { date: etaLabel(parcel.eta_from, parcel.eta_to, now) })}</span>
     {/if}
+    {#if parcel.live_lost && !parcel.stops && !finished}
+      <span class="warn">{t("shipment.live_lost")}</span>
+    {/if}
     {#if parcel.stops && !finished}
       <span>
         {parcel.stops.left <= 0
