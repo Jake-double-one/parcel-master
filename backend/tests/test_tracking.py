@@ -368,3 +368,34 @@ def test_a_module_may_ask_to_be_asked_again_soon(world):
     refresh(store, registry, parcel_id)
     due = datetime.fromisoformat(store.get_parcel(parcel_id)["next_check_at"])
     assert 0.9 <= (due - datetime.now(UTC)).total_seconds() / 60 <= 1.1  # never under a minute
+
+
+def test_a_window_drifting_by_minutes_is_not_reported_each_time(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    store._db.execute("UPDATE parcels SET created_at='2026-01-01T00:00:00+00:00'")
+
+    def van(start, end):
+        day = datetime.now().replace(second=0, microsecond=0)
+        return TrackingResult(
+            Status.OUT_FOR_DELIVERY,
+            "On the van",
+            eta_from=day.replace(hour=start[0], minute=start[1]),
+            eta_to=day.replace(hour=end[0], minute=end[1]),
+        )
+
+    module.answers = [
+        van((12, 30), (14, 0)),
+        van((12, 40), (14, 10)),  # ten minutes later: not worth a message
+        van((12, 50), (14, 20)),  # twenty minutes from what was said: it is
+        van((13, 0), (13, 30)),  # narrowed down
+    ]
+    told = [
+        [
+            n.params["window"][-11:]
+            for n in refresh(store, registry, parcel_id)
+            if n.kind == "delivery_window"
+        ]
+        for _ in range(4)
+    ]
+    assert told == [["12:30–14:00"], [], ["12:50–14:20"], ["13:00–13:30"]]

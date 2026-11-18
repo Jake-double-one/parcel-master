@@ -32,6 +32,8 @@ MIN_GAP_SECONDS = 10
 MIN_LIVE_MINUTES = 1
 #: Stops left at which a message goes out, each once on the way down.
 STOP_MARKS = (20, 10, 5, 2, 1)
+#: A delivery window is reported again once its start or end has moved this far.
+WINDOW_NEWS = timedelta(minutes=15)
 #: Tries per carrier within any hour, failed ones included.
 TRIES_PER_HOUR = 100
 #: Minutes to wait after the first, second, ... failure in a row; then the usual interval.
@@ -269,12 +271,28 @@ def record_result(
         and status not in FINAL
         and (eta_from_iso, eta_to_iso) != (parcel["eta_from"], parcel["eta_to"])
         and not just_added
+        and window_moved(updated["extra"].get("window_told"), eta_from_iso, eta_to_iso)
     ):
+        # Remember what was said: a window drifting by minutes is not news each time.
+        store.set_parcel_extra(
+            parcel["id"], {**updated["extra"], "window_told": f"{eta_from_iso}|{eta_to_iso}"}
+        )
+        updated = store.get_parcel(parcel["id"])
         notices.append(Notice("delivery_window", updated, {"window": window}))
     # The first answer for a parcel is not news: the user just added it.
     if parcel["last_success_at"] is not None and status != old_status:
         notices.append(Notice(str(status), updated, {"description": result.description}))
     return notices
+
+
+def window_moved(told: str | None, eta_from: str | None, eta_to: str | None) -> bool:
+    """Whether a delivery window differs enough from the one last reported to say so again."""
+    old_from, _, old_to = (told or "").partition("|")
+    before = (parse_iso(old_from), parse_iso(old_to))
+    after = (parse_iso(eta_from), parse_iso(eta_to))
+    if not all(before) or not all(after):
+        return True
+    return any(abs(new - old) >= WINDOW_NEWS for old, new in zip(before, after, strict=True))
 
 
 def delivery_window(

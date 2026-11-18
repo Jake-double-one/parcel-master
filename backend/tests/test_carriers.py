@@ -339,3 +339,21 @@ async def test_dhl_with_key_and_secret_asks_parcel_de_tracking():
     assert seen["auth"] == "Basic a2V5OnNlY3JldA=="  # key:secret
     assert 'piece-code="00340434161094042557" zip-code="50667"' in seen["xml"]
     assert 'request="get-status-for-public-user"' in seen["xml"]
+
+
+def test_dhl_follows_the_delivery_day_ever_more_closely():
+    from parcelmaster.carriers.de.dhl import round_pace
+
+    def at(hour, minute):
+        return datetime(2026, 11, 18, hour, minute)
+
+    wide = (at(12, 30), at(14, 0))
+    assert round_pace(None, None, at(9, 0)) == 10  # no window yet
+    assert round_pace(at(0, 0), datetime(2026, 11, 18, 23, 59), at(9, 0)) == 10  # only a day
+    assert round_pace(*wide, at(11, 0)) == 10
+    assert round_pace(*wide, at(12, 0)) == 5  # half an hour before it starts
+    assert round_pace(*wide, at(14, 30)) == 5  # late, but still on its way
+    assert round_pace(*wide, at(17, 0)) == 10
+    narrow = (at(13, 10), at(13, 40))
+    assert round_pace(*narrow, at(12, 45)) == 5
+    assert round_pace(*narrow, at(12, 55)) == 1  # narrowed down and nearly due

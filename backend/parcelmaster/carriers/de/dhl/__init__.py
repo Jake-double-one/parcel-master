@@ -15,6 +15,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 from xml.etree import ElementTree
 from xml.sax.saxutils import quoteattr
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -128,12 +129,33 @@ def parse_response(payload: Any) -> TrackingResult:
     )
 
 
+#: A delivery window this short means the van is close.
+NARROW_WINDOW = timedelta(minutes=30)
 PARCEL_DE_URL = "https://api-eu.dhl.com/parcel/de/tracking/v0/shipments"
 _DELIVERED = re.compile(
     r"wurde (erfolgreich )?zugestellt|zustellung erfolgreich|has been (successfully )?delivered"
     r"|delivery successful",
     re.I,
 )
+
+
+def round_pace(start: datetime | None, end: datetime | None, now: datetime) -> float:
+    """Minutes until a parcel on the van is asked about again.
+
+    This API allows millions of lookups a day, so the day of delivery is
+    followed closely: the window moves while the van is on its round, and
+    DHL narrows it as the van comes near.
+    """
+    has_window = bool(start and end and end - start < timedelta(hours=12))
+    if not has_window:
+        return 10  # no window yet: watch for one
+    if now > end + timedelta(hours=2):
+        return 10  # long overdue: something else is going on
+    if end - start <= NARROW_WINDOW and now >= start - timedelta(minutes=15):
+        return 1  # DHL has narrowed it down: the van is nearly there
+    if now >= start - timedelta(minutes=30):
+        return 5
+    return 10
 
 
 def _local_time(value: Any) -> datetime | None:
@@ -557,7 +579,11 @@ class DhlDe(CarrierModule):
             )
             raise CarrierError("unavailable", f"HTTP {response.status_code}")
         log.debug("DHL Parcel DE Tracking: %s", response.text[:4000])
-        return parse_parcel_de(response.text)
+        result = parse_parcel_de(response.text)
+        if result.status is Status.OUT_FOR_DELIVERY:
+            now = datetime.now(ZoneInfo("Europe/Berlin")).replace(tzinfo=None)
+            result.again_in_minutes = round_pace(result.eta_from, result.eta_to, now)
+        return result
 
     async def _track_on_website(
         self, request: TrackRequest, http: httpx.AsyncClient

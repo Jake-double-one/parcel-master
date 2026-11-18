@@ -30,6 +30,8 @@ STATE_KEY = "importers"
 DISMISSED_KEY = "importers_dismissed"
 #: With the saver on, a parcel goes to its carrier's module from these states on.
 HAND_OVER_FROM = frozenset({Status.OUT_FOR_DELIVERY, Status.READY_FOR_PICKUP, Status.PROBLEM})
+#: Keys in a parcel's extra that tracking writes for itself.
+TRACKING_NOTES = ("window_told", "stops_left", "stops_about")
 MAX_DISMISSED = 500
 #: Days a finished order still counts as recent when auto-archive is off.
 DEFAULT_RECENT_DAYS = 3
@@ -219,6 +221,11 @@ def apply(
                 number = imported.tracking_number or f"{item.reference}/{position}"
                 if imported.carrier_name:
                     extra["carrier_name"] = imported.carrier_name
+
+            # What tracking itself noted on the parcel stays, whatever the service says.
+            for own_note in TRACKING_NOTES:
+                if parcel is not None and own_note in parcel["extra"]:
+                    extra[own_note] = parcel["extra"][own_note]
 
             moved = parcel is not None and (parcel["carrier"], parcel["tracking_number"]) != (
                 carrier,
