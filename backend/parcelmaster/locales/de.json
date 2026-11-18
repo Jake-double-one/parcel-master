@@ -226,8 +226,9 @@
     "health_failing": "Gestört",
     "event_stops": "die Zahl der Stopps bis zur Zustellung sinkt",
     "companion": "Begleit-Skript",
-    "companion_install": "Skript installieren",
-    "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey). Es reicht an Parcel Master weiter, was dir die Seite des Paketdienstes anzeigt."
+    "companion_install": "Skript für {carrier} installieren",
+    "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey). Es reicht an Parcel Master weiter, was dir die Seite des Paketdienstes anzeigt, fragt dort selbst nichts ab und sendet nur an diesen Server.",
+    "help": "Erklärung zeigen"
   },
   "login": {
     "password": "Passwort",

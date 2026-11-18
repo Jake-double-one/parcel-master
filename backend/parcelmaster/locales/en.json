@@ -226,8 +226,9 @@
     "health_failing": "Failing",
     "event_stops": "the number of stops before delivery drops",
     "companion": "Companion script",
-    "companion_install": "Install script",
-    "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey). It passes on to Parcel Master what the carrier's page shows you."
+    "companion_install": "Install script for {carrier}",
+    "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey). It passes on to Parcel Master what the carrier's page shows you, asks nothing there itself and sends only to this server.",
+    "help": "Show explanation"
   },
   "login": {
     "password": "Password",

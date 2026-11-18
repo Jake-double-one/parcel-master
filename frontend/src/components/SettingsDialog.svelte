@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Help from "./Help.svelte";
   import { onMount } from "svelte";
   import { api, ApiError, type LogReport } from "../lib/api";
   import { ago, until } from "../lib/format";
@@ -326,13 +327,12 @@
       <p class="note">…</p>
     {:else if tab === "general"}
       <label class="field">
-        <span class="eyebrow">{t("settings.language")}</span>
+        <span class="eyebrow">{t("settings.language")} <Help text={t("settings.language_help")} /></span>
         <select bind:value={settings.language}>
           {#each meta.languages as language}
             <option value={language.code}>{language.name}</option>
           {/each}
         </select>
-        <span class="note">{t("settings.language_help")}</span>
       </label>
 
       <div class="field">
@@ -366,16 +366,15 @@
       </div>
 
       <label class="field">
-        <span class="eyebrow">{t("settings.interval")}</span>
+        <span class="eyebrow">{t("settings.interval")} <Help text={t("settings.interval_help")} /></span>
         <span class="inline-number">
           <input type="number" min="15" max="1440" step="5" bind:value={settings.polling.interval_minutes} />
           <span class="mono muted">{t("settings.interval_unit")}</span>
         </span>
-        <span class="note">{t("settings.interval_help")}</span>
       </label>
 
       <div class="field">
-        <span class="eyebrow">{t("settings.saver")}</span>
+        <span class="eyebrow">{t("settings.saver")} <Help text={t("settings.saver_help")} /></span>
         <div class="row">
           <button
             type="button"
@@ -394,7 +393,6 @@
             <input type="time" bind:value={settings.polling.saver.to} />
           </label>
         </div>
-        <span class="note">{t("settings.saver_help")}</span>
       </div>
 
       <label class="field">
@@ -406,12 +404,11 @@
       </label>
 
       <label class="field">
-        <span class="eyebrow">{t("settings.auto_archive")}</span>
+        <span class="eyebrow">{t("settings.auto_archive")} <Help text={t("settings.auto_archive_help")} /></span>
         <span class="inline-number">
           <input type="number" min="0" max="90" bind:value={settings.polling.auto_archive_days} />
           <span class="mono muted">{t("settings.days")}</span>
         </span>
-        <span class="note">{t("settings.auto_archive_help")}</span>
       </label>
 
       <label class="field last">
@@ -419,6 +416,22 @@
         <input type="text" class="mono" bind:value={settings.timezone} />
       </label>
     {:else if tab === "carriers"}
+      {#if carriers.some((carrier) => carrier.companion)}
+        <div class="field">
+          <span class="eyebrow">
+            {t("settings.companion")}
+            <Help text={t("settings.companion_help")} />
+          </span>
+          {#each carriers.filter((carrier) => carrier.companion) as carrier}
+            <div class="row companion">
+              <a class="chip" href={carrier.companion} target="_blank" rel="noopener">
+                {t("settings.companion_install", { carrier: carrier.name })} ↗
+              </a>
+              <Help text={tOr(`carrier.${carrier.id}.companion.help`, "")} />
+            </div>
+          {/each}
+        </div>
+      {/if}
       {#each carriers as carrier}
         {@const own = settings.carriers[carrier.id] ?? {}}
         {@const ready = carrier.kind === "importer" ? !!carrier.sync?.account : carrier.configured}
@@ -471,7 +484,7 @@
                 </button>
               </div>
               <label class="field">
-                <span class="eyebrow">{t("settings.sync_every")}</span>
+                <span class="eyebrow">{t("settings.sync_every")} <Help text={t("settings.sync_every_help")} /></span>
                 <span class="inline-number">
                   <input
                     type="number"
@@ -483,7 +496,6 @@
                   />
                   <span class="mono muted">{t("settings.interval_unit")}</span>
                 </span>
-                <span class="note">{t("settings.sync_every_help")}</span>
               </label>
               <p class="note sync">
                 {carrier.sync?.last_sync_at
@@ -513,7 +525,7 @@
               >
                 {#each carrier.settings_fields as field}
                   <label class="field">
-                    <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)}</span>
+                    <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)} <Help text={tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")} /></span>
                     <input
                       type={field.type === "secret" ? "password" : "text"}
                       class="mono"
@@ -522,7 +534,6 @@
                       disabled={working === carrier.id}
                       bind:value={draft[field.key]}
                     />
-                    <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
                   </label>
                 {/each}
                 <div class="row sync">
@@ -546,7 +557,7 @@
           {:else}
             {#each carrier.settings_fields as field}
               <label class="field">
-                <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)}</span>
+                <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)} <Help text={tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")} /></span>
                 {#if field.type === "choice"}
                   <select
                     value={own[field.key] || field.options[0]}
@@ -567,22 +578,8 @@
                     bind:value={own[field.key]}
                   />
                 {/if}
-                <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
               </label>
             {/each}
-            {#if carrier.companion}
-              <div class="field">
-                <span class="eyebrow">{t("settings.companion")}</span>
-                <div class="row">
-                  <a class="chip" href={carrier.companion} target="_blank" rel="noopener">
-                    {t("settings.companion_install")} ↗
-                  </a>
-                </div>
-                <span class="note">
-                  {tOr(`carrier.${carrier.id}.companion.help`, t("settings.companion_help"))}
-                </span>
-              </div>
-            {/if}
             <label class="field">
               <span class="eyebrow">{t("settings.budget")}</span>
               <span class="inline-number">
@@ -608,7 +605,7 @@
         <p class="hint">{t("error.not_in_demo")}</p>
       {:else}
         <div class="field">
-          <span class="eyebrow">{t("settings.push")}</span>
+          <span class="eyebrow">{t("settings.push")} <Help text={t("settings.push_help")} /></span>
           <div class="row">
             <button
               type="button"
@@ -632,7 +629,6 @@
             <span class="note">{t("settings.push_unsupported")}</span>
           {:else}
             <span class="note">
-              {t("settings.push_help")}
               {#if status}
                 {status.push_subscriptions === 0
                   ? t("settings.push_devices_0")
@@ -645,9 +641,8 @@
         </div>
 
         <label class="field">
-          <span class="eyebrow">{t("settings.apprise")}</span>
+          <span class="eyebrow">{t("settings.apprise")} <Help text={t("settings.apprise_help")} /></span>
           <textarea class="mono" spellcheck="false" bind:value={appriseText}></textarea>
-          <span class="note">{t("settings.apprise_help")}</span>
         </label>
       {/if}
 
@@ -669,7 +664,7 @@
       </div>
 
       <div class="field">
-        <span class="eyebrow">{t("settings.quiet")}</span>
+        <span class="eyebrow">{t("settings.quiet")} <Help text={t("settings.quiet_help")} /></span>
         <div class="row">
           <button
             type="button"
@@ -690,7 +685,6 @@
             <input type="time" bind:value={settings.notifications.quiet_hours.to} />
           </label>
         </div>
-        <span class="note">{t("settings.quiet_help")}</span>
       </div>
 
       {#if !meta.demo}
@@ -830,6 +824,10 @@
 </dialog>
 
 <style>
+  .companion + .companion {
+    margin-top: 8px;
+  }
+
   .journal {
     margin-top: 22px;
   }
