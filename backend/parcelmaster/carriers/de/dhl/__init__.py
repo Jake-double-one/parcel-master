@@ -365,11 +365,172 @@ _ROUNDS: dict[tuple[str, str, str], tuple[float, int | None, bool]] = {}
 _BROWSER_RESTS_UNTIL = [0.0]
 
 
+def _browser_client_hints(version: str) -> tuple[str, str]:
+    """Chrome user agent and sec-ch-ua for this Chromium, without HeadlessChrome.
+
+    The edge in front of dhl.de answers 404 (an Apache HTML page) when the
+    user agent is missing or the brand is HeadlessChrome. A normal Chrome
+    brand is handed the tracking JSON.
+    """
+    major = version.split(".", 1)[0] if version else "131"
+    full = version or f"{major}.0.0.0"
+    user_agent = (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        f"(KHTML, like Gecko) Chrome/{full} Safari/537.36"
+    )
+    sec_ch_ua = f'"Chromium";v="{major}", "Google Chrome";v="{major}", "Not_A Brand";v="24"'
+    return user_agent, sec_ch_ua
+
+
+async def _align_client_hints(page: Any, user_agent: str, version: str) -> None:
+    """Tell the page the same Chrome brand the requests already send.
+
+    Replacing the user-agent string is not enough: headless Chromium still
+    puts HeadlessChrome in navigator.userAgentData, and in sec-ch-ua, unless
+    the brand list is overridden too.
+    """
+    major = version.split(".", 1)[0] if version else "131"
+    full = version or f"{major}.0.0.0"
+    try:
+        client = await page.context.new_cdp_session(page)
+        await client.send(
+            "Network.setUserAgentOverride",
+            {
+                "userAgent": user_agent,
+                "acceptLanguage": "de-DE,de;q=0.9,en;q=0.8",
+                "platform": "Linux",
+                "userAgentMetadata": {
+                    "brands": [
+                        {"brand": "Chromium", "version": major},
+                        {"brand": "Google Chrome", "version": major},
+                        {"brand": "Not_A Brand", "version": "24"},
+                    ],
+                    "fullVersionList": [
+                        {"brand": "Chromium", "version": full},
+                        {"brand": "Google Chrome", "version": full},
+                        {"brand": "Not_A Brand", "version": "24.0.0.0"},
+                    ],
+                    "fullVersion": full,
+                    "platform": "Linux",
+                    "platformVersion": "6.8.0",
+                    "architecture": "x86",
+                    "model": "",
+                    "mobile": False,
+                    "bitness": "64",
+                    "wow64": False,
+                },
+            },
+        )
+    except Exception:  # noqa: BLE001 - the request headers already carry the brand
+        return
+
+
+async def _fetch_shipment(
+    page: Any, tracking_number: str, postal_code: str, seen: list[str]
+) -> dict[str, Any] | None:
+    """POST /shipment the way the page's own script does, from inside the page.
+
+    The postal-code field is only rendered when DHL asks for one. The request
+    is still the same: piececode, zip, international, and the CSRF token the
+    config (and the search answer) left on the page.
+    """
+    seen.append("in-page shipment")
+    try:
+        posted = await page.evaluate(
+            """async ({ piece, zip }) => {
+                const state = window.__INITIAL_APP_STATE__;
+                const cfg = (state && state.config) || {};
+                const base = cfg.verfolgenDataPath || "/int-verfolgen/data";
+                const language = cfg.currentLanguage || "de";
+                const response = await fetch(base + "/shipment?language=" + encodeURIComponent(language), {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        Accept: "application/json",
+                        "Content-Type": "application/json",
+                        "verfolgen-CSRF-token": cfg.verfolgenCsrfToken || ""
+                    },
+                    body: JSON.stringify({ piececode: piece, zip: zip, international: false })
+                });
+                const text = await response.text();
+                let payload = null;
+                try { payload = JSON.parse(text); } catch (e) { payload = null; }
+                const error = payload && payload.error ? String(payload.error) : "";
+                return { status: response.status, payload, error };
+            }""",
+            {"piece": tracking_number, "zip": postal_code},
+        )
+    except Exception as error:  # noqa: BLE001 - the caller logs the visit and returns None
+        seen.append(f"in-page shipment failed {type(error).__name__}")
+        return None
+    status = posted.get("status") if isinstance(posted, dict) else None
+    if status != 200:
+        if isinstance(posted, dict) and posted.get("error"):
+            seen.append(f"shipment {status} {str(posted['error'])[:120]}")
+        log.warning("dhl.de: the page's postal code step got HTTP %s", status)
+        return None
+    payload = posted.get("payload") if isinstance(posted, dict) else None
+    if not isinstance(payload, dict):
+        seen.append("shipment not json")
+        return None
+    return payload
+
+
+async def _shipment_payload(
+    page: Any, tracking_number: str, postal_code: str, seen: list[str]
+) -> dict[str, Any] | None:
+    """Loads the tracking page and returns the postal-code JSON, or None."""
+    try:
+        # Listen before navigation: the search often returns before goto resolves.
+        async with page.expect_response(
+            lambda response: "/int-verfolgen/data/search" in response.url and response.status == 200,
+            timeout=20_000,
+        ):
+            await page.goto(
+                f"{PAGE_URL}?piececode={tracking_number}", wait_until="domcontentloaded"
+            )
+            # A visitor first answers the question about cookies: only the necessary ones.
+            consent = page.get_by_text("Nur notwendige Technologien").first
+            try:
+                await consent.click(timeout=5_000)
+            except Exception:  # noqa: BLE001 - no banner, no click
+                seen.append("no consent banner")
+    except Exception as error:  # noqa: BLE001 - the in-page request below may still answer
+        seen.append(f"search not ok {type(error).__name__}")
+
+    field = page.locator('[data-testid="shipment-details"] form input').first
+    try:
+        # The widget paints the field only after a search it accepts, and only
+        # when this shipment actually asks for a postal code.
+        await field.wait_for(state="visible", timeout=5_000)
+    except Exception:  # noqa: BLE001 - ask the endpoint ourselves
+        seen.append("no postal code field")
+        return await _fetch_shipment(page, tracking_number, postal_code, seen)
+
+    try:
+        await field.fill(postal_code)
+        async with page.expect_response(
+            lambda response: response.url.startswith(f"{WEB_URL}/shipment")
+            and response.request.method == "POST"
+        ) as answer:
+            await field.press("Enter")
+        response = await answer.value
+    except Exception:  # noqa: BLE001 - the form did not post; one fetch, not a second post
+        seen.append("postal code form did not answer")
+        if any(item.startswith("got shipment") or item.startswith("asked shipment") for item in seen):
+            return None
+        return await _fetch_shipment(page, tracking_number, postal_code, seen)
+    if response.status != 200:
+        log.warning("dhl.de: the page's postal code step got HTTP %s", response.status)
+        return None
+    return await response.json()
+
+
 async def _visit_page(tracking_number: str, postal_code: str) -> TrackingResult | None:
     """Opens the tracking page like a visitor, enters the postal code and reads the answer.
 
-    An ordinary browser, as it is: if the site does not serve it, there is no
-    live tracking. Returns None for any failure.
+    Headless Chromium announces itself, and dhl.de then answers 404, so the
+    browser is presented as Chrome. Returns None for any failure.
     """
     try:
         from playwright.async_api import async_playwright
@@ -384,26 +545,38 @@ async def _visit_page(tracking_number: str, postal_code: str) -> TrackingResult 
 
     try:
         async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(args=["--disable-dev-shm-usage"])
+            browser = await playwright.chromium.launch(
+                args=["--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"],
+                ignore_default_args=["--enable-automation"],
+            )
             try:
-                page = await browser.new_page(locale="de-DE")
-                page.set_default_timeout(20_000)
-                page.on("request", lambda r: note("asked", r.url, ""))
-                page.on("response", lambda r: note("got", r.url, r.status))
-                page.on("requestfailed", lambda r: note("lost", r.url, r.failure or ""))
-                await page.goto(
-                    f"{PAGE_URL}?piececode={tracking_number}", wait_until="domcontentloaded"
+                version = getattr(browser, "version", None) or "131.0.0.0"
+                user_agent, sec_ch_ua = _browser_client_hints(version)
+                context = await browser.new_context(
+                    user_agent=user_agent,
+                    locale="de-DE",
+                    timezone_id="Europe/Berlin",
+                    viewport={"width": 1366, "height": 768},
+                    extra_http_headers={
+                        "sec-ch-ua": sec_ch_ua,
+                        "sec-ch-ua-mobile": "?0",
+                        "sec-ch-ua-platform": '"Linux"',
+                    },
                 )
-                # A visitor first answers the question about cookies: only the necessary ones.
-                consent = page.get_by_text("Nur notwendige Technologien").first
-                try:
-                    await consent.click(timeout=5_000)
-                except Exception:  # noqa: BLE001 - no banner, no click
-                    seen.append("no consent banner")
-                field = page.locator('[data-testid="shipment-details"] form input').first
-                try:
-                    await field.wait_for(state="visible")
-                except Exception:
+                page = await context.new_page()
+                page.set_default_timeout(20_000)
+                await page.add_init_script(
+                    "Object.defineProperty(navigator, 'webdriver', {get: () => false})"
+                )
+                await _align_client_hints(page, user_agent, version)
+                page.on("request", lambda request: note("asked", request.url, ""))
+                page.on("response", lambda response: note("got", response.url, response.status))
+                page.on(
+                    "requestfailed",
+                    lambda request: note("lost", request.url, request.failure or ""),
+                )
+                payload = await _shipment_payload(page, tracking_number, postal_code, seen)
+                if payload is None:
                     widget = page.locator("#nolp")
                     shown = (await widget.inner_text())[:200] if await widget.count() else "none"
                     account = await page.evaluate("typeof window.ciam")
@@ -414,17 +587,7 @@ async def _visit_page(tracking_number: str, postal_code: str) -> TrackingResult 
                         " ".join(shown.split()),
                         account,
                     )
-                    raise
-                await field.fill(postal_code)
-                async with page.expect_response(
-                    lambda r: r.url.startswith(f"{WEB_URL}/shipment") and r.request.method == "POST"
-                ) as answer:
-                    await field.press("Enter")
-                response = await answer.value
-                if response.status != 200:
-                    log.warning("dhl.de: the page's postal code step got HTTP %s", response.status)
                     return None
-                payload = await response.json()
             finally:
                 await browser.close()
         details = payload["sendungen"][0].get("sendungsdetails") or {}
