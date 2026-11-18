@@ -91,7 +91,7 @@ async def test_dhl_sends_key_and_postal_code():
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("status", "code"),
-    [(401, "unauthorized"), (404, "not_found"), (429, "rate_limited"), (503, "unavailable")],
+    [(404, "not_found"), (429, "rate_limited"), (503, "unavailable")],
 )
 async def test_dhl_errors_become_readable_codes(status, code):
     with pytest.raises(CarrierError) as caught:
@@ -206,3 +206,15 @@ def test_aggregate_prefers_what_needs_attention():
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
+
+
+@pytest.mark.anyio
+async def test_dhl_falls_back_to_the_website_if_the_key_is_refused():
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.host == "api-eu.dhl.com":
+            return httpx.Response(401, json={})
+        if req.url.path.endswith("/search"):
+            return httpx.Response(200, json=web_answer())
+        return httpx.Response(403, text="no")
+
+    assert (await run_dhl(handler, api_key="refused")).status is Status.IN_TRANSIT

@@ -280,7 +280,11 @@ class DhlDe(CarrierModule):
             raise CarrierError("unavailable", type(error).__name__) from error
 
         if response.status_code in (401, 403):
-            raise CarrierError("unauthorized")
+            # A key DHL has not approved, or has withdrawn, must not stop tracking.
+            log.warning(
+                "DHL refused the API key (HTTP %s); reading dhl.de instead", response.status_code
+            )
+            return await self._track_on_website(request, http)
         if response.status_code == 404:
             raise CarrierError("not_found")
         if response.status_code == 429:
