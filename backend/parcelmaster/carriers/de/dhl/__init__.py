@@ -127,6 +127,7 @@ def parse_response(payload: Any) -> TrackingResult:
 
 WEB_URL = "https://www.dhl.de/int-verfolgen/data"
 TOKEN_HEADER = "Verfolgen-CSRF-Token"
+WEB_DAILY_BUDGET = 1000
 
 _NOT_DELIVERED = re.compile(
     r"nicht zugestellt werden|nicht angetroffen|zustellung (war )?nicht möglich"
@@ -238,6 +239,11 @@ class DhlDe(CarrierModule):
     parcel_fields = (Field("postal_code", placeholder="53113"),)
     default_daily_budget = 250
     pickup_hold_days = 7
+
+    def budget(self, settings: dict[str, Any]) -> int | None:
+        # The API allows 250 a day. The website names no number; this only
+        # keeps a mistake from asking without end.
+        return 250 if settings.get("api_key") else WEB_DAILY_BUDGET
 
     def source(self, settings: dict[str, Any]) -> str | None:
         return "api" if settings.get("api_key") else "website"

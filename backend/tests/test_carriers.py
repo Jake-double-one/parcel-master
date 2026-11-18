@@ -242,3 +242,8 @@ async def test_dhl_falls_back_to_the_website_if_the_key_is_refused():
         return httpx.Response(403, text="no")
 
     assert (await run_dhl(handler, api_key="refused")).status is Status.IN_TRANSIT
+
+
+def test_dhl_budget_depends_on_the_way_it_asks():
+    assert DHL.budget({}) == 1000
+    assert DHL.budget({"api_key": "k"}) == 250

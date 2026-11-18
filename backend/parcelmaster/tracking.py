@@ -110,9 +110,9 @@ def next_delay_minutes(
 def daily_budget(module: CarrierModule, carrier_settings: dict[str, Any]) -> int | None:
     value = carrier_settings.get("daily_budget")
     try:
-        return int(value) if value not in (None, "") else module.default_daily_budget
+        return int(value) if value not in (None, "") else module.budget(carrier_settings)
     except (TypeError, ValueError):
-        return module.default_daily_budget
+        return module.budget(carrier_settings)
 
 
 def pickup_deadline(parcel: dict[str, Any], module: CarrierModule | None) -> datetime | None:
@@ -273,7 +273,6 @@ async def refresh_parcel(
         minutes = (tomorrow - now.astimezone(zone)).total_seconds() / 60
         return fail("budget_exhausted", str(budget), minutes, count_error=False)
 
-    store.count_usage(module.id)
     request = TrackRequest(
         tracking_number=parcel["tracking_number"],
         extra=parcel["extra"],
@@ -311,6 +310,8 @@ async def refresh_parcel(
         log.exception("carrier module %s failed", module.id)
         return fail("module_error", type(error).__name__, base)
 
+    # Only answers count against the day's budget; a failed try is retried later anyway.
+    store.count_usage(module.id)
     log.info(
         "%s %s: %s, %d events, after %s",
         module.id,

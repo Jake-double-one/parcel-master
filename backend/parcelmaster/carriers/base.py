@@ -121,6 +121,10 @@ class CarrierModule:
     def is_configured(self, settings: dict[str, Any]) -> bool:
         return all(settings.get(f.key) for f in self.settings_fields if f.required)
 
+    def budget(self, settings: dict[str, Any]) -> int | None:
+        """Lookups per day unless the user sets a number; may depend on the way it asks."""
+        return self.default_daily_budget
+
     def source(self, settings: dict[str, Any]) -> str | None:
         """Which way the module asks, if it knows more than one; named in ``locales``."""
         return None

@@ -426,7 +426,7 @@ def create_app(config: Config) -> FastAPI:
                     "settings_fields": [vars(f) for f in module.settings_fields],
                     "parcel_fields": [vars(f) for f in module.parcel_fields],
                     "parcel_defaults": module.parcel_defaults(own),
-                    "default_daily_budget": module.default_daily_budget,
+                    "default_daily_budget": module.budget(own),
                     "daily_budget": daily_budget(module, own),
                     "used_today": ctx.store.usage_today(module.id),
                 }
