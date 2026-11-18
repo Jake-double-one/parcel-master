@@ -8,6 +8,7 @@ parsed below are therefore the English ones.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import logging
 import re
@@ -34,8 +35,14 @@ log = logging.getLogger(__name__)
 
 DOMAIN = "amazon.de"
 ORDER_NUMBER = re.compile(r"\d{3}-\d{7}-\d{7}")
+#: A link Amazon hands out for sharing one delivery: the short form and what it leads to.
+SHARED_LINK = re.compile(
+    r"https://(?:amzn\.eu/d/[A-Za-z0-9]+|www\.amazon\.de/progress-tracker/package/share/?\?\S+)"
+)
 #: Upper limit of tracking pages read per sync, to stay a polite visitor.
 MAX_TRACKING_PAGES = 40
+#: Shared deliveries read per sync; each is one more page.
+MAX_SHARED = 10
 
 _MONTHS = {
     name: index
@@ -546,6 +553,54 @@ def hours_in_headline(headline: str | None) -> tuple[tuple[int, int], tuple[int,
     return (start, end) if start[0] < 24 and end[0] < 24 else None
 
 
+def shared_shipment(page: Any, link: str, today: date) -> ImportedShipment | None:
+    """One delivery read from the page behind a shared link, or None if it shows none.
+
+    It is the same kind of page as the tracking page of an own parcel, in the
+    language of whoever opens it, so it is read by its structure first.
+    """
+    if page is None:
+        return None
+    headline = promise_line(page) or ""
+    step = milestone_status(page)
+    status = step or parse_status(headline)
+    found = SimpleNamespace(carrier=None, tracking_number=None, parsed=page)
+    carrier, number = tracking_facts(found)
+    if step is None and status is Status.UNKNOWN and not number:
+        return None
+    eta_from, eta_to = _eta(headline, today)
+    hours = hours_in_headline(headline)
+    if eta_from is None and hours:
+        days = 1 if re.search(r"tomorrow|morgen", headline, re.I) else 0
+        if days or re.search(r"today|heute", headline, re.I):
+            day = datetime(today.year, today.month, today.day) + timedelta(days=days)
+            eta_from = day.replace(hour=hours[0][0], minute=hours[0][1])
+            eta_to = day.replace(hour=hours[1][0], minute=hours[1][1])
+    order = ORDER_NUMBER.search(str(page))
+    key = "share:" + hashlib.sha256(link.encode()).hexdigest()[:16]
+    title = page.select_one(".pt-status-main-status")
+    return ImportedShipment(
+        # Its own order, if the page names one; then it joins what the account shows.
+        reference=order.group(0) if order else key,
+        title=" ".join(
+            part for part in ("Amazon", carrier if carrier != "Amazon" else "", number) if part
+        ),
+        parcels=[
+            ImportedParcel(
+                key=key,
+                status=status,
+                description=headline or (title.get_text(" ", strip=True) if title else ""),
+                eta_from=eta_from,
+                eta_to=eta_to,
+                carrier_name=carrier,
+                tracking_number=number,
+                url=link,
+                events=parse_events(page, today),
+            )
+        ],
+    )
+
+
 def _link_shape(link: str | None) -> str:
     """A tracking link without its values: enough to see which kind Amazon handed out."""
     if not link:
@@ -684,7 +739,8 @@ class AmazonDe(ImporterModule):
         Field("otp_secret", type="secret"),
     )
     sync_interval_minutes = 180
-    reference_pattern = ORDER_NUMBER
+    #: An order number, or a link someone shared for following one delivery.
+    reference_pattern = re.compile(f"{ORDER_NUMBER.pattern}|{SHARED_LINK.pattern}")
 
     def localize(self, text: str, phrase: Any) -> str:
         return translate(text, phrase)
@@ -723,6 +779,9 @@ class AmazonDe(ImporterModule):
         return [(numbers[-1], result)]
 
     def extract_from_url(self, url: str) -> str | None:
+        url = url.rstrip(".,;:!?)\"'")  # pasted from a sentence
+        if SHARED_LINK.fullmatch(url):
+            return url  # the link itself is what gets followed
         parsed = urlparse(url)
         if not (parsed.hostname or "").endswith(DOMAIN):
             return None
@@ -733,9 +792,16 @@ class AmazonDe(ImporterModule):
         def work(client: Any, errors: Any) -> list[Any]:
             return client.get_orders(time_filter="last30")
 
-        return self._read(request, work)
+        # Shared deliveries are in nobody's order list here; each is read through its link.
+        return self._read(request, work, shared=request.shared[:MAX_SHARED])
 
     def fetch(self, request: SyncRequest, reference: str) -> ImportedShipment:
+        if SHARED_LINK.fullmatch(reference):
+            found = self._read(request, lambda client, errors: [], shared=(reference,))
+            if not found:
+                raise CarrierError("not_found", "nothing readable behind the shared link")
+            return found[0]
+
         def work(client: Any, errors: Any) -> list[Any]:
             try:
                 return [client.get_order(reference)]
@@ -748,7 +814,13 @@ class AmazonDe(ImporterModule):
             raise CarrierError("not_found")
         return found[0]
 
-    def _read(self, request: SyncRequest, work: Any, keep_empty: bool = False):
+    def _read(
+        self,
+        request: SyncRequest,
+        work: Any,
+        keep_empty: bool = False,
+        shared: tuple[str, ...] = (),
+    ):
         """Sign in, let ``work`` fetch orders, and add each parcel's tracking page."""
         # Imported here so that a missing or broken library only affects this module.
         from amazonauth.exception import (
@@ -811,6 +883,18 @@ class AmazonDe(ImporterModule):
             session.login()
             client = AmazonOrders(session)
             orders = work(client, order_errors)
+            shared_found = []
+            for link in shared:
+                try:
+                    page = session.get(link).parsed
+                except AmazonOrdersError as error:
+                    log.warning("amazon shared link: %s", _first_line(error))
+                    continue
+                read = shared_shipment(page, link, date.today())
+                if read is None:
+                    log.warning("amazon shared link: nothing readable; %s", _page_clues(page))
+                else:
+                    shared_found.append(read)
             tracking: dict[tuple[str, str], Any] = {}
             for order in orders:
                 for index, shipment in enumerate(order.shipments or [], start=1):
@@ -847,7 +931,7 @@ class AmazonDe(ImporterModule):
             if type(error).__module__.startswith("playwright"):
                 raise CarrierError("browser_failed", _first_line(error)) from error
             raise
-        return to_shipments(orders, tracking, date.today(), keep_empty)
+        return to_shipments(orders, tracking, date.today(), keep_empty) + shared_found
 
 
 MODULE = AmazonDe()

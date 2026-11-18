@@ -202,6 +202,8 @@ class SyncRequest:
     state_dir: Path
     #: Keys of parcels that are filed as arrived: nothing more needs to be read about them.
     settled: frozenset[str] = frozenset()
+    #: Links of shared deliveries that are still on their way and want reading again.
+    shared: tuple[str, ...] = ()
 
 
 class ImporterModule(CarrierModule):

@@ -14,7 +14,8 @@
     }
   },
   "reference": {
-    "label": "Order number"
+    "label": "Order number or shared link",
+    "help": "The order number from your account, or the link Amazon creates when a delivery's tracking is shared (amzn.eu/d/…). Through the link, deliveries someone else ordered can be followed too."
   },
   "companion": {
     "help": "While you keep Amazon's tracking page open, the script passes on what it says: the delivery window and, from the map, how many stops are left."

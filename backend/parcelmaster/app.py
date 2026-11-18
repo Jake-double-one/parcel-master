@@ -391,7 +391,9 @@ def create_app(config: Config) -> FastAPI:
 
     @app.post("/api/importers/{module_id}/import", status_code=201)
     async def import_by_reference(
-        ctx: RealContext, module_id: str, reference: Annotated[str, Body(embed=True, max_length=80)]
+        ctx: RealContext,
+        module_id: str,
+        reference: Annotated[str, Body(embed=True, max_length=600)],
     ) -> dict[str, Any]:
         """File one order the user names, whatever its state."""
         module = importer_module(ctx, module_id)

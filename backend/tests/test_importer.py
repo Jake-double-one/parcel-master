@@ -874,3 +874,48 @@ def test_the_headline_of_the_tracking_page_outranks_the_order_list():
     # A headline that cannot be read (another language, a new wording) changes nothing.
     german = page('<h1 class="pt-promise-main-slot">Zustellung heute 15:45 - 17:45</h1>')
     assert read(german).eta_from == datetime(2026, 11, 18, 15, 30)
+
+
+def test_a_shared_amazon_link_is_read_like_a_tracking_page():
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import MODULE, SHARED_LINK, shared_shipment
+
+    link = "https://amzn.eu/d/01AbCdEf"
+    assert SHARED_LINK.fullmatch(link)
+    assert MODULE.extract_from_url(link) == link
+    assert MODULE.reference_pattern.fullmatch(link)
+    assert MODULE.reference_pattern.fullmatch("302-1234567-7654321")
+    assert not MODULE.reference_pattern.fullmatch("https://example.com/d/01AbCdEf")
+
+    steps = "".join(
+        f'<div class="pt-status-milestone" data-reached="{str(i < 3).lower()}"></div>'
+        for i in range(4)
+    )
+    page = BeautifulSoup(
+        '<h1 class="pt-promise-main-slot">Zustellung heute <span>15:45 - 17:45</span></h1>'
+        f'<section class="pt-card status-card">{steps}</section>'
+        '<section class="pt-card delivery-card"><h3>Versand durch Amazon</h3>'
+        '<div class="pt-delivery-card-trackingId">Trackingnummer DE6053615519</div></section>',
+        "html.parser",
+    )
+    found = shared_shipment(page, link, date(2026, 11, 18))
+    (parcel,) = found.parcels
+    assert found.reference == parcel.key and parcel.key.startswith("share:")
+    assert parcel.status is Status.OUT_FOR_DELIVERY
+    assert (parcel.carrier_name, parcel.tracking_number) == ("Amazon", "DE6053615519")
+    assert parcel.eta_from == datetime(2026, 11, 18, 15, 45)
+    assert parcel.url == link
+    assert (
+        shared_shipment(BeautifulSoup("<p>Robot check</p>", "html.parser"), link, date.today())
+        is None
+    )
+
+
+def test_a_parcel_heard_of_twice_stays_one(world):
+    store = world[0]
+    sync(world, order(tracking_number="AB1"))
+    # The same order through a shared link: another key, the same parcel.
+    sync(world, order(key="share:1", tracking_number="AB1"))
+    assert len(store.list_shipments(False)[0]["parcels"]) == 1
+    assert importer.shared_links(store, world[2]) == ()  # no link was filed with it

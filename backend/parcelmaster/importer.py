@@ -102,6 +102,17 @@ def settled_keys(store: Store) -> frozenset[str]:
     )
 
 
+def shared_links(store: Store, module: ImporterModule) -> tuple[str, ...]:
+    """Links of the service's shared deliveries that have not arrived yet."""
+    return tuple(
+        parcel["extra"]["url"]
+        for parcel in store.open_parcels()
+        if parcel["extra"].get("import_key", "").startswith("share:")
+        and parcel["extra"].get("url")
+        and Status(parcel["status"]) not in FINAL
+    )
+
+
 def carrier_for(
     registry: Registry, name: str | None, number: str, carrier_settings: dict[str, Any]
 ) -> CarrierModule | None:
@@ -173,6 +184,16 @@ def apply(
         }
         for position, imported in enumerate(item.parcels, start=1):
             parcel = known.get(imported.key)
+            if parcel is None and imported.tracking_number:
+                # The same parcel heard of another way, such as through a shared link.
+                parcel = next(
+                    (
+                        p
+                        for p in shipment["parcels"]
+                        if p["tracking_number"] == imported.tracking_number
+                    ),
+                    None,
+                )
             if (
                 parcel is not None
                 and Status(parcel["status"]) in FINAL
@@ -433,6 +454,8 @@ async def follow_deliveries(
         if not start - timedelta(minutes=30) <= now <= end + timedelta(hours=2):
             continue
         reference = (store.get_shipment(parcel["shipment_id"]) or {}).get("reference")
+        if parcel["extra"].get("import_key", "").startswith("share:"):
+            reference = parcel["extra"].get("url")  # a shared delivery is read by its link
         last = _followed.get((module.id, reference or ""))
         if (
             reference
@@ -491,7 +514,11 @@ async def run(
     async with lock:
         _set_state(store, module.id, last_attempt_at=now)
         request = SyncRequest(
-            own, settings["language"], data_dir / "modules" / module.id, settled_keys(store)
+            own,
+            settings["language"],
+            data_dir / "modules" / module.id,
+            settled_keys(store),
+            shared_links(store, module),
         )
         try:
             found = await asyncio.to_thread(module.sync, request)

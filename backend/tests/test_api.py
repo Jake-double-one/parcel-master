@@ -744,3 +744,9 @@ def test_amazon_companion_brings_the_stops_from_the_map(client, monkeypatch):
     assert (parcel["stops"]["left"], parcel["live_lost"]) == (6, False)
     script = client.get("/api/companion/de.amazon.user.js").text
     assert "https://www.amazon.de/" in script and "http://testserver" in script
+
+
+def test_a_shared_amazon_link_is_recognised_when_pasted(client):
+    link = "https://amzn.eu/d/01AbCdEf"
+    found = client.post("/api/detect", json={"text": f"Du kannst es hier verfolgen: {link}."})
+    assert found.json()["matches"] == [{"carrier": "de.amazon", "tracking_number": link}]

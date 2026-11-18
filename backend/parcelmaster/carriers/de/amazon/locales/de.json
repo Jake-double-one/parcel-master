@@ -69,7 +69,8 @@
     "date_plain": "{day}. {month}"
   },
   "reference": {
-    "label": "Bestellnummer"
+    "label": "Bestellnummer oder geteilter Link",
+    "help": "Die Bestellnummer aus deinem Konto, oder der Link, den Amazon beim Teilen einer Sendungsverfolgung erzeugt (amzn.eu/d/…). Über den Link lassen sich auch Lieferungen verfolgen, die jemand anderes bestellt hat."
   },
   "companion": {
     "help": "Solange du die Paketverfolgung von Amazon offen hast, reicht das Skript weiter, was dort steht: das Zustellfenster und von der Karte, wie viele Stopps noch fehlen."
