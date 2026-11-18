@@ -79,7 +79,8 @@
     "undo": "Rückgängig",
     "refresh_same": "Abgerufen. Kein neuer Stand.",
     "refresh_new": "Abgerufen. Es gibt Neues.",
-    "contents": "Inhalt"
+    "contents": "Inhalt",
+    "through": "über {source}"
   },
   "dialog": {
     "create_title": "Sendung anlegen",

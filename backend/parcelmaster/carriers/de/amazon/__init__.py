@@ -8,8 +8,8 @@ parsed below are therefore the English ones.
 
 from __future__ import annotations
 
-import contextlib
 import importlib.util
+import logging
 import re
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -25,6 +25,8 @@ from parcelmaster.carriers.base import (
     TrackingEvent,
 )
 from parcelmaster.status import Status
+
+log = logging.getLogger(__name__)
 
 DOMAIN = "amazon.de"
 ORDER_NUMBER = re.compile(r"\d{3}-\d{7}-\d{7}")
@@ -358,6 +360,48 @@ def describe_item(item: Any) -> str:
     return f"{quantity} × {title}" if isinstance(quantity, int) and quantity > 1 else title
 
 
+def _link_shape(link: str | None) -> str:
+    """A tracking link without its values: enough to see which kind Amazon handed out."""
+    if not link:
+        return "no link"
+    parsed = urlparse(link)
+    return f"{parsed.path}?{'&'.join(sorted(parse_qs(parsed.query)))}"
+
+
+def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) -> Any:
+    """The carrier page of one parcel, or None if Amazon shows none that can be read.
+
+    The library asks by shipment id. Some links carry none; their page is then
+    fetched as it is and read with the same parser.
+    """
+    link = getattr(shipment, "tracking_link", None)
+    shape = _link_shape(link)
+    found = None
+    try:
+        if shipment.shipment_id:
+            found = client.get_tracking(order_number, shipment.shipment_id)
+        elif link:
+            url = f"https://www.{DOMAIN}{link}" if link.startswith("/") else link
+            if urlparse(url).hostname == f"www.{DOMAIN}":
+                response = session.get(url)
+                found = client._parse_tracking(response.parsed, client.config)
+    except Exception as error:  # noqa: BLE001 - a parcel without its page is still a parcel
+        log.warning(
+            "amazon %s: tracking page (%s) failed: %s", order_number, shape, _first_line(error)
+        )
+        return None
+    log.info(
+        "amazon %s: tracking link %s, shipment id %s -> carrier %r, number %r, %d history lines",
+        order_number,
+        shape,
+        "yes" if shipment.shipment_id else "no",
+        getattr(found, "carrier", None),
+        getattr(found, "tracking_number", None),
+        len(parse_events(getattr(found, "parsed", None), date.today())),
+    )
+    return found
+
+
 def to_shipments(
     orders: list[Any],
     tracking: dict[tuple[str, str], Any],
@@ -382,7 +426,7 @@ def to_shipments(
             titles += [item.title for item in getattr(shipment, "items", []) if item.title]
             if not text and not shipment_id:
                 continue  # Amazon no longer shows this shipment: long delivered
-            found = tracking.get((number, shipment_id)) if shipment_id else None
+            found = tracking.get((number, shipment_id or f"{number}/{index}"))
             link = getattr(shipment, "tracking_link", None) or ""
             if link.startswith("/"):
                 link = f"https://www.{DOMAIN}{link}"
@@ -532,14 +576,18 @@ class AmazonDe(ImporterModule):
             orders = work(client, order_errors)
             tracking: dict[tuple[str, str], Any] = {}
             for order in orders:
-                for shipment in order.shipments or []:
+                for index, shipment in enumerate(order.shipments or [], start=1):
+                    if len(tracking) >= MAX_TRACKING_PAGES:
+                        break
                     # One request per parcel: carrier, number and the history.
-                    if shipment.shipment_id and len(tracking) < MAX_TRACKING_PAGES:
-                        # Without the carrier page the status from the order list still stands.
-                        with contextlib.suppress(AmazonOrdersError):
-                            tracking[(order.order_number, shipment.shipment_id)] = (
-                                client.get_tracking(order.order_number, shipment.shipment_id)
-                            )
+                    # Without the carrier page the status from the order list still stands.
+                    key = (
+                        order.order_number,
+                        shipment.shipment_id or f"{order.order_number}/{index}",
+                    )
+                    found = _read_tracking(client, session, order.order_number, shipment)
+                    if found is not None:
+                        tracking[key] = found
         except NeedsPerson as error:
             code = "needs_code" if "passcode" in str(error).lower() else "needs_person"
             raise CarrierError(code) from error

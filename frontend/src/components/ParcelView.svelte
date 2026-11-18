@@ -42,11 +42,9 @@
 <div class="parcel">
   <div class="top">
     <div class="who">
-      <span class="eyebrow carrier">
-        {origin && origin !== parcel.carrier_name
-          ? t("shipment.via", { source: origin, carrier: parcel.carrier_name })
-          : parcel.carrier_name}
-      </span>
+      {#if origin && origin !== parcel.carrier_name}
+        <span class="eyebrow">{t("shipment.through", { source: origin })}</span>
+      {/if}
       <button
         type="button"
         class="number mono"
@@ -57,7 +55,11 @@
         {copied ? t("shipment.copied") : parcel.tracking_number}
       </button>
     </div>
-    {#if showStatus}<StatusTag status={parcel.status} />{/if}
+    <!-- Who delivers it, the same size as the status next to it. -->
+    <div class="tags">
+      <span class="who-delivers">{parcel.carrier_name}</span>
+      {#if showStatus}<StatusTag status={parcel.status} />{/if}
+    </div>
   </div>
 
   <Rail status={parcel.status} />
@@ -165,8 +167,25 @@
     gap: 10px;
   }
 
-  .carrier {
+  .tags {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .who-delivers {
+    font-family: var(--mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
     color: var(--ink);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 3px 10px;
+    white-space: nowrap;
   }
 
   .who {
