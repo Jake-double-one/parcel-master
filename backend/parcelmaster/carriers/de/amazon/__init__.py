@@ -282,22 +282,36 @@ def _clock(text: str) -> tuple[int, int] | None:
     return (hour, minute) if hour < 24 and minute < 60 else None
 
 
+#: Amazon answers in English, but a page in the account's own language must not be lost.
+_GERMAN_MONTHS = {
+    "januar": 1,
+    "februar": 2,
+    "märz": 3,
+    "mai": 5,
+    "juni": 6,
+    "juli": 7,
+    "oktober": 10,
+    "dezember": 12,
+}
+
+
 def _event_day(text: str, today: date) -> date | None:
     """The day a date heading of the tracking page names ("Tuesday, 17 November")."""
     lower = text.lower()
-    if "today" in lower:
+    if "today" in lower or "heute" in lower:
         return today
-    if "yesterday" in lower:
+    if "yesterday" in lower or "gestern" in lower:
         return today - timedelta(days=1)
+    months = {**_MONTHS, **_GERMAN_MONTHS}
     for pattern, day_group, month_group in (
-        (r"\b(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\b", 1, 2),
-        (r"\b([a-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?\b", 2, 1),
+        (r"\b(\d{1,2})(?:st|nd|rd|th|\.)?\s+([a-zä]{3,9})\b", 1, 2),
+        (r"\b([a-zä]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?\b", 2, 1),
     ):
         match = re.search(pattern, lower)
-        if match and match.group(month_group) in _MONTHS:
+        if match and match.group(month_group) in months:
             try:
                 day = date(
-                    today.year, _MONTHS[match.group(month_group)], int(match.group(day_group))
+                    today.year, months[match.group(month_group)], int(match.group(day_group))
                 )
             except ValueError:
                 continue
@@ -334,7 +348,12 @@ def parse_events(page: Any, today: date) -> list[TrackingEvent] | None:
                 when = datetime(day.year, day.month, day.day, hour, minute)
             events.append(TrackingEvent(when, parse_status(text), text))
             pending_time = None
-        elif _has_class(tag, "tracking-event-location") and events and not events[-1].location:
+        elif (
+            _has_class(tag, "tracking-event-location")
+            and events
+            and not events[-1].location
+            and not re.fullmatch(r"[Xx ,]+", text)  # "XX, XX" stands for "not told"
+        ):
             events[-1].location = text
     if not events:
         return None

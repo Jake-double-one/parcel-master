@@ -681,3 +681,37 @@ def test_carrier_and_number_are_read_from_the_words_if_the_markup_is_unknown():
     known = SimpleNamespace(carrier="UPS", tracking_number="1Z999", parsed=None)
     assert tracking_facts(known) == ("UPS", "1Z999")
     assert tracking_facts(None) == (None, None)
+
+
+def test_history_is_read_from_the_window_behind_all_updates():
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import parse_events
+
+    def row(time, message, place):
+        return (
+            f'<div><span class="tracking-event-time">{time}</span>'
+            f'<span class="tracking-event-message">{message}</span>'
+            f'<span class="tracking-event-location">{place}</span></div>'
+        )
+
+    def day(name):
+        return f'<div><span class="tracking-event-date">{name}</span></div>'
+
+    html = (
+        '<div id="tracking-events-container">'
+        + day("Mittwoch, 18. November")
+        + row("9:35", "Sendung ist beim Verteilzentrum eingegangen.", "DE")
+        + row("4:32", "Sendung ist beim Verteilzentrum eingegangen.", "XX, XX ")
+        + day("Tuesday, November 17")
+        + row("2:55 PM", "Package arrived at a carrier facility", "DE")
+        + row("", "Package left the shipper facility", "")
+        + "</div>"
+    )
+    events = parse_events(BeautifulSoup(html, "html.parser"), date(2026, 11, 18))
+    assert [(e.timestamp, e.location) for e in events] == [
+        (datetime(2026, 11, 17, 0, 0), None),
+        (datetime(2026, 11, 17, 14, 55), "DE"),
+        (datetime(2026, 11, 18, 4, 32), None),
+        (datetime(2026, 11, 18, 9, 35), "DE"),
+    ]
