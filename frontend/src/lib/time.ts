@@ -1,7 +1,7 @@
 import type { Shipment, Status } from "./types";
 
-export type Group = "attention" | "today" | "tomorrow" | "week" | "later" | "undated" | "done";
-export const GROUPS: Group[] = ["attention", "today", "tomorrow", "week", "later", "undated", "done"];
+export type Group = "found" | "attention" | "today" | "tomorrow" | "week" | "later" | "undated" | "done";
+export const GROUPS: Group[] = ["found", "attention", "today", "tomorrow", "week", "later", "undated", "done"];
 
 const FINAL: Status[] = ["delivered", "returned"];
 
@@ -16,6 +16,7 @@ export function dayDistance(date: Date, now: Date): number {
 
 /** Where a shipment belongs in the overview. */
 export function groupOf(shipment: Shipment, now: Date): Group {
+  if (shipment.suggested) return "found"; // came across it; the user has not decided yet
   if (FINAL.includes(shipment.status)) return "done";
   if (shipment.status === "problem" || shipment.status === "ready_for_pickup") return "attention";
   if (shipment.status === "out_for_delivery") return "today";

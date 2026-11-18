@@ -103,7 +103,8 @@ def test_archive_and_delete(client):
     # An archived number may be tracked again.
     assert new_shipment(client, "DEMO0005").status_code == 201
     client.post(f"/api/shipments/{shipment_id}/archive", json={"archived": False})
-    assert client.delete(f"/api/shipments/{shipment_id}").status_code == 204
+    assert client.delete(f"/api/shipments/{shipment_id}").status_code == 204  # into the bin
+    assert client.delete(f"/api/shipments/{shipment_id}").status_code == 204  # for good
     assert client.delete(f"/api/shipments/{shipment_id}").status_code == 404
 
 
@@ -670,21 +671,92 @@ def test_companion_script_is_made_out_to_this_server_and_its_news_are_applied(cl
         "timeframe": {"from": "2026-11-18T12:40:00+01:00", "to": "2026-11-18T14:10:00+01:00"},
     }
     taken = client.post("/api/companion/de.dhl", json={"payload": payload}).json()
-    assert taken == {"parcels": 1}
+    assert taken["parcels"] == 1 and taken["tracked"] == ["00340434161094042557"]
     parcel = client.get("/api/shipments").json()[0]["parcels"][0]
     assert shipment["id"] and parcel["status"] == "out_for_delivery"
     assert parcel["stops"] == {"left": 10, "about": True}
     assert parcel["eta_from"] == "2026-11-18T11:40:00+00:00"  # 12:40 in Germany
-    seen = [e["message"] for e in client.get("/api/log").json()["entries"] if "saw" in e["message"]]
-    assert seen and "00340434161094042557: tracked, direction ANKOMMEND" in seen[0]
-    stranger = json.loads(fixture.read_text())
-    stranger["sendungen"][0]["id"] = "00340434161094049999"
-    stranger["sendungen"][0]["sendungsname"] = "Fahrradladen"
-    assert client.post("/api/companion/de.dhl", json={"payload": stranger}).json() == {"parcels": 0}
-    seen = [e["message"] for e in client.get("/api/log").json()["entries"] if "saw" in e["message"]]
-    assert "00340434161094049999: NOT tracked" in seen[0] and "Fahrradladen" in seen[0]
-    # Rubbish and parcels we do not know change nothing.
-    assert client.post("/api/companion/de.dhl", json={"payload": "x"}).json() == {"parcels": 0}
+    # Rubbish changes nothing.
+    assert client.post("/api/companion/de.dhl", json={"payload": "x"}).json()["parcels"] == 0
+
+
+def _dhl_page(number, name="Fahrradladen", **details):
+    fixture = Path(__file__).parent / "fixtures" / "dhl_web_transit.json"
+    payload = json.loads(fixture.read_text())
+    piece = payload["sendungen"][0]
+    piece["id"] = number
+    piece["sendungsinfo"] = {"sendungsname": name, "sendungsrichtung": "ANKOMMEND"}
+    piece["sendungsdetails"].update(details)
+    return payload
+
+
+def _see(client, payload, **more):
+    return client.post("/api/companion/de.dhl", json={"payload": payload, **more}).json()
+
+
+def test_a_parcel_the_companion_comes_across_is_suggested_then_taken_or_binned(client):
+    number = "00340434161094049999"
+    bare = _dhl_page(number)
+    del bare["sendungen"][0]["sendungsdetails"]["sendungsverlauf"]
+    assert _see(client, bare)["suggested"] == []  # the bare list is not enough to go by
+    assert _see(client, _dhl_page("00340434161094048888", istZugestellt=True))["suggested"] == []
+    assert client.get("/api/shipments").json() == []
+
+    assert _see(client, _dhl_page(number))["suggested"] == [number]
+    _see(client, _dhl_page(number))  # seen again: still one
+    (found,) = client.get("/api/shipments").json()
+    assert found["suggested"] is True and found["title"] == "Fahrradladen"
+    assert found["source"] == "discovered" and found["parcels"][0]["status"] == "in_transit"
+    assert _see(client, bare)["parcels"] == 0  # and the bare list resets nothing
+
+    taken = client.post(f"/api/shipments/{found['id']}/accept").json()
+    assert taken["suggested"] is False
+    assert _see(client, _dhl_page(number))["tracked"] == [number]
+
+    # Deleted, it rests in the bin and is not found again.
+    assert client.delete(f"/api/shipments/{found['id']}").status_code == 204
+    assert client.get("/api/shipments").json() == []
+    (binned,) = client.get("/api/shipments?trash=true").json()
+    assert binned["purge_at"] > binned["deleted_at"]
+    assert _see(client, _dhl_page(number))["suggested"] == []
+    assert client.post(f"/api/shipments/{found['id']}/restore").json()["purge_at"] is None
+    assert len(client.get("/api/shipments").json()) == 1
+    # Thrown away for good, it stays away too.
+    client.delete(f"/api/shipments/{found['id']}")
+    assert client.delete(f"/api/shipments/{found['id']}").status_code == 204
+    assert client.get("/api/shipments?trash=true").json() == []
+    assert client.delete(f"/api/shipments/{found['id']}").status_code == 404
+    assert _see(client, _dhl_page(number))["suggested"] == []
+    # Unless the user asks for it in the carrier's page.
+    assert _see(client, _dhl_page(number), take=[number])["tracked"] == [number]
+
+
+def test_the_discovery_mode_decides_what_happens_to_a_found_parcel(client):
+    client.put("/api/settings", json={"discovery": {"mode": "button"}})
+    seen = _see(client, _dhl_page("00340434161094049999"))
+    assert seen["mode"] == "button" and client.get("/api/shipments").json() == []
+    client.put("/api/settings", json={"discovery": {"mode": "auto"}})
+    assert _see(client, _dhl_page("00340434161094049999"))["tracked"] == ["00340434161094049999"]
+    assert client.get("/api/shipments").json()[0]["suggested"] is False
+    client.put("/api/settings", json={"discovery": {"mode": "nonsense"}})
+    assert client.get("/api/settings").json()["discovery"] == {"mode": "suggest"}
+
+
+def test_the_bin_empties_itself_after_two_weeks(client):
+    from parcelmaster import discovery
+
+    store = client.app.state.pm.store
+    first = new_shipment(client, "DEMO0005").json()["id"]
+    second = new_shipment(client, "DEMO0006").json()["id"]
+    client.delete(f"/api/shipments/{first}")
+    client.delete(f"/api/shipments/{second}")
+    store._db.execute(
+        "UPDATE shipments SET deleted_at='2026-01-01T00:00:00+00:00' WHERE id=?", (first,)
+    )
+    assert discovery.empty_trash(store) == 1
+    assert [s["id"] for s in client.get("/api/shipments?trash=true").json()] == [second]
+    assert client.delete("/api/trash").status_code == 204
+    assert client.get("/api/shipments?trash=true").json() == []
 
 
 def test_a_failed_apprise_test_says_why(client):
@@ -725,7 +797,7 @@ def test_amazon_companion_brings_the_stops_from_the_map(client, monkeypatch):
     parcel_id = store.add_parcel(shipment_id, "de.amazon", "DE6053615519", {})
     store.update_parcel(parcel_id, status="out_for_delivery", description="Kommt heute")
     news = {"tracking": "Trackingnummer DE6053615519", "bubble": "Du bist der nächste Halt"}
-    assert client.post("/api/companion/de.amazon", json={"payload": news}).json() == {"parcels": 1}
+    assert client.post("/api/companion/de.amazon", json={"payload": news}).json()["parcels"] == 1
     parcel = client.get("/api/shipments").json()[0]["parcels"][0]
     assert parcel["stops"] == {"left": 0, "about": False}
     assert parcel["description"] == "Kommt heute"
@@ -734,7 +806,7 @@ def test_amazon_companion_brings_the_stops_from_the_map(client, monkeypatch):
         "/api/companion/de.amazon", json={"payload": {**news, "bubble": "8 Stopps entfernt"}}
     )
     gone = {"tracking": news["tracking"], "bubble": "", "map": False}
-    assert client.post("/api/companion/de.amazon", json={"payload": gone}).json() == {"parcels": 1}
+    assert client.post("/api/companion/de.amazon", json={"payload": gone}).json()["parcels"] == 1
     parcel = client.get("/api/shipments").json()[0]["parcels"][0]
     assert (parcel["stops"], parcel["live_lost"]) == (None, True)
     client.post(

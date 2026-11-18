@@ -28,7 +28,8 @@
     "week": "This week",
     "later": "Later",
     "undated": "No date yet",
-    "done": "Arrived"
+    "done": "Arrived",
+    "found": "Found"
   },
   "overview": {
     "open": "open",
@@ -46,7 +47,13 @@
     "refreshing": "Refreshing",
     "to_top": "Back to top",
     "auto_archived_one": "1 delivered shipment was archived automatically.",
-    "auto_archived": "{count} delivered shipments were archived automatically."
+    "auto_archived": "{count} delivered shipments were archived automatically.",
+    "trash": "Bin",
+    "trash_note": "What you delete or discard stays here for 14 days and is then gone for good.",
+    "empty_trash": "The bin is empty.",
+    "empty_trash_now": "Empty the bin",
+    "empty_trash_confirm": "Delete everything for good",
+    "found_note": "The companion script saw these shipments at the carrier. They are tracked once you take them."
   },
   "shipment": {
     "parcels": "{done} of {count} arrived",
@@ -67,7 +74,7 @@
     "archive": "Archive",
     "unarchive": "Back to overview",
     "delete": "Delete",
-    "delete_confirm": "Delete for good",
+    "delete_confirm": "Really delete for good",
     "history": "History",
     "no_events": "The carrier has not reported anything yet.",
     "note": "Note",
@@ -75,7 +82,7 @@
     "copy": "Copy number",
     "copied": "Copied ✓",
     "archived_toast": "Archived.",
-    "deleted_toast": "Deleted.",
+    "deleted_toast": "Deleted for good.",
     "undo": "Undo",
     "refresh_same": "Checked. Nothing new.",
     "refresh_new": "Checked. There is news.",
@@ -85,7 +92,15 @@
     "stops_about": "A bit more than {count} stops to go",
     "stops_one": "Only 1 stop to go",
     "stops_next": "You are the next stop",
-    "live_lost": "Live view interrupted"
+    "live_lost": "Live view interrupted",
+    "new": "New",
+    "accept": "Take",
+    "discard": "Discard",
+    "restore": "Restore",
+    "delete_for_good": "Delete for good",
+    "purge_on": "Will be deleted for good on {date}.",
+    "binned_toast": "Moved to the bin.",
+    "restored_toast": "Restored."
   },
   "dialog": {
     "create_title": "Add shipment",
@@ -230,7 +245,13 @@
     "companion": "Companion script",
     "companion_install": "Install script for {carrier}",
     "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey). It passes on to Parcel Master what the carrier's page shows you, asks nothing there itself and sends only to this server.",
-    "help": "Show explanation"
+    "help": "Show explanation",
+    "discovery": "New shipments the script sees",
+    "discovery_help": "What happens to shipments the companion script sees at the carrier and Parcel Master does not know yet. Delivered ones are left out. What you discard is not suggested again.",
+    "discovery_button": "Only when I click the button on the carrier's page",
+    "discovery_suggest": "Suggest them, I decide",
+    "discovery_auto": "Track them right away",
+    "event_discovered": "the companion script finds a new shipment"
   },
   "login": {
     "password": "Password",
@@ -328,6 +349,10 @@
       "one": "{carrier}: only 1 stop before yours.",
       "next": "{carrier}: you are the next stop.",
       "lost": "{carrier}: the live view is gone; it was {count} stops last. Perhaps a break or a changed round."
+    },
+    "discovered": {
+      "body": "{carrier} announces a parcel. Take it in Parcel Master to track it.",
+      "taken": "{carrier} announces a parcel. It is tracked now."
     }
   },
   "scanner": {

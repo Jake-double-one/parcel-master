@@ -64,7 +64,14 @@ export const api = {
     request<{ matches: { carrier: string; tracking_number: string }[] }>("POST", "/api/detect", {
       text,
     }),
-  shipments: (archived: boolean) => request<Shipment[]>("GET", `/api/shipments?archived=${archived}`),
+  shipments: (view: "open" | "archive" | "trash") =>
+    request<Shipment[]>(
+      "GET",
+      view === "trash" ? "/api/shipments?trash=true" : `/api/shipments?archived=${view === "archive"}`,
+    ),
+  restore: (id: number) => request<Shipment>("POST", `/api/shipments/${id}/restore`),
+  accept: (id: number) => request<Shipment>("POST", `/api/shipments/${id}/accept`),
+  emptyTrash: () => request<void>("DELETE", "/api/trash"),
   create: (draft: ShipmentDraft) => request<Shipment>("POST", "/api/shipments", draft),
   update: (id: number, draft: ShipmentDraft) => request<Shipment>("PUT", `/api/shipments/${id}`, draft),
   remove: (id: number) => request<void>("DELETE", `/api/shipments/${id}`),

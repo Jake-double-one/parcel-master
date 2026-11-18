@@ -12,6 +12,7 @@ import httpx
 from . import importer
 from .carriers.registry import Registry
 from .db import Store
+from .discovery import empty_trash
 from .notify import Notifier
 from .tracking import auto_archive, periodic_notices, refresh_parcel, resting
 
@@ -81,4 +82,5 @@ class Scheduler:
         await self.notifier.handle(periodic_notices(self.store, self.registry))
         await self.notifier.flush_held()
         auto_archive(self.store)
+        empty_trash(self.store)
         self.last_run = now

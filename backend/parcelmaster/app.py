@@ -20,7 +20,7 @@ from fastapi import Body, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, importer
+from . import __version__, discovery, importer
 from .carriers.base import CarrierError, CarrierModule
 from .carriers.registry import Registry, discover
 from .config import Config
@@ -238,6 +238,8 @@ def create_app(config: Config) -> FastAPI:
             "pickup_deadline": deadlines[0] if deadlines else None,
             # The oldest lookup among the open parcels: how fresh the whole row is.
             "last_checked_at": min(checked) if checked and all(checked) else None,
+            "suggested": bool(shipment.get("suggested_at")),
+            "purge_at": discovery.purge_at(shipment),
         }
 
     def language_of(ctx: Ctx) -> str:
@@ -474,9 +476,14 @@ def create_app(config: Config) -> FastAPI:
 
     @app.post("/api/companion/{module_id}")
     async def companion_news(
-        ctx: RealContext, module_id: str, payload: Annotated[Any, Body(embed=True)]
-    ) -> dict[str, int]:
-        """News a companion script saw on the carrier's page; applied to the parcels we know."""
+        ctx: RealContext,
+        module_id: str,
+        payload: Annotated[Any, Body(embed=True)],
+        take: Annotated[list[str] | None, Body(embed=True, max_length=50)] = None,
+    ) -> dict[str, Any]:
+        """News a companion script saw on the carrier's page: applied to the parcels we
+        know, and parcels we do not know are filed as the settings say. ``take`` names
+        the ones the user clicked on in the page."""
         module = ctx.module(module_id)
         if module is None or not module.companion_script():
             raise fail(404, "not_found")
@@ -485,12 +492,15 @@ def create_app(config: Config) -> FastAPI:
         now = datetime.now(UTC)
         base = int(settings["polling"]["interval_minutes"])
         taken = 0
-        mine = ctx.store.open_parcels()
-        known = {p["tracking_number"] for p in mine if p["carrier"] == module.id}
-        # A first step towards finding parcels by themselves: note what the page knows.
+        known = {p["tracking_number"] for p in ctx.store.open_parcels()}
         for line in module.describe_companion_news(payload, known):
-            journal.info("%s companion saw %s", module.id, line)
-        for number, result in module.take_from_companion(payload)[:20]:
+            journal.debug("%s companion saw %s", module.id, line)
+        found = module.discover(payload)
+        wanted = frozenset(module.normalize(str(number)) for number in take or [])
+        mode = discovery.mode_of(settings)
+        await ctx.state.notifier.handle(discovery.take(ctx.store, module, found, mode, wanted))
+        mine = ctx.store.open_parcels(suggested=True)
+        for number, result in module.take_from_companion(payload)[:30]:
             for parcel in mine:
                 if (parcel["carrier"], parcel["tracking_number"]) != (module.id, number):
                     continue
@@ -501,11 +511,21 @@ def create_app(config: Config) -> FastAPI:
                     notices = record_live(ctx.store, full, result, zone, now)
                 else:
                     notices = record_result(ctx.store, full, result, base, zone, now)
-                await ctx.state.notifier.handle(notices)
+                if not parcel["suggested_at"]:  # nothing to tell about a mere suggestion
+                    await ctx.state.notifier.handle(notices)
                 taken += 1
         if taken:
             journal.info("%s: companion script brought news for %d parcel(s)", module.id, taken)
-        return {"parcels": taken}
+        seen = {item.number for item in found}
+        tracked = {p["tracking_number"] for p in ctx.store.open_parcels()}
+        waiting = {p["tracking_number"] for p in mine if p["suggested_at"]}
+        return {
+            "parcels": taken,
+            "mode": mode,
+            # For the script's buttons: what of the page is tracked, what awaits a decision.
+            "tracked": sorted(seen & tracked),
+            "suggested": sorted(seen & waiting - tracked),
+        }
 
     @app.post("/api/detect")
     def detect(ctx: Context, text: Annotated[str, Body(embed=True, max_length=2000)]) -> dict:
@@ -544,7 +564,12 @@ def create_app(config: Config) -> FastAPI:
     # -- shipments --------------------------------------------------------
 
     @app.get("/api/shipments")
-    async def list_shipments(ctx: Context, archived: bool = False) -> list[dict[str, Any]]:
+    async def list_shipments(
+        ctx: Context, archived: bool = False, trash: bool = False
+    ) -> list[dict[str, Any]]:
+        if trash:
+            language = language_of(ctx)
+            return [present(ctx, shipment, language) for shipment in ctx.store.list_trash()]
         shipments = ctx.store.list_shipments(archived)
         if ctx.demo and not archived:
             # The demo has no background loop; it catches up when someone looks.
@@ -654,13 +679,35 @@ def create_app(config: Config) -> FastAPI:
         return await after_save(ctx, ctx.store.save_shipment(shipment_id, data, parcels))
 
     @app.delete("/api/shipments/{shipment_id}", status_code=204)
-    def delete_shipment(ctx: Context, shipment_id: int) -> None:
+    def delete_shipment(ctx: Context, shipment_id: int, permanent: bool = False) -> None:
+        """Into the bin; from the bin, or when asked to, gone for good."""
         shipment = ctx.store.get_shipment(shipment_id)
-        if shipment is None or not ctx.store.delete_shipment(shipment_id):
+        if shipment is None:
             raise fail(404, "not_found")
-        if shipment["reference"] and shipment["source"] not in ("manual", "import", "demo"):
-            # Without this note the next sync would simply bring the order back.
-            importer.dismiss(ctx.store, shipment["source"], shipment["reference"])
+        if permanent or shipment["deleted_at"]:
+            # Also notes that nothing shall bring it back by itself.
+            discovery.remove_for_good(ctx.store, shipment)
+        else:
+            ctx.store.set_deleted(shipment_id, True)
+
+    @app.delete("/api/trash", status_code=204)
+    def empty_trash(ctx: Context) -> None:
+        discovery.empty_trash(ctx.store, everything=True)
+
+    @app.post("/api/shipments/{shipment_id}/restore")
+    def restore(ctx: Context, shipment_id: int) -> dict[str, Any]:
+        shipment = ctx.store.get_shipment(shipment_id)
+        if shipment is None or not shipment["deleted_at"]:
+            raise fail(404, "not_found")
+        ctx.store.set_deleted(shipment_id, False)
+        return present(ctx, ctx.store.get_shipment(shipment_id), language_of(ctx))
+
+    @app.post("/api/shipments/{shipment_id}/accept")
+    async def accept(ctx: Context, shipment_id: int) -> dict[str, Any]:
+        """A shipment a companion script found becomes one the user tracks."""
+        if not ctx.store.accept_suggestion(shipment_id):
+            raise fail(404, "not_found")
+        return await after_save(ctx, shipment_id)
 
     @app.post("/api/shipments/{shipment_id}/archive")
     def archive(
@@ -753,6 +800,7 @@ def create_app(config: Config) -> FastAPI:
             ),
             "saver": daily_window(polling.get("saver") or defaults["saver"], "invalid_saver_hours"),
         }
+        merged["discovery"] = {"mode": discovery.mode_of(merged)}
         notifications = merged["notifications"]
         urls = notifications.get("apprise_urls")
         notifications["apprise_urls"] = (

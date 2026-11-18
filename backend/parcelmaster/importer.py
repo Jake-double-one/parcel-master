@@ -29,6 +29,7 @@ log = logging.getLogger(__name__)
 
 STATE_KEY = "importers"
 DISMISSED_KEY = "importers_dismissed"
+DISCOVERED = "discovered"  # source of a shipment a companion script came across
 #: With the saver on, a parcel goes to its carrier's module from these states on.
 HAND_OVER_FROM = frozenset({Status.OUT_FOR_DELIVERY, Status.READY_FOR_PICKUP, Status.PROBLEM})
 #: Keys in a parcel's extra that tracking writes for itself.
@@ -145,6 +146,17 @@ def _same_parcel_elsewhere(
     return None
 
 
+def _replace_found(store: Store, item: ImportedShipment) -> None:
+    """A shipment a companion script came across steps aside once an order holds
+    the same parcel: the order is the fuller entry."""
+    for parcel in item.parcels:
+        if not parcel.tracking_number:
+            continue
+        other = store.find_number(parcel.tracking_number)
+        if other and other["source"] == DISCOVERED:
+            store.delete_shipment(other["id"])
+
+
 def apply(
     store: Store,
     registry: Registry,
@@ -177,10 +189,15 @@ def apply(
             if twin["reference"].startswith(SHARED):
                 store.delete_shipment(twin["id"])  # the order takes its place
         shipment = store.find_by_reference(module.name, item.reference)
+        if shipment and shipment["deleted_at"]:
+            if not wanted:
+                continue  # lies in the bin
+            store.set_deleted(shipment["id"], False)
         if shipment and shipment["archived_at"]:
             if not wanted:
                 continue  # the user is done with this order
             store.set_archived(shipment["id"], False)
+        _replace_found(store, item)
         if shipment is None:
             if not wanted:
                 if [module.name, item.reference] in dismissed:

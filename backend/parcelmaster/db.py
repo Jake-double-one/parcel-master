@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS shipments (
     source TEXT NOT NULL DEFAULT 'manual',
     reference TEXT NOT NULL DEFAULT '',
     archived_at TEXT,
+    deleted_at TEXT,
+    suggested_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -102,12 +104,17 @@ DEFAULT_SETTINGS: dict[str, Any] = {
             "delivered": True,
             "delivery_window": True,
             "stops": True,
+            "discovered": True,
             "problem": True,
             "stale": True,
             "pickup_reminder": True,
         },
         "quiet_hours": {"enabled": False, "from": "22:00", "to": "07:00"},
     },
+    # What the companion scripts do with parcels they see and we do not track:
+    # "button" takes one only on a click in the carrier's page, "suggest" lists
+    # it for the user to decide, "auto" tracks it right away.
+    "discovery": {"mode": "suggest"},
 }
 
 PARCEL_UPDATE_COLUMNS = frozenset(
@@ -160,6 +167,10 @@ class Store:
         self._db.execute("PRAGMA foreign_keys=ON")
         with self._lock, self._db:
             self._db.executescript(SCHEMA)
+            columns = {row["name"] for row in self._db.execute("PRAGMA table_info(shipments)")}
+            for column in ("deleted_at", "suggested_at"):
+                if column not in columns:  # a database from before the trash
+                    self._db.execute(f"ALTER TABLE shipments ADD COLUMN {column} TEXT")
 
     def close(self) -> None:
         with self._lock:
@@ -225,9 +236,27 @@ class Store:
         condition = "IS NOT NULL" if archived else "IS NULL"
         with self._lock:
             rows = self._db.execute(
-                f"SELECT * FROM shipments WHERE archived_at {condition} ORDER BY created_at DESC"
+                f"SELECT * FROM shipments WHERE archived_at {condition} "
+                "AND deleted_at IS NULL ORDER BY created_at DESC"
             ).fetchall()
             return self._load(rows)
+
+    def list_trash(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM shipments WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC"
+            ).fetchall()
+            return self._load(rows)
+
+    def find_number(self, tracking_number: str) -> dict[str, Any] | None:
+        """Any shipment holding this number, wherever it lies: open, archived or binned."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT s.* FROM parcels p JOIN shipments s ON s.id = p.shipment_id "
+                "WHERE p.tracking_number=? ORDER BY s.deleted_at IS NOT NULL, s.id LIMIT 1",
+                (tracking_number,),
+            ).fetchone()
+        return dict(row) if row else None
 
     def get_shipment(self, shipment_id: int) -> dict[str, Any] | None:
         with self._lock:
@@ -248,7 +277,7 @@ class Store:
             row = self._db.execute(
                 "SELECT s.id, s.title FROM parcels p JOIN shipments s ON s.id = p.shipment_id "
                 "WHERE p.carrier=? AND p.tracking_number=? AND s.archived_at IS NULL "
-                "AND s.id IS NOT ?",
+                "AND s.deleted_at IS NULL AND s.id IS NOT ?",
                 (carrier, tracking_number, exclude_shipment),
             ).fetchone()
         return dict(row) if row else None
@@ -266,13 +295,14 @@ class Store:
             if shipment_id is None:
                 cursor = self._db.execute(
                     "INSERT INTO shipments(title, direction, note, source, reference, "
-                    "created_at, updated_at) VALUES(?,?,?,?,?,?,?)",
+                    "suggested_at, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
                     (
                         data["title"],
                         data["direction"],
                         data["note"],
                         data.get("source", "manual"),
                         data.get("reference", ""),
+                        now if data.get("suggested") else None,
                         data.get("created_at") or now,
                         now,
                     ),
@@ -384,6 +414,37 @@ class Store:
             )
         return cursor.rowcount > 0
 
+    def set_deleted(self, shipment_id: int, deleted: bool) -> bool:
+        """Into the bin or back out of it."""
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "UPDATE shipments SET deleted_at=?, updated_at=? WHERE id=?",
+                (now_iso() if deleted else None, now_iso(), shipment_id),
+            )
+        return cursor.rowcount > 0
+
+    def accept_suggestion(self, shipment_id: int) -> bool:
+        """A found shipment becomes one of the user's own; its parcels are due at once."""
+        now = now_iso()
+        with self._lock, self._db:
+            cursor = self._db.execute(
+                "UPDATE shipments SET suggested_at=NULL, updated_at=? "
+                "WHERE id=? AND suggested_at IS NOT NULL",
+                (now, shipment_id),
+            )
+            self._db.execute(
+                "UPDATE parcels SET next_check_at=? WHERE shipment_id=?", (now, shipment_id)
+            )
+        return cursor.rowcount > 0
+
+    def trash_older_than(self, deleted_before: str) -> list[int]:
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT id FROM shipments WHERE deleted_at IS NOT NULL AND deleted_at < ?",
+                (deleted_before,),
+            ).fetchall()
+        return [row["id"] for row in rows]
+
     def delete_shipment(self, shipment_id: int) -> bool:
         with self._lock, self._db:
             cursor = self._db.execute("DELETE FROM shipments WHERE id=?", (shipment_id,))
@@ -420,19 +481,25 @@ class Store:
         with self._lock:
             rows = self._db.execute(
                 "SELECT p.id FROM parcels p JOIN shipments s ON s.id = p.shipment_id "
-                f"WHERE s.archived_at IS NULL AND p.status NOT IN ({final}) "
+                "WHERE s.archived_at IS NULL AND s.deleted_at IS NULL "
+                f"AND s.suggested_at IS NULL AND p.status NOT IN ({final}) "
                 "AND (p.next_check_at IS NULL OR p.next_check_at <= ?) "
                 "ORDER BY p.next_check_at LIMIT ?",
                 (now, limit),
             ).fetchall()
         return [row["id"] for row in rows]
 
-    def open_parcels(self) -> list[dict[str, Any]]:
-        """Every parcel of a shipment that is not archived, with its shipment title."""
+    def open_parcels(self, suggested: bool = False) -> list[dict[str, Any]]:
+        """Every parcel of a shipment that is not archived, with its shipment title.
+
+        Found shipments the user has not taken yet only count when ``suggested``.
+        """
         with self._lock:
             rows = self._db.execute(
-                "SELECT p.*, s.title AS shipment_title FROM parcels p "
-                "JOIN shipments s ON s.id = p.shipment_id WHERE s.archived_at IS NULL"
+                "SELECT p.*, s.title AS shipment_title, s.suggested_at FROM parcels p "
+                "JOIN shipments s ON s.id = p.shipment_id "
+                "WHERE s.archived_at IS NULL AND s.deleted_at IS NULL"
+                + ("" if suggested else " AND s.suggested_at IS NULL")
             ).fetchall()
             result = []
             for row in rows:
@@ -445,6 +512,7 @@ class Store:
         with self._lock:
             rows = self._db.execute(
                 "SELECT s.id FROM shipments s WHERE s.archived_at IS NULL "
+                "AND s.deleted_at IS NULL AND s.suggested_at IS NULL "
                 "AND EXISTS (SELECT 1 FROM parcels p WHERE p.shipment_id = s.id) "
                 "AND NOT EXISTS (SELECT 1 FROM parcels p WHERE p.shipment_id = s.id AND "
                 "(p.status NOT IN (?, ?) OR p.delivered_at IS NULL OR p.delivered_at > ?))",

@@ -23,6 +23,7 @@ from parcelmaster.carriers.base import (
     CarrierError,
     CarrierModule,
     Field,
+    Found,
     TrackingEvent,
     TrackingResult,
     TrackRequest,
@@ -417,6 +418,34 @@ class DhlDe(CarrierModule):
                 pace = 1 if result.stops_left <= CLOSE_STOPS else 5
                 result.again_in_minutes = pace
             found.append((self.normalize(piece["id"]), result))
+        return found
+
+    def discover(self, payload: Any) -> list[Found]:
+        """All parcels the tracking page or the customer account listed."""
+        found = []
+        pieces = payload.get("sendungen") if isinstance(payload, dict) else None
+        for piece in pieces if isinstance(pieces, list) else []:
+            if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+                continue
+            number = self.normalize(piece["id"])
+            if not self.matches(number):
+                continue
+            details = piece.get("sendungsdetails")
+            details = details if isinstance(details, dict) else {}
+            info = piece.get("sendungsinfo")
+            info = info if isinstance(info, dict) else {}
+            found.append(
+                Found(
+                    number=number,
+                    title=str(info.get("sendungsname") or "").strip(),
+                    direction=(
+                        "outgoing" if info.get("sendungsrichtung") == "ABGEHEND" else "incoming"
+                    ),
+                    settled=bool(details.get("istZugestellt") or details.get("ruecksendung")),
+                    # The account's bare list says "not delivered" for everything.
+                    full=isinstance(details.get("sendungsverlauf"), dict),
+                )
+            )
         return found
 
     def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:

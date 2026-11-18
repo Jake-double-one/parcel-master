@@ -944,3 +944,25 @@ def test_a_delivery_shared_with_oneself_ends_up_in_its_order(world):
     # Shared afterwards: nothing new appears.
     sync(world, shared)
     assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+
+
+def test_an_order_takes_the_place_of_a_shipment_found_at_the_carrier(world):
+    store = world[0]
+    store.save_shipment(
+        None,
+        {
+            "title": "Amazon",
+            "direction": "incoming",
+            "note": "",
+            "source": "discovered",
+            "reference": "de.dhl:AB1",
+            "suggested": True,
+        },
+        [{"carrier": "de.dhl", "tracking_number": "AB1", "extra": {}}],
+    )
+    sync(world, order(tracking_number="AB1"))
+    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+    # And an order in the bin stays there.
+    store.set_deleted(store.list_shipments(False)[0]["id"], True)
+    sync(world, order(tracking_number="AB1"))
+    assert store.list_shipments(False) == [] and len(store.list_trash()) == 1

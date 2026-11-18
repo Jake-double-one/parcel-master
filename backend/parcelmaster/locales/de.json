@@ -28,7 +28,8 @@
     "week": "Diese Woche",
     "later": "Später",
     "undated": "Noch ohne Termin",
-    "done": "Angekommen"
+    "done": "Angekommen",
+    "found": "Entdeckt"
   },
   "overview": {
     "open": "offen",
@@ -46,7 +47,13 @@
     "refreshing": "Aktualisiere",
     "to_top": "Nach oben",
     "auto_archived_one": "1 zugestellte Sendung wurde automatisch archiviert.",
-    "auto_archived": "{count} zugestellte Sendungen wurden automatisch archiviert."
+    "auto_archived": "{count} zugestellte Sendungen wurden automatisch archiviert.",
+    "trash": "Papierkorb",
+    "trash_note": "Gelöschtes und Verworfenes bleibt 14 Tage hier und verschwindet dann endgültig.",
+    "empty_trash": "Der Papierkorb ist leer.",
+    "empty_trash_now": "Papierkorb leeren",
+    "empty_trash_confirm": "Alles endgültig löschen",
+    "found_note": "Das Begleit-Skript hat diese Sendungen beim Paketdienst gesehen. Verfolgt werden sie erst, wenn du sie übernimmst."
   },
   "shipment": {
     "parcels": "{done} von {count} angekommen",
@@ -67,7 +74,7 @@
     "archive": "Archivieren",
     "unarchive": "Zurück in die Übersicht",
     "delete": "Löschen",
-    "delete_confirm": "Endgültig löschen",
+    "delete_confirm": "Wirklich endgültig löschen",
     "history": "Verlauf",
     "no_events": "Der Paketdienst hat noch nichts gemeldet.",
     "note": "Notiz",
@@ -75,7 +82,7 @@
     "copy": "Nummer kopieren",
     "copied": "Kopiert ✓",
     "archived_toast": "Archiviert.",
-    "deleted_toast": "Gelöscht.",
+    "deleted_toast": "Endgültig gelöscht.",
     "undo": "Rückgängig",
     "refresh_same": "Abgerufen. Kein neuer Stand.",
     "refresh_new": "Abgerufen. Es gibt Neues.",
@@ -85,7 +92,15 @@
     "stops_about": "Noch etwas mehr als {count} Stopps",
     "stops_one": "Nur noch 1 Stopp",
     "stops_next": "Du bist der nächste Halt",
-    "live_lost": "Live-Ansicht unterbrochen"
+    "live_lost": "Live-Ansicht unterbrochen",
+    "new": "Neu",
+    "accept": "Übernehmen",
+    "discard": "Verwerfen",
+    "restore": "Wiederherstellen",
+    "delete_for_good": "Endgültig löschen",
+    "purge_on": "Wird am {date} endgültig gelöscht.",
+    "binned_toast": "In den Papierkorb gelegt.",
+    "restored_toast": "Wiederhergestellt."
   },
   "dialog": {
     "create_title": "Sendung anlegen",
@@ -230,7 +245,13 @@
     "companion": "Begleit-Skript",
     "companion_install": "Skript für {carrier} installieren",
     "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey). Es reicht an Parcel Master weiter, was dir die Seite des Paketdienstes anzeigt, fragt dort selbst nichts ab und sendet nur an diesen Server.",
-    "help": "Erklärung zeigen"
+    "help": "Erklärung zeigen",
+    "discovery": "Neue Sendungen, die das Skript sieht",
+    "discovery_help": "Was mit Sendungen geschieht, die das Begleit-Skript beim Paketdienst sieht und die Parcel Master noch nicht kennt. Zugestellte bleiben außen vor. Was du verwirfst, wird nicht wieder vorgeschlagen.",
+    "discovery_button": "Nur auf Knopfdruck auf der Seite des Paketdienstes",
+    "discovery_suggest": "Vorschlagen, ich entscheide",
+    "discovery_auto": "Sofort verfolgen",
+    "event_discovered": "das Begleit-Skript eine neue Sendung entdeckt"
   },
   "login": {
     "password": "Passwort",
@@ -328,6 +349,10 @@
       "one": "{carrier}: nur noch 1 Stopp bis zu dir.",
       "next": "{carrier}: Du bist der nächste Halt.",
       "lost": "{carrier}: Die Live-Ansicht ist weg, zuletzt waren es {count} Stopps. Vielleicht eine Pause oder eine geänderte Tour."
+    },
+    "discovered": {
+      "body": "{carrier} kündigt ein Paket an. Übernimm es in Parcel Master, um es zu verfolgen.",
+      "taken": "{carrier} kündigt ein Paket an. Es wird jetzt verfolgt."
     }
   },
   "scanner": {

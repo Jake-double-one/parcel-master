@@ -81,6 +81,17 @@ class CarrierError(Exception):
         self.detail = detail
 
 
+@dataclass
+class Found:
+    """A parcel a companion script came across on the carrier's page."""
+
+    number: str
+    title: str = ""
+    direction: str = "incoming"
+    settled: bool = False  # arrived or gone back: nothing left to follow
+    full: bool = True  # whether the page told its state, not just that it exists
+
+
 class CarrierModule:
     #: "tracker": the user enters a number and the module looks it up.
     #: "importer": the module finds the shipments itself (see ImporterModule).
@@ -148,6 +159,10 @@ class CarrierModule:
 
     def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
         """Tracking number and result for each parcel in what a companion script sent."""
+        return []
+
+    def discover(self, payload: Any) -> list[Found]:
+        """Every parcel in what a companion script sent, known to us or not."""
         return []
 
     def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:

@@ -13,6 +13,9 @@ function shipment(overrides: Partial<Shipment>): Shipment {
     source: "manual",
     reference: "",
     archived_at: null,
+    deleted_at: null,
+    purge_at: null,
+    suggested: false,
     created_at: "2026-11-15T10:00:00+00:00",
     status: "in_transit",
     parcel_count: 1,
@@ -93,5 +96,11 @@ describe("helpers", () => {
   it("fills the rail only on arrival", () => {
     expect(progress("delivered")).toBe(1);
     expect(progress("in_transit")).toBeLessThan(progress("out_for_delivery"));
+  });
+});
+
+describe("found shipments", () => {
+  it("stand apart until the user takes them", () => {
+    expect(groupOf(shipment({ suggested: true, status: "out_for_delivery" }), now)).toBe("found");
   });
 });

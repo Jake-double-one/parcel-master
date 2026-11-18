@@ -446,6 +446,17 @@
               <Help text={tOr(`carrier.${carrier.id}.companion.help`, "")} />
             </div>
           {/each}
+          <label class="field">
+            <span class="eyebrow">
+              {t("settings.discovery")}
+              <Help text={t("settings.discovery_help")} />
+            </span>
+            <select bind:value={settings.discovery.mode}>
+              <option value="button">{t("settings.discovery_button")}</option>
+              <option value="suggest">{t("settings.discovery_suggest")}</option>
+              <option value="auto">{t("settings.discovery_auto")}</option>
+            </select>
+          </label>
         </div>
       {/if}
       {#each carriers as carrier}

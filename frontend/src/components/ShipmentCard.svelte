@@ -13,6 +13,8 @@
     onrefresh,
     onarchive,
     ondelete,
+    onrestore,
+    onaccept,
   }: {
     shipment: Shipment;
     now: Date;
@@ -22,19 +24,22 @@
     onrefresh: () => void;
     onarchive: (archived: boolean) => void;
     ondelete: () => void;
+    onrestore: () => void;
+    onaccept: () => void;
   } = $props();
 
   let confirmDelete = $state(false);
 
   const grouped = $derived(shipment.parcels.length > 1);
   const archived = $derived(shipment.archived_at !== null);
+  const binned = $derived(shipment.deleted_at !== null);
   // A shipment without parcels is not finished: something is still missing.
   const finished = $derived(
     shipment.parcel_count > 0 && shipment.finished_count === shipment.parcel_count,
   );
   // An imported order names where it came from, so its parcels read "Shop via DHL".
   const origin = $derived(
-    shipment.source !== "manual" && shipment.source !== "import" && shipment.source !== "demo"
+    !["manual", "import", "demo", "discovered"].includes(shipment.source)
       ? shipment.source
       : "",
   );
@@ -43,7 +48,8 @@
   );
 
   function removeClicked() {
-    if (confirmDelete) ondelete();
+    // Only the last step asks twice: the bin itself forgives.
+    if (confirmDelete || !binned) ondelete();
     else {
       confirmDelete = true;
       setTimeout(() => (confirmDelete = false), 4000);
@@ -59,6 +65,7 @@
   <header>
     <div class="titles">
       <p class="micro">
+        {#if shipment.suggested}<span class="new">{t("shipment.new")}</span>{/if}
         {t(`direction.${shipment.direction}`)}{#if shipment.reference}
           · {t("shipment.reference", { reference: shipment.reference })}{/if}
       </p>
@@ -89,24 +96,52 @@
     <ParcelView parcel={shipment.parcels[0]} {now} {origin} />
   {/if}
 
+  {#if binned && shipment.purge_at}
+    <p class="note">
+      {t("shipment.purge_on", { date: new Date(shipment.purge_at).toLocaleDateString() })}
+    </p>
+  {/if}
+
   <footer class="row">
-    <button type="button" class="chip" onclick={onedit}>{t("shipment.edit")}</button>
-    {#if !finished && !archived}
-      <button type="button" class="chip" onclick={onrefresh} disabled={busy}>
-        {refreshing ? t("overview.refreshing") : t("shipment.refresh")}
+    {#if binned}
+      <button type="button" class="chip" onclick={onrestore}>{t("shipment.restore")}</button>
+      <span class="spacer"></span>
+      <button type="button" class="chip danger" onclick={removeClicked}>
+        {confirmDelete ? t("shipment.delete_confirm") : t("shipment.delete_for_good")}
+      </button>
+    {:else if shipment.suggested}
+      <button type="button" class="chip primary" onclick={onaccept}>
+        {t("shipment.accept")}
+      </button>
+      <span class="spacer"></span>
+      <button type="button" class="chip" onclick={ondelete}>{t("shipment.discard")}</button>
+    {:else}
+      <button type="button" class="chip" onclick={onedit}>{t("shipment.edit")}</button>
+      {#if !finished && !archived}
+        <button type="button" class="chip" onclick={onrefresh} disabled={busy}>
+          {refreshing ? t("overview.refreshing") : t("shipment.refresh")}
+        </button>
+      {/if}
+      <button type="button" class="chip" onclick={() => onarchive(!archived)}>
+        {archived ? t("shipment.unarchive") : t("shipment.archive")}
+      </button>
+      <span class="spacer"></span>
+      <button type="button" class="chip danger" onclick={removeClicked}>
+        {t("shipment.delete")}
       </button>
     {/if}
-    <button type="button" class="chip" onclick={() => onarchive(!archived)}>
-      {archived ? t("shipment.unarchive") : t("shipment.archive")}
-    </button>
-    <span class="spacer"></span>
-    <button type="button" class="chip danger" onclick={removeClicked}>
-      {confirmDelete ? t("shipment.delete_confirm") : t("shipment.delete")}
-    </button>
   </footer>
 </article>
 
 <style>
+  .new {
+    margin-right: 0.4em;
+    padding: 0.1em 0.5em;
+    border-radius: 999px;
+    border: 1px solid var(--dusk);
+    background: var(--dusk-soft);
+    color: var(--ink);
+  }
   header {
     display: flex;
     align-items: flex-start;

@@ -53,6 +53,11 @@ export interface Shipment {
   source: string;
   reference: string;
   archived_at: string | null;
+  /** In the bin since then; gone for good at `purge_at`. */
+  deleted_at: string | null;
+  purge_at: string | null;
+  /** Found by a companion script; not tracked until the user takes it. */
+  suggested: boolean;
   created_at: string;
   status: Status;
   parcel_count: number;
@@ -136,6 +141,8 @@ export interface Settings {
     saver: { enabled: boolean; from: string; to: string };
   };
   carriers: Record<string, Record<string, string | number | null>>;
+  /** What happens to parcels a companion script comes across. */
+  discovery: { mode: "button" | "suggest" | "auto" };
   notifications: {
     apprise_urls: string[];
     push_enabled: boolean;

@@ -25,7 +25,7 @@ def in_quiet_hours(settings: dict[str, Any], now: datetime | None = None) -> boo
 
 def wanted(settings: dict[str, Any], kind: str) -> bool:
     events = settings["notifications"]["events"]
-    if kind in ("stale", "pickup_reminder", "delivery_window", "stops"):
+    if kind in ("stale", "pickup_reminder", "delivery_window", "stops", "discovered"):
         return bool(events.get(kind))
     return bool(events.get("any_change") or (kind in STATUS_KINDS and events.get(kind)))
 

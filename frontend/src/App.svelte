@@ -18,7 +18,10 @@
   let shipments = $state<Shipment[]>([]);
   let carriers = $state<Carrier[]>([]);
   let loaded = $state(false);
-  let showArchive = $state(false);
+  let view = $state<"open" | "archive" | "trash">("open");
+  /** Anything but the overview: the archive or the bin. */
+  const showArchive = $derived(view !== "open");
+  let confirmEmpty = $state(false);
   let query = $state("");
   let now = $state(new Date());
   let editing = $state<{ shipment: Shipment | null; prefill: string } | null>(null);
@@ -34,12 +37,14 @@
 
   const visible = $derived(shipments.filter((s) => matches(s, query)));
   const groups = $derived(groupShipments(visible, now));
-  const open = $derived(shipments.filter((s) => groupOf(s, now) !== "done"));
+  const open = $derived(
+    shipments.filter((s) => !["done", "found"].includes(groupOf(s, now))),
+  );
   const figures = $derived({
     today: open.filter((s) => groupOf(s, now) === "today").length,
     pickup: open.filter((s) => s.status === "ready_for_pickup").length,
     problem: open.filter((s) => s.status === "problem").length,
-    arrived: shipments.length - open.length,
+    arrived: shipments.filter((s) => groupOf(s, now) === "done").length,
   });
   /** The first shipment each key figure counts; clicking the figure scrolls there. */
   const tiles = $derived([
@@ -106,7 +111,7 @@
 
   async function load() {
     try {
-      [shipments, carriers] = await Promise.all([api.shipments(showArchive), api.carriers()]);
+      [shipments, carriers] = await Promise.all([api.shipments(view), api.carriers()]);
       loaded = true;
       // Shipments that left the overview on their own are mentioned once.
       const { auto_archived } = await api.takeNotices();
@@ -208,22 +213,70 @@
     }
   }
 
+  /** Into the bin; from the bin it is gone for good. */
   async function remove(shipment: Shipment) {
     try {
       await api.remove(shipment.id);
       shipments = shipments.filter((s) => s.id !== shipment.id);
-      notify(t("shipment.deleted_toast"));
+      if (shipment.deleted_at) {
+        notify(t("shipment.deleted_toast"));
+        return;
+      }
+      notify(t("shipment.binned_toast"), {
+        label: t("shipment.undo"),
+        run: async () => {
+          await api.restore(shipment.id).catch(report);
+          toast = null;
+          await load();
+        },
+      });
     } catch (caught) {
       report(caught);
     }
   }
 
-  async function toggleArchive() {
-    showArchive = !showArchive;
+  async function restore(shipment: Shipment) {
+    try {
+      await api.restore(shipment.id);
+      shipments = shipments.filter((s) => s.id !== shipment.id);
+      notify(t("shipment.restored_toast"));
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function accept(shipment: Shipment) {
+    try {
+      replace(await api.accept(shipment.id));
+      schedulePoll();
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function emptyTrash() {
+    if (!confirmEmpty) {
+      confirmEmpty = true;
+      setTimeout(() => (confirmEmpty = false), 4000);
+      return;
+    }
+    confirmEmpty = false;
+    try {
+      await api.emptyTrash();
+      shipments = [];
+    } catch (caught) {
+      report(caught);
+    }
+  }
+
+  async function show(wanted: "archive" | "trash") {
+    view = view === wanted ? "open" : wanted;
     query = "";
     loaded = false;
     await load();
   }
+
+  const toggleArchive = () => show("archive");
 
   async function leave() {
     await api.logout().catch(() => undefined);
@@ -261,8 +314,21 @@
   <header class="top">
     <div class="brand">Parcel<span>Master</span></div>
     {#if meta && !meta.login_required}
-      <button type="button" class="chip" aria-pressed={showArchive} onclick={toggleArchive}>
+      <button
+        type="button"
+        class="chip"
+        aria-pressed={view === "archive"}
+        onclick={() => show("archive")}
+      >
         {t("overview.archive")}
+      </button>
+      <button
+        type="button"
+        class="chip"
+        aria-pressed={view === "trash"}
+        onclick={() => show("trash")}
+      >
+        {t("overview.trash")}
       </button>
       <button type="button" class="chip" onclick={() => (settingsOpen = true)}>
         {t("settings.title")}
@@ -309,8 +375,11 @@
       </div>
     {:else}
       <section class="lede">
-        <p class="eyebrow">{t("overview.archive")}</p>
+        <p class="eyebrow">{t(view === "trash" ? "overview.trash" : "overview.archive")}</p>
         <p class="hero mono">{shipments.length}</p>
+        {#if view === "trash"}
+          <p class="note">{t("overview.trash_note")}</p>
+        {/if}
       </section>
     {/if}
 
@@ -342,6 +411,11 @@
           </button>
         {/if}
       </span>
+      {#if view === "trash" && shipments.length}
+        <button type="button" class="chip danger" onclick={emptyTrash}>
+          {confirmEmpty ? t("overview.empty_trash_confirm") : t("overview.empty_trash_now")}
+        </button>
+      {/if}
       {#if !showArchive}
         <button
           type="button"
@@ -359,7 +433,9 @@
 
     {#if loaded && shipments.length === 0}
       <section class="card empty">
-        {#if showArchive}
+        {#if view === "trash"}
+          <p class="note">{t("overview.empty_trash")}</p>
+        {:else if showArchive}
           <p class="note">{t("overview.empty_archive")}</p>
         {:else}
           <h2>{t("overview.empty_title")}</h2>
@@ -380,6 +456,8 @@
         onrefresh={() => refresh(shipment)}
         onarchive={(archived) => archive(shipment, archived)}
         ondelete={() => remove(shipment)}
+        onrestore={() => restore(shipment)}
+        onaccept={() => accept(shipment)}
       />
     {/snippet}
 
@@ -395,6 +473,9 @@
           <h2 class="eyebrow">
             {t(`group.${group}`)} <span class="count">{items.length}</span>
           </h2>
+          {#if group === "found"}
+            <p class="note">{t("overview.found_note")}</p>
+          {/if}
           <div class="cards">
             {#each items as shipment (shipment.id)}
               {@render card(shipment)}
