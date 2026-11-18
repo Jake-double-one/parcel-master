@@ -213,8 +213,11 @@
     opacity: 0.75;
   }
 
-  .carrier.still {
+  /* Without a link the name is only a label: it does not react like a button. */
+  .carrier.still,
+  .carrier.still:hover {
     cursor: default;
+    border-color: var(--line);
   }
 
   .who {
