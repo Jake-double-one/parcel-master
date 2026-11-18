@@ -83,7 +83,8 @@
     "through": "through {source}",
     "stops": "{count} stops to go",
     "stops_about": "A bit more than {count} stops to go",
-    "stops_one": "Only 1 stop to go"
+    "stops_one": "Only 1 stop to go",
+    "stops_next": "You are the next stop"
   },
   "dialog": {
     "create_title": "Add shipment",
@@ -323,7 +324,8 @@
     "stops": {
       "body": "{carrier}: only {count} stops before yours.",
       "about": "{carrier}: a bit more than {count} stops before yours.",
-      "one": "{carrier}: only 1 stop before yours."
+      "one": "{carrier}: only 1 stop before yours.",
+      "next": "{carrier}: you are the next stop."
     }
   },
   "scanner": {

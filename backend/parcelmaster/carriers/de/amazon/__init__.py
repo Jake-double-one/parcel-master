@@ -12,9 +12,11 @@ import importlib.util
 import logging
 import re
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import parse_qs, urlparse
+from zoneinfo import ZoneInfo
 
 from parcelmaster.carriers.base import (
     CarrierError,
@@ -24,6 +26,7 @@ from parcelmaster.carriers.base import (
     ImporterModule,
     SyncRequest,
     TrackingEvent,
+    TrackingResult,
 )
 from parcelmaster.status import Status
 
@@ -513,6 +516,36 @@ def promise_line(page: Any) -> str | None:
     return words or None
 
 
+def stops_on_map(bubble: str | None) -> int | None:
+    """Stops before ours, from the bubble on Amazon's map; 0 means we are next.
+
+    Known wordings: "Du bist der nächste Halt" / "You're the next stop", and a
+    number of stops in between ("3 Stopps entfernt", "3 stops away").
+    """
+    words = " ".join((bubble or "").lower().split())
+    if not words:
+        return None
+    if re.search(r"n\S{1,2}chste[rn]? (halt|stopp)|next stop", words):
+        return 0
+    match = re.search(r"\b(\d{1,3})\b", words)
+    return int(match.group(1)) if match else None
+
+
+def hours_in_headline(headline: str | None) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """The window in a headline, English ("3:45 pm - 5:45 pm") or German ("15:45 - 17:45")."""
+    english = parse_hours(headline)
+    if english:
+        return english
+    match = re.search(r"\b(\d{1,2}):(\d{2}) ?[-–] ?(\d{1,2}):(\d{2})\b", headline or "")
+    if not match:
+        return None
+    start, end = (
+        (int(match.group(1)), int(match.group(2))),
+        (int(match.group(3)), int(match.group(4))),
+    )
+    return (start, end) if start[0] < 24 and end[0] < 24 else None
+
+
 def _link_shape(link: str | None) -> str:
     """A tracking link without its values: enough to see which kind Amazon handed out."""
     if not link:
@@ -655,6 +688,35 @@ class AmazonDe(ImporterModule):
 
     def localize(self, text: str, phrase: Any) -> str:
         return translate(text, phrase)
+
+    def companion_script(self) -> str | None:
+        return (Path(__file__).parent / "companion.user.js").read_text(encoding="utf-8")
+
+    def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
+        if not isinstance(payload, dict):
+            return []
+        shown = {key: str(payload.get(key))[:120] for key in ("tracking", "headline", "bubble")}
+        return [f"{shown}, step {payload.get('reached')} of {payload.get('steps')}"]
+
+    def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
+        """What Amazon's tracking page shows in the user's browser: stops and window."""
+        if not isinstance(payload, dict):
+            return []
+        numbers = re.findall(r"\b[A-Z0-9]{8,40}\b", str(payload.get("tracking") or ""))
+        numbers = [number for number in numbers if re.search(r"\d", number)]
+        if not numbers:
+            return []
+        result = TrackingResult(status=Status.UNKNOWN, live_only=True)
+        result.stops_left = stops_on_map(payload.get("bubble"))
+        headline = str(payload.get("headline") or "")
+        hours = hours_in_headline(headline)
+        if hours and re.search(r"today|heute", headline, re.I):
+            today = datetime.now(ZoneInfo("Europe/Berlin")).replace(
+                second=0, microsecond=0, tzinfo=None
+            )
+            result.eta_from = today.replace(hour=hours[0][0], minute=hours[0][1])
+            result.eta_to = today.replace(hour=hours[1][0], minute=hours[1][1])
+        return [(numbers[-1], result)]
 
     def extract_from_url(self, url: str) -> str | None:
         parsed = urlparse(url)

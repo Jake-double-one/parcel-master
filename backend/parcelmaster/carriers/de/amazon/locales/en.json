@@ -15,5 +15,8 @@
   },
   "reference": {
     "label": "Order number"
+  },
+  "companion": {
+    "help": "While you keep Amazon's tracking page open, the script passes on what it says: the delivery window and, from the map, how many stops are left."
   }
 }

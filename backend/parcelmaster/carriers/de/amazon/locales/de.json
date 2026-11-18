@@ -70,5 +70,8 @@
   },
   "reference": {
     "label": "Bestellnummer"
+  },
+  "companion": {
+    "help": "Solange du die Paketverfolgung von Amazon offen hast, reicht das Skript weiter, was dort steht: das Zustellfenster und von der Karte, wie viele Stopps noch fehlen."
   }
 }

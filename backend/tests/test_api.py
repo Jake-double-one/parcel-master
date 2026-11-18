@@ -698,3 +698,36 @@ def test_a_failed_apprise_test_says_why(client):
     assert "Gotify" in report["error"]  # Apprise's own words about the refused connection
     log = client.get("/api/log").json()["entries"]
     assert any(e["source"] == "notify" and "Gotify" in e["message"] for e in log)
+
+
+def test_amazon_companion_brings_the_stops_from_the_map(client, monkeypatch):
+    from parcelmaster.carriers.de.amazon import MODULE as amazon
+
+    assert amazon.take_from_companion({"tracking": "", "bubble": "x"}) == []
+    ((number, result),) = amazon.take_from_companion(
+        {
+            "tracking": "Trackingnummer DE6053615519",
+            "headline": "Zustellung heute 15:30 - 17:30",
+            "bubble": "Du bist der nächste Halt",
+        }
+    )
+    assert (number, result.stops_left, result.live_only) == ("DE6053615519", 0, True)
+    assert (result.eta_from.hour, result.eta_from.minute, result.eta_to.hour) == (15, 30, 17)
+    ((_, away),) = amazon.take_from_companion(
+        {"tracking": "Tracking ID: DE6053615519", "bubble": "3 Stopps entfernt"}
+    )
+    assert away.stops_left == 3 and away.eta_from is None
+
+    # Applied to a parcel Amazon brings itself, without touching status or history.
+    store = client.app.state.pm.store
+    order = {"title": "Kalender", "source": "Amazon", "direction": "incoming", "note": ""}
+    shipment_id = store.save_shipment(None, order, [])
+    parcel_id = store.add_parcel(shipment_id, "de.amazon", "DE6053615519", {})
+    store.update_parcel(parcel_id, status="out_for_delivery", description="Kommt heute")
+    news = {"tracking": "Trackingnummer DE6053615519", "bubble": "Du bist der nächste Halt"}
+    assert client.post("/api/companion/de.amazon", json={"payload": news}).json() == {"parcels": 1}
+    parcel = client.get("/api/shipments").json()[0]["parcels"][0]
+    assert parcel["stops"] == {"left": 0, "about": False}
+    assert parcel["description"] == "Kommt heute"
+    script = client.get("/api/companion/de.amazon.user.js").text
+    assert "https://www.amazon.de/" in script and "http://testserver" in script

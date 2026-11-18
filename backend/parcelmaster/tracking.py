@@ -31,7 +31,7 @@ MIN_GAP_SECONDS = 10
 #: The shortest wait a module may ask for between two lookups of one parcel.
 MIN_LIVE_MINUTES = 1
 #: Stops left at which a message goes out, each once on the way down.
-STOP_MARKS = (20, 10, 5, 2, 1)
+STOP_MARKS = (20, 10, 5, 2, 1, 0)
 #: How long live news of a delivery round stand against an ordinary answer.
 LIVE_STAYS = timedelta(minutes=10)
 #: A delivery window is reported again once its start or end has moved this far.
@@ -276,7 +276,7 @@ def record_result(
     if stops is not None:
         earlier = int(before) if before and before.isdigit() else None
         if any(stops <= mark and (earlier is None or earlier > mark) for mark in STOP_MARKS):
-            variant = "one" if stops <= 1 else "about" if result.stops_about else "body"
+            variant = stops_variant(stops, result.stops_about)
             notices.append(Notice("stops", updated, {"count": stops, "variant": variant}))
     # A delivery window is news whenever the carrier names a new one, unless the
     # user is looking at a parcel they added moments ago.
@@ -299,6 +299,50 @@ def record_result(
     if parcel["last_success_at"] is not None and status != old_status:
         notices.append(Notice(str(status), updated, {"description": result.description}))
     return notices
+
+
+def stops_variant(stops: int, about: bool) -> str:
+    """Which sentence fits a number of stops: "you are next", "one", "a bit more than", "N"."""
+    if stops <= 0:
+        return "next"
+    return "one" if stops == 1 else "about" if about else "body"
+
+
+def record_live(
+    store: Store, parcel: dict[str, Any], result: TrackingResult, zone: ZoneInfo, now: datetime
+) -> list[Notice]:
+    """Notes what is known live about a delivery round and nothing else.
+
+    For news that carry no status and no history, such as what a companion
+    script reads off a map: the stops left and, if named, the window.
+    """
+    if Status(parcel["status"]) in FINAL:
+        return []
+    changes: dict[str, Any] = {}
+    if result.eta_from and result.eta_to:
+        changes = {"eta_from": to_iso(result.eta_from, zone), "eta_to": to_iso(result.eta_to, zone)}
+    extra = dict(parcel["extra"])
+    before = extra.get("stops_left")
+    stops = result.stops_left
+    if stops is not None or changes:
+        extra["live_at"] = now.isoformat(timespec="seconds")
+    if stops is not None:
+        extra["stops_left"] = str(stops)
+        extra.pop("stops_about", None)
+        if result.stops_about:
+            extra["stops_about"] = "1"
+    if changes:
+        store.update_parcel(parcel["id"], **changes)
+    if extra != parcel["extra"]:
+        store.set_parcel_extra(parcel["id"], extra)
+    updated = store.get_parcel(parcel["id"])
+    if stops is None:
+        return []
+    earlier = int(before) if before and before.isdigit() else None
+    if not any(stops <= mark and (earlier is None or earlier > mark) for mark in STOP_MARKS):
+        return []
+    variant = stops_variant(stops, result.stops_about)
+    return [Notice("stops", updated, {"count": stops, "variant": variant})]
 
 
 def window_moved(told: str | None, eta_from: str | None, eta_to: str | None) -> bool:

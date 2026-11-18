@@ -53,6 +53,8 @@ class TrackingResult:
     stops_about: bool = False
     #: The module's wish to be asked again sooner than usual, e.g. while a van is close.
     again_in_minutes: float | None = None
+    #: Only the live notes (stops, window) are news; status and history stay as filed.
+    live_only: bool = False
 
 
 @dataclass(frozen=True)

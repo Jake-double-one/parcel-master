@@ -79,8 +79,10 @@
     {/if}
     {#if parcel.stops && !finished}
       <span>
-        {parcel.stops.left <= 1
-          ? t("shipment.stops_one")
+        {parcel.stops.left <= 0
+          ? t("shipment.stops_next")
+          : parcel.stops.left === 1
+            ? t("shipment.stops_one")
           : t(parcel.stops.about ? "shipment.stops_about" : "shipment.stops", {
               count: parcel.stops.left,
             })}

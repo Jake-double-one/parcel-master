@@ -36,6 +36,7 @@ from .tracking import (
     daily_budget,
     parse_iso,
     pickup_deadline,
+    record_live,
     record_result,
     refresh_parcel,
     take_auto_archived,
@@ -492,7 +493,10 @@ def create_app(config: Config) -> FastAPI:
                 if Status(parcel["status"]) in FINAL:
                     continue
                 full = ctx.store.get_parcel(parcel["id"])
-                notices = record_result(ctx.store, full, result, base, zone, now)
+                if result.live_only:
+                    notices = record_live(ctx.store, full, result, zone, now)
+                else:
+                    notices = record_result(ctx.store, full, result, base, zone, now)
                 await ctx.state.notifier.handle(notices)
                 taken += 1
         if taken:
