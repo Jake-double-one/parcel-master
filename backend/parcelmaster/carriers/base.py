@@ -127,6 +127,10 @@ class CarrierModule:
         """Lookups per day unless the user sets a number; may depend on the way it asks."""
         return self.default_daily_budget
 
+    def scarce(self, settings: dict[str, Any]) -> bool:
+        """Whether lookups are few enough that parcels of a shop should wait for theirs."""
+        return False
+
     def source(self, settings: dict[str, Any]) -> str | None:
         """Which way the module asks, if it knows more than one; named in ``locales``."""
         return None

@@ -596,9 +596,10 @@ def test_an_old_amazon_order_without_parcels_is_kept_when_asked_for():
     assert AMAZON.extract_from_url("https://example.com/?orderID=302-1234567-7654321") is None
 
 
-def test_with_the_saver_a_parcel_goes_to_its_carrier_only_once_it_matters(world):
+def test_with_the_saver_a_parcel_goes_to_a_scarce_carrier_only_once_it_matters(world, monkeypatch):
     store = world[0]
     configure_post(store)
+    monkeypatch.setattr(Post, "scarce", lambda self, settings: True)
     settings = store.get_settings()
     settings["polling"]["saver"]["enabled"] = True
     store.save_settings(settings)
@@ -617,3 +618,13 @@ def test_with_the_saver_a_parcel_goes_to_its_carrier_only_once_it_matters(world)
     # Once handed over it stays there, whatever the shop says next.
     sync(world, order(**shipped))
     assert parcel()["carrier"] == "test.post"
+
+
+def test_with_the_saver_a_carrier_without_scarce_lookups_takes_over_at_once(world):
+    store = world[0]
+    configure_post(store)
+    settings = store.get_settings()
+    settings["polling"]["saver"]["enabled"] = True
+    store.save_settings(settings)
+    sync(world, order(carrier_name="Post", tracking_number="PO123456"))
+    assert store.list_shipments(False)[0]["parcels"][0]["carrier"] == "test.post"

@@ -154,17 +154,25 @@ def apply(
         }
         for position, imported in enumerate(item.parcels, start=1):
             parcel = known.get(imported.key)
-            # With the saver on, the carrier is only asked once its answer adds
-            # something: the delivery window on the day, or help when things go wrong.
-            handed_over = parcel is not None and parcel["carrier"] != module.id
-            worth_asking = handed_over or not saving or imported.status in HAND_OVER_FROM
             taker = (
                 carrier_for(
                     registry, imported.carrier_name, imported.tracking_number, settings["carriers"]
                 )
-                if imported.tracking_number and worth_asking
+                if imported.tracking_number
                 else None
             )
+            # A carrier whose lookups are scarce is, with the saver on, only asked
+            # once its answer adds something: the delivery window on the day, or
+            # help when things go wrong. Any other carrier takes over at once.
+            handed_over = parcel is not None and parcel["carrier"] != module.id
+            if (
+                taker
+                and saving
+                and not handed_over
+                and taker.scarce(settings["carriers"].get(taker.id, {}))
+                and imported.status not in HAND_OVER_FROM
+            ):
+                taker = None
             extra = {"import_key": imported.key, "url": imported.url or ""}
             if imported.items:
                 extra["items"] = json.dumps(imported.items, ensure_ascii=False)

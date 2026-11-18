@@ -246,6 +246,9 @@ class DhlDe(CarrierModule):
         # keeps a mistake from asking without end.
         return 250 if self._plan(settings)[0] == "api" else WEB_DAILY_BUDGET
 
+    def scarce(self, settings: dict[str, Any]) -> bool:
+        return self._plan(settings)[0] == "api"
+
     def source(self, settings: dict[str, Any]) -> str | None:
         return "_".join(self._plan(settings))
 
