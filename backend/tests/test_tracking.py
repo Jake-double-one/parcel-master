@@ -312,11 +312,26 @@ def test_a_parcel_is_not_asked_about_twice_within_seconds(world, monkeypatch):
     assert module.calls == 1
 
 
-def test_failed_tries_have_a_ceiling_of_their_own(world):
+def test_tries_have_an_hourly_ceiling_that_failures_count_towards(world, monkeypatch):
     store, module, registry, _, parcel_id = world
+    monkeypatch.setattr("parcelmaster.tracking.TRIES_PER_HOUR", 4)
     module.answers = [CarrierError("unavailable")] * 20
     for _ in range(20):
         refresh(store, registry, parcel_id)
-    assert module.calls == 9  # three times the daily budget of 3
+    assert module.calls == 4
     assert store.usage_today("test") == 0  # none of them was an answer
-    assert store.get_parcel(parcel_id)["last_error"]["code"] == "budget_exhausted"
+    parcel = store.get_parcel(parcel_id)
+    assert parcel["last_error"]["code"] == "too_many_tries"
+    assert parcel["next_check_at"] < (datetime.now(UTC) + timedelta(minutes=61)).isoformat()
+
+
+def test_a_failure_is_retried_soon_and_never_rarer_than_the_usual_interval(world):
+    store, module, registry, _, parcel_id = world
+    waits = []
+    module.answers = [CarrierError("unavailable")] * 6
+    for _ in range(6):
+        refresh(store, registry, parcel_id)
+        due = datetime.fromisoformat(store.get_parcel(parcel_id)["next_check_at"])
+        waits.append(round((due - datetime.now(UTC)).total_seconds() / 60))
+    assert waits[:4] == [5, 15, 30, 60]
+    assert max(waits) <= 120  # the default interval

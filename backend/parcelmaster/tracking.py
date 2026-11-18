@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from time import monotonic
@@ -27,9 +28,10 @@ ANNOUNCED_MINUTES = 6 * 60
 FAR_AWAY_MINUTES = 12 * 60
 #: A parcel is not asked about twice within this time, whoever wants it.
 MIN_GAP_SECONDS = 10
-#: Tries per day, failed ones included, as a multiple of the daily budget.
-TRIES_PER_BUDGET = 3
-DEFAULT_TRIES = 1000
+#: Tries per carrier within any hour, failed ones included.
+TRIES_PER_HOUR = 100
+#: Minutes to wait after the first, second, ... failure in a row; then the usual interval.
+RETRY_MINUTES = (5, 15, 30, 60)
 #: "Next check" of a parcel that is never looked up on its own.
 NEVER = "9999-12-31T00:00:00+00:00"
 
@@ -110,6 +112,35 @@ def next_delay_minutes(
     if last_event_at and now - last_event_at > timedelta(days=3):
         return base * 2
     return base
+
+
+class Tries:
+    """Counts lookups per carrier within the last hour; forgotten on restart."""
+
+    def __init__(self) -> None:
+        self._times: dict[str, deque[float]] = {}
+
+    def _recent(self, carrier: str) -> deque[float]:
+        times = self._times.setdefault(carrier, deque())
+        while times and monotonic() - times[0] >= 3600:
+            times.popleft()
+        return times
+
+    def count(self, carrier: str) -> None:
+        self._recent(carrier).append(monotonic())
+
+    def wait_minutes(self, carrier: str) -> float:
+        """0 if another try is fine, else the minutes until the oldest one is an hour old."""
+        times = self._recent(carrier)
+        if len(times) < TRIES_PER_HOUR:
+            return 0
+        return max(1.0, (3600 - (monotonic() - times[0])) / 60)
+
+    def clear(self) -> None:
+        self._times.clear()
+
+
+TRIES = Tries()
 
 
 def daily_budget(module: CarrierModule, carrier_settings: dict[str, Any]) -> int | None:
@@ -283,11 +314,11 @@ async def refresh_parcel(
         return fail("budget_exhausted", str(budget), minutes, count_error=False)
 
     # Failed tries do not use the budget up, so they get a ceiling of their own:
-    # whatever goes wrong, a carrier is never asked more than this often a day.
-    tries = f"{module.id}#tries"
-    if store.usage_today(tries) >= (budget or DEFAULT_TRIES) * TRIES_PER_BUDGET:
-        return fail("budget_exhausted", "tries", 6 * 60, count_error=False)
-    store.count_usage(tries)
+    # whatever goes wrong, a carrier is never asked more than this often an hour.
+    wait = TRIES.wait_minutes(module.id)
+    if wait:
+        return fail("too_many_tries", str(TRIES_PER_HOUR), wait, count_error=False)
+    TRIES.count(module.id)
 
     request = TrackRequest(
         tracking_number=parcel["tracking_number"],
@@ -320,7 +351,11 @@ async def refresh_parcel(
             # Freshly printed labels are unknown to the carrier for a while.
             retry = base
         else:
-            retry = min(24 * 60, base * 2 ** min(parcel["error_count"], 4))
+            # Most failures pass quickly, so try again soon and then ever more
+            # patiently, but never rarer than a parcel is checked anyway.
+            failures = parcel["error_count"]
+            retry = RETRY_MINUTES[failures] if failures < len(RETRY_MINUTES) else max(base, 60)
+            retry = min(retry, max(base, 60))
         return fail(error.code, error.detail, retry)
     except Exception as error:  # a broken module must not stop the scheduler
         log.exception("carrier module %s failed", module.id)

@@ -278,7 +278,8 @@
     "sign_in_failed": "Die Anmeldung ist nicht durchgegangen. Prüf E-Mail und Passwort; darunter steht die Meldung des Dienstes.",
     "browser_failed": "Der Browser für die Anmeldeprüfung ist gescheitert.",
     "invalid_otp_secret": "Das ist kein Geheimschlüssel der Zwei-Schritt-Verifizierung. Gemeint ist der lange Schlüssel aus Buchstaben A–Z und Ziffern 2–7, den Amazon beim Hinzufügen einer Authenticator-App zeigt, nicht der sechsstellige Code.",
-    "not_connected": "Verbinde zuerst das Konto in den Einstellungen."
+    "not_connected": "Verbinde zuerst das Konto in den Einstellungen.",
+    "too_many_tries": "Sehr viele Abrufe in der letzten Stunde. Parcel Master macht eine kurze Pause und fragt dann von selbst wieder."
   },
   "notify": {
     "title": "{title}",

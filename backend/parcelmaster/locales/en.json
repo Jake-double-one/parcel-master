@@ -278,7 +278,8 @@
     "sign_in_failed": "The sign-in did not go through. Check e-mail and password; the service's own message is below.",
     "browser_failed": "The browser needed for the sign-in check failed.",
     "invalid_otp_secret": "That is not a two-step secret key. It is the long key of letters A–Z and digits 2–7 that Amazon shows when you add an authenticator app, not the six-digit code.",
-    "not_connected": "Connect the account in the settings first."
+    "not_connected": "Connect the account in the settings first.",
+    "too_many_tries": "A lot of lookups within the last hour. Parcel Master pauses briefly and then asks again by itself."
   },
   "notify": {
     "title": "{title}",
