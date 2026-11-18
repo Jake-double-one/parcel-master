@@ -364,7 +364,7 @@ def test_stops_left_are_kept_and_reported_at_marks_on_the_way_down(world, monkey
 
 def test_a_module_may_ask_to_be_asked_again_soon(world):
     store, module, registry, _, parcel_id = world
-    module.answers = [TrackingResult(Status.OUT_FOR_DELIVERY, "x", again_in_minutes=1)]
+    module.answers = [TrackingResult(Status.OUT_FOR_DELIVERY, "x", again_in_minutes=0.1)]
     refresh(store, registry, parcel_id)
     due = datetime.fromisoformat(store.get_parcel(parcel_id)["next_check_at"])
-    assert 4 <= (due - datetime.now(UTC)).total_seconds() / 60 <= 5.1  # never under five minutes
+    assert 0.9 <= (due - datetime.now(UTC)).total_seconds() / 60 <= 1.1  # never under a minute

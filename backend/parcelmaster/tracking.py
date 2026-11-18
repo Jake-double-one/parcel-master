@@ -29,7 +29,7 @@ FAR_AWAY_MINUTES = 12 * 60
 #: A parcel is not asked about twice within this time, whoever wants it.
 MIN_GAP_SECONDS = 10
 #: The shortest wait a module may ask for between two lookups of one parcel.
-MIN_LIVE_MINUTES = 5
+MIN_LIVE_MINUTES = 1
 #: Stops left at which a message goes out, each once on the way down.
 STOP_MARKS = (20, 10, 5, 2, 1)
 #: Tries per carrier within any hour, failed ones included.

@@ -272,6 +272,18 @@ async def test_dhl_follows_the_round_with_one_visit_for_all_parcels_of_a_van(mon
 
 
 @pytest.mark.anyio
+async def test_dhl_looks_every_minute_once_the_van_is_almost_there(monkeypatch):
+    async def visit(tracking_number, postal_code):
+        result = parse_web_response(web_answer(fortschritt=4))
+        result.stops_left = 4
+        return result
+
+    monkeypatch.setattr("parcelmaster.carriers.de.dhl._visit_page", visit)
+    result = await run_dhl(lambda req: httpx.Response(200, json=web_answer(fortschritt=4)))
+    assert result.again_in_minutes == 1
+
+
+@pytest.mark.anyio
 async def test_dhl_lets_the_browser_rest_after_a_failed_visit(monkeypatch):
     visits = []
 

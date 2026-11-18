@@ -14,7 +14,7 @@
     },
     "live": {
       "label": "Live-Verfolgung am Zustelltag",
-      "help": "Ist ein Paket in Zustellung und hat eine Postleitzahl, öffnet Parcel Master die Seite von DHL im eingebauten Browser und liest, wie viele Stopps noch fehlen; ab Beginn des Zeitfensters alle fünf Minuten. Klappt nur ohne API-Schlüssel oder mit „Erst dhl.de“.",
+      "help": "Ist ein Paket in Zustellung und hat eine Postleitzahl, öffnet Parcel Master die Seite von DHL im eingebauten Browser und liest, wie viele Stopps noch fehlen; ab Beginn des Zeitfensters alle fünf Minuten, bei fünf Stopps oder weniger jede Minute. Klappt nur ohne API-Schlüssel oder mit „Erst dhl.de“.",
       "option": {
         "on": "An",
         "off": "Aus"

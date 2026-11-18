@@ -259,6 +259,9 @@ def live_stops(live: dict[str, Any]) -> tuple[int | None, bool]:
 
 #: How long one look at a delivery round serves every parcel on it.
 ROUND_FRESH_SECONDS = 240
+#: From this many stops on, the round is looked at every minute.
+CLOSE_STOPS = 5
+CLOSE_FRESH_SECONDS = 45
 #: After a failed visit the browser is left alone for this long.
 BROWSER_REST_SECONDS = 30 * 60
 PAGE_URL = "https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html"
@@ -474,7 +477,9 @@ class DhlDe(CarrierModule):
         key = (postal_code, str(plain.eta_from), str(plain.eta_to))
         now = monotonic()
         seen = _ROUNDS.get(key)
-        if seen and now - seen[0] < ROUND_FRESH_SECONDS:
+        # Close to the door the picture changes by the minute, as on the page itself.
+        close = seen is not None and seen[1] is not None and seen[1] <= CLOSE_STOPS
+        if seen and now - seen[0] < (CLOSE_FRESH_SECONDS if close else ROUND_FRESH_SECONDS):
             plain.stops_left, plain.stops_about = seen[1], seen[2]
         elif now >= _BROWSER_RESTS_UNTIL[0]:
             detailed = await _visit_page(request.tracking_number, postal_code)
@@ -489,8 +494,10 @@ class DhlDe(CarrierModule):
             started = plain.eta_from is None or plain.eta_from <= datetime.now(
                 plain.eta_from.tzinfo
             ) + timedelta(minutes=15)
-            if started or plain.stops_left <= 20:
-                plain.again_in_minutes = 5  # the van is close: follow it
+            if plain.stops_left <= CLOSE_STOPS:
+                plain.again_in_minutes = 1  # almost there; the page itself looks every minute
+            elif started or plain.stops_left <= 20:
+                plain.again_in_minutes = 5  # the van is on its way to us: follow it
         return plain
 
     @staticmethod
