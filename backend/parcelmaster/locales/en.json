@@ -135,7 +135,7 @@
     "not_configured": "Not set up",
     "no_settings": "Needs no setup.",
     "apprise": "Apprise addresses",
-    "apprise_help": "One per line, for example gotify://host/token or ntfy://topic. Covers Gotify, ntfy, Telegram, e-mail and many more.",
+    "apprise_help": "One per line, for example gotifys://host/token or ntfy://topic. Covers Gotify, ntfy, Telegram, e-mail and many more. For Gotify, gotifys:// means HTTPS and gotify:// HTTP; no https:// in front and no /message behind, and the token is an app token.",
     "push": "Browser notifications",
     "push_on": "On for this device",
     "push_off": "Switch on for this device",

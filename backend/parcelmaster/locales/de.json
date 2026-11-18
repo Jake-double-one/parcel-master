@@ -135,7 +135,7 @@
     "not_configured": "Nicht eingerichtet",
     "no_settings": "Braucht keine Einrichtung.",
     "apprise": "Apprise-Adressen",
-    "apprise_help": "Eine pro Zeile, zum Beispiel gotify://host/token oder ntfy://thema. Deckt Gotify, ntfy, Telegram, E-Mail und viele weitere ab.",
+    "apprise_help": "Eine pro Zeile, zum Beispiel gotifys://host/token oder ntfy://thema. Deckt Gotify, ntfy, Telegram, E-Mail und viele weitere ab. Bei Gotify steht gotifys:// für HTTPS und gotify:// für HTTP; ohne https:// davor und ohne /message dahinter, das Token ist ein App-Token.",
     "push": "Browser-Benachrichtigungen",
     "push_on": "An für dieses Gerät",
     "push_off": "Für dieses Gerät einschalten",
