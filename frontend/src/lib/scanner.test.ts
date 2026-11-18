@@ -13,6 +13,8 @@ describe("recognise", () => {
     expect(await recognise("00340434713136338502")).toEqual(dhl("00340434713136338502"));
     expect(await recognise("(00)340434713136338502")).toEqual(dhl("00340434713136338502"));
     expect(await recognise("]C100340434713136338502")).toEqual(dhl("00340434713136338502"));
+    // The mark is gone before the server looks for a number.
+    expect(detect).toHaveBeenLastCalledWith("00340434713136338502");
   });
 
   it("skips the routing code, whose digits only contain something like a number", async () => {

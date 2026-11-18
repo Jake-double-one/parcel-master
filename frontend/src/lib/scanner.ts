@@ -68,11 +68,13 @@ function bare(text: string): string {
  * like a number, but only as a part.
  */
 export async function recognise(text: string): Promise<Recognised | null> {
-  const { matches } = await api.detect(text).catch(() => ({ matches: [] as Recognised[] }));
+  // Some readers put a symbology mark such as "]C1" in front. It has to go before
+  // anyone looks for a number: glued to the digits it hides where the number starts.
+  const code = text.trim().replace(/^\][A-Za-z]\d/, "");
+  const { matches } = await api.detect(code).catch(() => ({ matches: [] as Recognised[] }));
   if (!matches.length) return null;
-  if (/^https?:\/\//i.test(text.trim())) return matches[0];
-  // Some readers put a symbology mark such as "]C1" in front.
-  const whole = bare(text.replace(/^\][A-Za-z]\d/, ""));
+  if (/^https?:\/\//i.test(code)) return matches[0];
+  const whole = bare(code);
   return matches.find((match) => bare(match.tracking_number) === whole) ?? null;
 }
 
