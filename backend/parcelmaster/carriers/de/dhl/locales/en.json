@@ -39,5 +39,8 @@
     "website": "dhl.de",
     "website_api": "dhl.de, else API",
     "api_website": "API, else dhl.de"
+  },
+  "companion": {
+    "help": "For your browser, with Tampermonkey or Violentmonkey. While you keep dhl.de's tracking page open with the postal code entered, the script passes on to Parcel Master what DHL shows you there: the live delivery window and the stops left. It asks DHL nothing itself and sends only to this server."
   }
 }

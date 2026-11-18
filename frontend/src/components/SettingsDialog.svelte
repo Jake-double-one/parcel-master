@@ -566,6 +566,19 @@
                 <span class="note">{tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")}</span>
               </label>
             {/each}
+            {#if carrier.companion}
+              <div class="field">
+                <span class="eyebrow">{t("settings.companion")}</span>
+                <div class="row">
+                  <a class="chip" href={carrier.companion} target="_blank" rel="noopener">
+                    {t("settings.companion_install")} ↗
+                  </a>
+                </div>
+                <span class="note">
+                  {tOr(`carrier.${carrier.id}.companion.help`, t("settings.companion_help"))}
+                </span>
+              </div>
+            {/if}
             <label class="field">
               <span class="eyebrow">{t("settings.budget")}</span>
               <span class="inline-number">

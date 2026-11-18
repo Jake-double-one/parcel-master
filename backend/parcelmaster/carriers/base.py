@@ -137,6 +137,15 @@ class CarrierModule:
         """Whether lookups are few enough that parcels of a shop should wait for theirs."""
         return False
 
+    def companion_script(self) -> str | None:
+        """A userscript for the user's own browser that passes on what the carrier's
+        page shows them; ``__SERVER__`` and ``__HOST__`` stand for this server."""
+        return None
+
+    def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
+        """Tracking number and result for each parcel in what a companion script sent."""
+        return []
+
     def source(self, settings: dict[str, Any]) -> str | None:
         """Which way the module asks, if it knows more than one; named in ``locales``."""
         return None

@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import date, datetime, time, timedelta
+from pathlib import Path
 from time import monotonic
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -375,17 +376,45 @@ async def _visit_page(tracking_number: str, postal_code: str) -> TrackingResult 
     except ImportError:
         return None
     started = monotonic()
+    seen: list[str] = []  # what the page asked DHL and how that went, for the log
+
+    def note(prefix: str, url: str, outcome: Any) -> None:
+        if "/int-verfolgen/data/" in url and len(seen) < 30:
+            seen.append(f"{prefix} {url.split('/int-verfolgen/data/')[1].split('?')[0]} {outcome}")
+
     try:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(args=["--disable-dev-shm-usage"])
             try:
                 page = await browser.new_page(locale="de-DE")
                 page.set_default_timeout(20_000)
+                page.on("request", lambda r: note("asked", r.url, ""))
+                page.on("response", lambda r: note("got", r.url, r.status))
+                page.on("requestfailed", lambda r: note("lost", r.url, r.failure or ""))
                 await page.goto(
                     f"{PAGE_URL}?piececode={tracking_number}", wait_until="domcontentloaded"
                 )
+                # A visitor first answers the question about cookies: only the necessary ones.
+                consent = page.get_by_text("Nur notwendige Technologien").first
+                try:
+                    await consent.click(timeout=5_000)
+                except Exception:  # noqa: BLE001 - no banner, no click
+                    seen.append("no consent banner")
                 field = page.locator('[data-testid="shipment-details"] form input').first
-                await field.wait_for(state="visible")
+                try:
+                    await field.wait_for(state="visible")
+                except Exception:
+                    widget = page.locator("#nolp")
+                    shown = (await widget.inner_text())[:200] if await widget.count() else "none"
+                    account = await page.evaluate("typeof window.ciam")
+                    log.warning(
+                        "dhl.de: the page showed no shipment in the browser. Requests: %s. "
+                        "Tracking widget: %r. Account script: %s",
+                        "; ".join(seen) or "none",
+                        " ".join(shown.split()),
+                        account,
+                    )
+                    raise
                 await field.fill(postal_code)
                 async with page.expect_response(
                     lambda r: r.url.startswith(f"{WEB_URL}/shipment") and r.request.method == "POST"
@@ -457,6 +486,26 @@ class DhlDe(CarrierModule):
         the module falls back to dhl.de.
         """
         return self._plan(settings)[0] == "api" and not settings.get("api_secret")
+
+    def companion_script(self) -> str | None:
+        return (Path(__file__).parent / "companion.user.js").read_text(encoding="utf-8")
+
+    def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
+        """What the tracking page in the user's browser got from DHL, one parcel each."""
+        found = []
+        pieces = payload.get("sendungen") if isinstance(payload, dict) else None
+        for piece in pieces if isinstance(pieces, list) else []:
+            if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
+                continue
+            try:
+                result = parse_web_response({"sendungen": [piece]})
+            except CarrierError:
+                continue
+            if result.stops_left is not None:
+                pace = 1 if result.stops_left <= CLOSE_STOPS else 5
+                result.again_in_minutes = pace
+            found.append((self.normalize(piece["id"]), result))
+        return found
 
     def source(self, settings: dict[str, Any]) -> str | None:
         return "_".join(self._plan(settings))

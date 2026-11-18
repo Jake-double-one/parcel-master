@@ -101,6 +101,8 @@ export interface Carrier {
   sync: SyncState | null;
   /** An importer whose orders can also be added one by one, by their number. */
   by_reference: boolean;
+  /** Address of a userscript for the user's browser that passes on live news, if the module has one. */
+  companion: string | null;
   configured: boolean;
   settings_fields: FieldSpec[];
   parcel_fields: FieldSpec[];

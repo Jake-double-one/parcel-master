@@ -224,7 +224,10 @@
     "health_untested": "Noch nicht abgefragt",
     "health_ok": "Läuft",
     "health_failing": "Gestört",
-    "event_stops": "die Zahl der Stopps bis zur Zustellung sinkt"
+    "event_stops": "die Zahl der Stopps bis zur Zustellung sinkt",
+    "companion": "Begleit-Skript",
+    "companion_install": "Skript installieren",
+    "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey). Es reicht an Parcel Master weiter, was dir die Seite des Paketdienstes anzeigt."
   },
   "login": {
     "password": "Passwort",

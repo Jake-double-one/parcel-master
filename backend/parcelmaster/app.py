@@ -6,6 +6,7 @@
 import asyncio
 import hmac
 import json
+import logging
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -35,8 +36,10 @@ from .tracking import (
     daily_budget,
     parse_iso,
     pickup_deadline,
+    record_result,
     refresh_parcel,
     take_auto_archived,
+    timezone,
 )
 
 SECRET_MASK = "********"
@@ -94,6 +97,9 @@ class ShipmentIn(BaseModel):
 
 def fail(status: int, code: str, **extra: Any) -> HTTPException:
     return HTTPException(status, {"error": code, **extra})
+
+
+journal = logging.getLogger(__name__)
 
 
 def create_app(config: Config) -> FastAPI:
@@ -431,6 +437,12 @@ def create_app(config: Config) -> FastAPI:
                     "sync": sync_state(ctx, module),
                     # Whether a single order can be added by its number.
                     "by_reference": bool(getattr(module, "reference_pattern", None)),
+                    # A userscript that passes on what the carrier's page shows the user.
+                    "companion": (
+                        f"/api/companion/{module.id}.user.js"
+                        if module.companion_script() and not ctx.demo
+                        else None
+                    ),
                     "configured": module.is_configured(own),
                     "settings_fields": [vars(f) for f in module.settings_fields],
                     "parcel_fields": [vars(f) for f in module.parcel_fields],
@@ -441,6 +453,46 @@ def create_app(config: Config) -> FastAPI:
                 }
             )
         return result
+
+    @app.get("/api/companion/{module_id}.user.js")
+    def companion_script(ctx: RealContext, module_id: str, request: Request) -> Response:
+        """The module's userscript, made out to this server as the browser sees it."""
+        module = ctx.module(module_id)
+        script = module.companion_script() if module else None
+        if not script:
+            raise fail(404, "not_found")
+        server = str(request.base_url).rstrip("/")
+        script = script.replace("__SERVER__", server).replace(
+            "__HOST__", urlparse(server).hostname or ""
+        )
+        return Response(script, media_type="text/javascript; charset=utf-8")
+
+    @app.post("/api/companion/{module_id}")
+    async def companion_news(
+        ctx: RealContext, module_id: str, payload: Annotated[Any, Body(embed=True)]
+    ) -> dict[str, int]:
+        """News a companion script saw on the carrier's page; applied to the parcels we know."""
+        module = ctx.module(module_id)
+        if module is None or not module.companion_script():
+            raise fail(404, "not_found")
+        settings = ctx.store.get_settings()
+        zone = timezone(settings)
+        now = datetime.now(UTC)
+        base = int(settings["polling"]["interval_minutes"])
+        taken = 0
+        for number, result in module.take_from_companion(payload)[:20]:
+            for parcel in ctx.store.open_parcels():
+                if (parcel["carrier"], parcel["tracking_number"]) != (module.id, number):
+                    continue
+                if Status(parcel["status"]) in FINAL:
+                    continue
+                full = ctx.store.get_parcel(parcel["id"])
+                notices = record_result(ctx.store, full, result, base, zone, now)
+                await ctx.state.notifier.handle(notices)
+                taken += 1
+        if taken:
+            journal.info("%s: companion script brought news for %d parcel(s)", module.id, taken)
+        return {"parcels": taken}
 
     @app.post("/api/detect")
     def detect(ctx: Context, text: Annotated[str, Body(embed=True, max_length=2000)]) -> dict:
@@ -793,8 +845,6 @@ def create_app(config: Config) -> FastAPI:
 
     @app.get("/api/log")
     def log_entries(ctx: RealContext) -> dict[str, Any]:
-        import logging
-
         return {
             "level": logging.getLevelName(log_level).lower(),
             "entries": list(reversed(JOURNAL.entries)),

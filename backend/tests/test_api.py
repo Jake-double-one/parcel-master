@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from parcelmaster.app import SECRET_MASK, create_app
@@ -644,3 +647,34 @@ def test_carrier_health_says_how_the_last_lookup_went_and_which_way_it_asks(clie
         next(m for m in status["modules"] if m["id"] == "de.dhl")["health"]["source"]
         == "website_api"
     )
+
+
+def test_companion_script_is_made_out_to_this_server_and_its_news_are_applied(client):
+    dhl = next(c for c in client.get("/api/carriers").json() if c["id"] == "de.dhl")
+    assert dhl["companion"] == "/api/companion/de.dhl.user.js"
+    script = client.get(dhl["companion"]).text
+    assert 'const SERVER = "http://testserver";' in script
+    assert "// @connect      testserver" in script
+    assert client.get("/api/companion/demo.user.js").status_code == 404
+
+    shipment = client.post(
+        "/api/shipments",
+        json={"parcels": [{"carrier": "de.dhl", "tracking_number": "00340434161094042557"}]},
+    ).json()
+    fixture = Path(__file__).parent / "fixtures" / "dhl_web_transit.json"
+    payload = json.loads(fixture.read_text())
+    details = payload["sendungen"][0]["sendungsdetails"]
+    details["sendungsverlauf"]["fortschritt"] = 4
+    details["liveTracking"] = {
+        "state": "ok",
+        "countdownTextKey": "CD10",
+        "timeframe": {"from": "2026-11-18T12:40:00+01:00", "to": "2026-11-18T14:10:00+01:00"},
+    }
+    taken = client.post("/api/companion/de.dhl", json={"payload": payload}).json()
+    assert taken == {"parcels": 1}
+    parcel = client.get("/api/shipments").json()[0]["parcels"][0]
+    assert shipment["id"] and parcel["status"] == "out_for_delivery"
+    assert parcel["stops"] == {"left": 10, "about": True}
+    assert parcel["eta_from"] == "2026-11-18T11:40:00+00:00"  # 12:40 in Germany
+    # Rubbish and parcels we do not know change nothing.
+    assert client.post("/api/companion/de.dhl", json={"payload": "x"}).json() == {"parcels": 0}

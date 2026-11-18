@@ -32,6 +32,8 @@ MIN_GAP_SECONDS = 10
 MIN_LIVE_MINUTES = 1
 #: Stops left at which a message goes out, each once on the way down.
 STOP_MARKS = (20, 10, 5, 2, 1)
+#: How long live news of a delivery round stand against an ordinary answer.
+LIVE_STAYS = timedelta(minutes=10)
 #: A delivery window is reported again once its start or end has moved this far.
 WINDOW_NEWS = timedelta(minutes=15)
 #: Tries per carrier within any hour, failed ones included.
@@ -204,6 +206,17 @@ def record_result(
     status = result.status
     eta_from_iso = to_iso(result.eta_from, zone)
     eta_to_iso = to_iso(result.eta_to, zone)
+    # Live news from the delivery round outrank the plan for a while: the next
+    # ordinary answer knows only the planned window and nothing about stops.
+    seen_live = parse_iso(parcel["extra"].get("live_at"))
+    keep_live = (
+        result.stops_left is None
+        and status is Status.OUT_FOR_DELIVERY
+        and seen_live is not None
+        and now - seen_live < LIVE_STAYS
+    )
+    if keep_live:
+        eta_from_iso, eta_to_iso = parcel["eta_from"], parcel["eta_to"]
     delay = next_delay_minutes(
         status,
         base,
@@ -245,11 +258,14 @@ def record_result(
 
     # Stops left on the delivery round: kept with the parcel while it is on the van.
     extra = dict(parcel["extra"])
-    before = extra.pop("stops_left", None)
-    extra.pop("stops_about", None)
+    before = extra.get("stops_left")
     stops = result.stops_left if status is Status.OUT_FOR_DELIVERY else None
+    if not keep_live:
+        for note in ("stops_left", "stops_about", "live_at"):
+            extra.pop(note, None)
     if stops is not None:
         extra["stops_left"] = str(stops)
+        extra["live_at"] = now_iso
         if result.stops_about:
             extra["stops_about"] = "1"
     if extra != parcel["extra"]:

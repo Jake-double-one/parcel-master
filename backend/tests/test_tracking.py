@@ -399,3 +399,28 @@ def test_a_window_drifting_by_minutes_is_not_reported_each_time(world, monkeypat
         for _ in range(4)
     ]
     assert told == [["12:30–14:00"], [], ["12:50–14:20"], ["13:00–13:30"]]
+
+
+def test_live_news_stand_against_an_ordinary_answer_for_a_while(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    day = datetime.now().replace(second=0, microsecond=0)
+    plan = {"eta_from": day.replace(hour=12, minute=30), "eta_to": day.replace(hour=14, minute=0)}
+    live = {"eta_from": day.replace(hour=12, minute=40), "eta_to": day.replace(hour=14, minute=10)}
+    module.answers = [
+        TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", stops_left=10, **live),
+        TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", **plan),  # knows only the plan
+    ]
+    refresh(store, registry, parcel_id)
+    assert [n.kind for n in refresh(store, registry, parcel_id)] == []  # nothing said twice
+    parcel = store.get_parcel(parcel_id)
+    assert parcel["extra"]["stops_left"] == "10"
+    live_from = parcel["eta_from"]
+
+    # Once the live news are old, the ordinary answer counts again.
+    monkeypatch.setattr("parcelmaster.tracking.LIVE_STAYS", timedelta(0))
+    module.answers = [TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", **plan)]
+    refresh(store, registry, parcel_id)
+    parcel = store.get_parcel(parcel_id)
+    assert "stops_left" not in parcel["extra"]
+    assert parcel["eta_from"] < live_from  # back to the plan, ten minutes earlier

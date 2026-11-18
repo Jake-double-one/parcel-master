@@ -224,7 +224,10 @@
     "health_untested": "Not asked yet",
     "health_ok": "Working",
     "health_failing": "Failing",
-    "event_stops": "the number of stops before delivery drops"
+    "event_stops": "the number of stops before delivery drops",
+    "companion": "Companion script",
+    "companion_install": "Install script",
+    "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey). It passes on to Parcel Master what the carrier's page shows you."
   },
   "login": {
     "password": "Password",

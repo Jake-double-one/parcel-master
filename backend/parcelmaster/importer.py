@@ -31,7 +31,7 @@ DISMISSED_KEY = "importers_dismissed"
 #: With the saver on, a parcel goes to its carrier's module from these states on.
 HAND_OVER_FROM = frozenset({Status.OUT_FOR_DELIVERY, Status.READY_FOR_PICKUP, Status.PROBLEM})
 #: Keys in a parcel's extra that tracking writes for itself.
-TRACKING_NOTES = ("window_told", "stops_left", "stops_about")
+TRACKING_NOTES = ("window_told", "stops_left", "stops_about", "live_at")
 MAX_DISMISSED = 500
 #: Days a finished order still counts as recent when auto-archive is off.
 DEFAULT_RECENT_DAYS = 3
