@@ -72,6 +72,12 @@ class Scheduler:
                 if importer.due(self.store, module, settings["carriers"].get(module.id, {})):
                     notices = await importer.run(self.store, self.registry, module, self.data_dir)
                     await self.notifier.handle(notices)
+                else:
+                    # Between two syncs: orders whose parcel is at the door about now.
+                    notices = await importer.follow_deliveries(
+                        self.store, self.registry, module, self.data_dir
+                    )
+                    await self.notifier.handle(notices)
         await self.notifier.handle(periodic_notices(self.store, self.registry))
         await self.notifier.flush_held()
         auto_archive(self.store)

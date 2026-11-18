@@ -8,6 +8,7 @@ import logging
 import shutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from .carriers.base import (
@@ -47,6 +48,9 @@ DELIVERY_DAY_SYNC_MINUTES = 30
 MAX_SYNC_MINUTES = 24 * 60
 
 _locks: dict[str, asyncio.Lock] = {}
+#: Minutes between two looks at an order whose parcel is being delivered right now.
+FOLLOW_MINUTES = 10
+_followed: dict[tuple[str, str], float] = {}
 
 
 def describe(error: Exception) -> str:
@@ -403,6 +407,58 @@ async def fetch_one(
             store.set_value(DISMISSED_KEY, dismissed)
         apply(store, registry, module, [found], wanted=True)
         return store.find_by_reference(module.name, found.reference)["id"]
+
+
+async def follow_deliveries(
+    store: Store, registry: Registry, module: ImporterModule, data_dir: Path
+) -> list[Notice]:
+    """Reads again the orders whose parcel the service itself brings right now.
+
+    Around the delivery window the half-hourly sync is too coarse. Only the
+    one order is read, not the whole account, and at most every few minutes.
+    """
+    settings = store.get_settings()
+    own = settings["carriers"].get(module.id, {})
+    state = get_state(store, module.id)
+    if not state.get("connected") or state.get("blocked") or not module.is_configured(own):
+        return []
+    now = datetime.now(UTC)
+    references: list[str] = []
+    for parcel in store.open_parcels():
+        if parcel["carrier"] != module.id or parcel["status"] != Status.OUT_FOR_DELIVERY:
+            continue
+        start, end = parse_iso(parcel["eta_from"]), parse_iso(parcel["eta_to"])
+        if not start or not end or end - start > timedelta(hours=12):
+            continue  # a day without hours: the usual sync will do
+        if not start - timedelta(minutes=30) <= now <= end + timedelta(hours=2):
+            continue
+        reference = (store.get_shipment(parcel["shipment_id"]) or {}).get("reference")
+        last = _followed.get((module.id, reference or ""))
+        if (
+            reference
+            and reference not in references
+            and (last is None or monotonic() - last >= FOLLOW_MINUTES * 60)
+        ):
+            references.append(reference)
+    notices: list[Notice] = []
+    lock = _locks.setdefault(module.id, asyncio.Lock())
+    for reference in references:
+        if lock.locked():
+            break  # a sync is running and brings the same news
+        _followed[(module.id, reference)] = monotonic()
+        async with lock:
+            request = SyncRequest(own, settings["language"], data_dir / "modules" / module.id)
+            try:
+                found = await asyncio.to_thread(module.fetch, request, reference)
+            except CarrierError as error:
+                log.warning("%s %s: following the delivery failed: %s", module.id, reference, error)
+                continue
+            except Exception:
+                log.exception("importer %s failed", module.id)
+                continue
+            notices += apply(store, registry, module, [found], wanted=True)
+            log.info("%s %s: followed on its delivery day", module.id, reference)
+    return notices
 
 
 def disconnect(store: Store, module: ImporterModule, data_dir: Path) -> None:

@@ -1,6 +1,6 @@
 import asyncio
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -806,3 +806,31 @@ def test_the_shop_is_asked_more_often_while_it_delivers_a_parcel_itself_today(wo
     }
     sync(world, order(**arrived))
     assert importer.pace_minutes(store, shop, own) == 180
+
+
+def test_an_order_is_followed_closely_while_the_shop_brings_its_parcel(world, monkeypatch):
+    store, registry, shop, tmp_path = world
+    monkeypatch.setattr(importer, "_followed", {})
+    importer._set_state(store, shop.id, connected=True)
+    fetched = []
+
+    def fetch(request, reference):
+        fetched.append(reference)
+        return order(status=Status.DELIVERED, description="Delivered", status_time=datetime.now())
+
+    monkeypatch.setattr(shop, "fetch", fetch, raising=False)
+
+    def follow():
+        return asyncio.run(importer.follow_deliveries(store, registry, shop, tmp_path))
+
+    sync(world, order())  # on its way, no window: nothing to follow
+    follow()
+    assert fetched == []
+    now = datetime.now()
+    window = {"eta_from": now - timedelta(minutes=5), "eta_to": now + timedelta(hours=1)}
+    sync(world, order(status=Status.OUT_FOR_DELIVERY, description="Arriving today", **window))
+    notices = follow()
+    assert fetched == ["302-1"]
+    assert [n.kind for n in notices] == ["delivered"]
+    follow()
+    assert fetched == ["302-1"]  # arrived: nothing left to follow
