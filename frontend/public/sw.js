@@ -62,7 +62,8 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(message.title, {
       body: message.body,
       icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      // Android shows the badge as a mask: only its shape counts, so it is white on clear.
+      badge: "/badge-96.png",
       tag: message.shipment_id ? `shipment-${message.shipment_id}` : undefined,
     }),
   );
