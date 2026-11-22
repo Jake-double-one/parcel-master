@@ -262,6 +262,9 @@ def apply(
             ):
                 taker = None
             extra = {"import_key": imported.key, "url": imported.url or ""}
+            # Another order's entry already follows this parcel at its carrier, and
+            # that one tells the news: this entry stays quiet.
+            shared_box = False
             if imported.items:
                 extra["items"] = json.dumps(imported.items, ensure_ascii=False)
             if taker:
@@ -274,6 +277,7 @@ def apply(
                     # The carrier is already asked about this number, by hand or for
                     # another order in the same box. The service keeps this entry.
                     taker = None
+                    shared_box = True
             if taker:
                 carrier, number = taker.id, taker.normalize(imported.tracking_number)
                 # The carrier's own fields: what the user entered wins, then their defaults.
@@ -336,7 +340,16 @@ def apply(
                     eta_from=imported.eta_from,
                     eta_to=imported.eta_to,
                 )
-                notices += record_result(store, parcel, result, base, zone, now, poll=False)
+                found = record_result(store, parcel, result, base, zone, now, poll=False)
+                if imported.tracking_number and not shared_box:
+                    # Several orders in one box that the service follows itself: the
+                    # oldest of them speaks for the box.
+                    first = store.find_number(number)
+                    shared_box = bool(
+                        first and first["id"] != shipment["id"] and not first["deleted_at"]
+                    )
+                if not shared_box:
+                    notices += found
             elif parcel["last_success_at"] is None:
                 # Handed over, but the carrier has not answered yet: show what
                 # the service knows until it does.

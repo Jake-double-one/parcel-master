@@ -67,7 +67,14 @@
       <p class="micro">
         {#if shipment.suggested}<span class="new">{t("shipment.new")}</span>{/if}
         {t(`direction.${shipment.direction}`)}{#if shipment.reference}
-          · {t("shipment.reference", { reference: shipment.reference })}{/if}
+          · {t("shipment.reference", { reference: shipment.reference })}{/if}{#if shipment.together.length}
+          · <span
+            class="more"
+            title={shipment.together.map((o) => `${o.reference} · ${o.title}`).join("\n")}
+            >{t(shipment.together.length === 1 ? "shipment.more_orders_one" : "shipment.more_orders", {
+              count: shipment.together.length,
+            })}</span
+          >{/if}
       </p>
       <!-- One line; the pointer shows the rest. -->
       <h3 {title}>{title}</h3>

@@ -920,3 +920,41 @@ def test_changes_requested_by_other_sites_are_refused(client):
         headers={"Origin": "https://www.dhl.de", "Sec-Fetch-Site": "cross-site"},
     )
     assert companion.status_code != 403
+
+
+def test_orders_in_one_box_show_as_one_card(client):
+    store = client.app.state.pm.store
+    ids = []
+    for reference, item in (("302-1", "Kettle"), ("302-2", "Cable")):
+        ids.append(
+            store.save_shipment(
+                None,
+                {"title": item, "direction": "incoming", "note": "", "reference": reference},
+                [
+                    {
+                        "carrier": "demo",
+                        "tracking_number": "DEMO1234567890",
+                        "extra": {"items": json.dumps([item])},
+                    }
+                ],
+            )
+        )
+    cards = client.get("/api/shipments").json()
+    assert [card["id"] for card in cards] == [ids[0]]
+    card = cards[0]
+    assert card["together"] == [{"id": ids[1], "reference": "302-2", "title": "Cable"}]
+    parcel = card["parcels"][0]
+    assert parcel["contents"] == ["Kettle", "Cable"]
+    assert parcel["contents_by_order"] == [
+        {"reference": "302-1", "items": ["Kettle"]},
+        {"reference": "302-2", "items": ["Cable"]},
+    ]
+
+    # The card is archived and binned as a whole.
+    client.post(f"/api/shipments/{ids[0]}/archive")
+    assert client.get("/api/shipments").json() == []
+    assert len(client.get("/api/shipments?archived=true").json()) == 1
+    client.post(f"/api/shipments/{ids[0]}/archive", json={"archived": False})
+    client.delete(f"/api/shipments/{ids[0]}")
+    assert client.get("/api/shipments").json() == []
+    assert len(client.get("/api/shipments?trash=true").json()) == 2

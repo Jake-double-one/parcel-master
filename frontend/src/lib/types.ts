@@ -40,6 +40,8 @@ export interface Parcel {
   live_lost: boolean;
   /** What is inside, where an importer knows it. */
   contents: string[];
+  /** Set when several orders share this parcel: which items came with which order. */
+  contents_by_order: { reference: string; items: string[] }[] | null;
   /** Whose website `tracking_url` opens. */
   site_name: string;
   events: TrackingEvent[];
@@ -67,6 +69,8 @@ export interface Shipment {
   pickup_deadline: string | null;
   last_checked_at: string | null;
   parcels: Parcel[];
+  /** Other orders that came in the same box and share this card. */
+  together: { id: number; reference: string; title: string }[];
 }
 
 export interface FieldSpec {

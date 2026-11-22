@@ -100,7 +100,10 @@
     "delete_for_good": "Delete for good",
     "purge_on": "Will be deleted for good on {date}.",
     "binned_toast": "Moved to the bin.",
-    "restored_toast": "Restored."
+    "restored_toast": "Restored.",
+    "more_orders_one": "+ 1 more order",
+    "more_orders": "+ {count} more orders",
+    "from_order": "From order {reference}"
   },
   "dialog": {
     "create_title": "Add shipment",

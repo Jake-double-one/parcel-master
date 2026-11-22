@@ -157,11 +157,23 @@
   </div>
 
   {#if panel === "contents"}
-    <ul class="contents">
-      {#each parcel.contents as item}
-        <li>{item}</li>
+    {#if parcel.contents_by_order}
+      <!-- Several orders in this box: their items, order by order. -->
+      {#each parcel.contents_by_order as order}
+        <p class="micro from">{t("shipment.from_order", { reference: order.reference })}</p>
+        <ul class="contents grouped">
+          {#each order.items as item}
+            <li>{item}</li>
+          {/each}
+        </ul>
       {/each}
-    </ul>
+    {:else}
+      <ul class="contents">
+        {#each parcel.contents as item}
+          <li>{item}</li>
+        {/each}
+      </ul>
+    {/if}
   {:else if panel === "history"}
     {#if parcel.events.length}
       <ol>
@@ -273,6 +285,15 @@
     padding: 0;
     font-size: 0.88rem;
     color: var(--muted);
+  }
+
+  .from {
+    margin: 14px 0 0;
+    color: var(--muted);
+  }
+
+  .contents.grouped {
+    margin-top: 4px;
   }
 
   .contents li {

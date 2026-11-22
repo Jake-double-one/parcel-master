@@ -208,6 +208,50 @@ def test_two_orders_in_one_box_both_show_their_parcel(world):
     assert all(p[0]["tracking_number"] == "PO123456" for p in shipments.values())
 
 
+def test_orders_in_one_box_share_one_card_and_speak_once(world):
+    from parcelmaster import together
+
+    store, registry = world[0], world[1]
+    box = {"carrier_name": "Post", "tracking_number": "PO123456"}
+
+    def three(status, text):
+        return [
+            order(ref, title, key=key, status=status, description=text, items=[item], **box)
+            for ref, title, key, item in (
+                ("302-1", "Kettle", "a", "Kettle"),
+                ("302-2", "Cable", "b", "Cable"),
+                ("302-3", "Mug", "c", "Mug"),
+            )
+        ]
+
+    sync(world, *three(Status.IN_TRANSIT, "Arriving tomorrow"))
+    # Only the oldest order tells the news of the box.
+    notices = sync(world, *three(Status.OUT_FOR_DELIVERY, "Out for delivery"))
+    assert len(notices) == 1
+
+    shipments = store.list_shipments(False)
+    ids = {s["reference"]: s["id"] for s in shipments}
+    joined = together.groups(shipments, registry)
+    assert joined == {ids["302-1"]: [ids["302-2"], ids["302-3"]]}
+    assert together.companions(shipments, registry, ids["302-3"]) == [
+        ids["302-1"],
+        ids["302-2"],
+        ids["302-3"],
+    ]
+
+    # An order with a parcel of its own keeps its own card.
+    extra = ImportedShipment(
+        "302-3",
+        "Mug",
+        [
+            ImportedParcel(key="c", status=Status.IN_TRANSIT, **box),
+            ImportedParcel(key="d", status=Status.IN_TRANSIT, tracking_number="PO999999"),
+        ],
+    )
+    sync(world, *three(Status.OUT_FOR_DELIVERY, "Out for delivery")[:2], extra)
+    assert together.groups(store.list_shipments(False), registry) == {ids["302-1"]: [ids["302-2"]]}
+
+
 CREDENTIALS = {"email": "me@example.org", "password": "pw"}
 
 

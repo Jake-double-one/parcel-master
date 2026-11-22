@@ -100,7 +100,10 @@
     "delete_for_good": "Endgültig löschen",
     "purge_on": "Wird am {date} endgültig gelöscht.",
     "binned_toast": "In den Papierkorb gelegt.",
-    "restored_toast": "Wiederhergestellt."
+    "restored_toast": "Wiederhergestellt.",
+    "more_orders_one": "+ 1 weitere Bestellung",
+    "more_orders": "+ {count} weitere Bestellungen",
+    "from_order": "Aus Bestellung {reference}"
   },
   "dialog": {
     "create_title": "Sendung anlegen",

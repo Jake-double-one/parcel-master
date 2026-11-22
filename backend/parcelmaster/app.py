@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, discovery, importer
+from . import __version__, discovery, importer, together
 from .carriers.base import CarrierError, CarrierModule
 from .carriers.registry import Registry, discover
 from .config import Config
@@ -241,6 +241,8 @@ def create_app(config: Config) -> FastAPI:
             "carrier_name": parcel["extra"].get("carrier_name")
             or (module.name if module else parcel["carrier"]),
             "contents": contents_of(parcel),
+            # Filled in when orders share this parcel: whose items are whose.
+            "contents_by_order": None,
             # The live view of the round vanished while the parcel is still on the van.
             "live_lost": bool(parcel["extra"].get("live_lost")),
             # Stops left on the delivery round, where the carrier tells.
@@ -283,7 +285,44 @@ def create_app(config: Config) -> FastAPI:
             "last_checked_at": min(checked) if checked and all(checked) else None,
             "suggested": bool(shipment.get("suggested_at")),
             "purge_at": discovery.purge_at(shipment),
+            # Other orders that came in the same box and share this card.
+            "together": [],
         }
+
+    def combine(
+        ctx: Ctx, shipments: list[dict[str, Any]], cards: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Show orders packed into one box as one card, led by the tracked one."""
+        joined = together.groups(shipments, ctx.state.registry)
+        if not joined:
+            return cards
+        by_id = {card["id"]: card for card in cards}
+        for leader, ids in joined.items():
+            card, others = by_id[leader], [by_id[i] for i in ids]
+            card["together"] = [
+                {"id": o["id"], "reference": o["reference"], "title": o["title"]} for o in others
+            ]
+            for parcel in card["parcels"]:
+                orders = [{"reference": card["reference"], "items": parcel["contents"]}]
+                for other in others:
+                    orders += [
+                        {"reference": other["reference"], "items": p["contents"]}
+                        for p in other["parcels"]
+                        if p["tracking_number"] == parcel["tracking_number"]
+                    ]
+                orders = [o for o in orders if o["items"]]
+                if len(orders) > 1:
+                    parcel["contents_by_order"] = orders
+                    parcel["contents"] = [item for o in orders for item in o["items"]]
+        hidden = {i for ids in joined.values() for i in ids}
+        return [card for card in cards if card["id"] not in hidden]
+
+    def companions_of(ctx: Ctx, shipment: dict[str, Any]) -> list[int]:
+        """The shipment and the orders shown on its card."""
+        if shipment["deleted_at"]:
+            return [shipment["id"]]
+        listed = ctx.store.list_shipments(shipment["archived_at"] is not None)
+        return together.companions(listed, ctx.state.registry, shipment["id"])
 
     def language_of(ctx: Ctx) -> str:
         return ctx.state.translations.resolve(ctx.store.get_settings()["language"])
@@ -634,7 +673,7 @@ def create_app(config: Config) -> FastAPI:
                 await refresh(ctx, due)
                 shipments = ctx.store.list_shipments(archived)
         language = language_of(ctx)
-        return [present(ctx, shipment, language) for shipment in shipments]
+        return combine(ctx, shipments, [present(ctx, shipment, language) for shipment in shipments])
 
     def clean_parcels(
         ctx: Ctx, payload: ShipmentIn, shipment_id: int | None
@@ -737,7 +776,8 @@ def create_app(config: Config) -> FastAPI:
             # Also notes that nothing shall bring it back by itself.
             discovery.remove_for_good(ctx.store, shipment)
         else:
-            ctx.store.set_deleted(shipment_id, True)
+            for shipment_id in companions_of(ctx, shipment):  # one box, one card
+                ctx.store.set_deleted(shipment_id, True)
 
     @app.delete("/api/trash", status_code=204)
     def empty_trash(ctx: Context) -> None:
@@ -762,8 +802,11 @@ def create_app(config: Config) -> FastAPI:
     def archive(
         ctx: Context, shipment_id: int, archived: Annotated[bool, Body(embed=True)] = True
     ) -> dict[str, Any]:
-        if not ctx.store.set_archived(shipment_id, archived):
+        shipment = ctx.store.get_shipment(shipment_id)
+        if shipment is None:
             raise fail(404, "not_found")
+        for other in companions_of(ctx, shipment):  # one box, one card
+            ctx.store.set_archived(other, archived)
         return present(ctx, ctx.store.get_shipment(shipment_id), language_of(ctx))
 
     @app.post("/api/shipments/{shipment_id}/refresh")

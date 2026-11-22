@@ -25,6 +25,7 @@ function shipment(overrides: Partial<Shipment>): Shipment {
     pickup_deadline: null,
     last_checked_at: null,
     parcels: [],
+    together: [],
     ...overrides,
   };
 }

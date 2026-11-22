@@ -225,7 +225,10 @@
       notify(t("shipment.binned_toast"), {
         label: t("shipment.undo"),
         run: async () => {
-          await api.restore(shipment.id).catch(report);
+          // The whole card went into the bin, so all of it comes back.
+          for (const id of [shipment.id, ...shipment.together.map((o) => o.id)]) {
+            await api.restore(id).catch(report);
+          }
           toast = null;
           await load();
         },

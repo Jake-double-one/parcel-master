@@ -49,6 +49,7 @@ export function matches(shipment: Shipment, query: string): boolean {
     shipment.title,
     shipment.note,
     shipment.reference,
+    ...(shipment.together ?? []).flatMap((o) => [o.reference, o.title]),
     ...shipment.parcels.flatMap((p) => [p.tracking_number, p.carrier_name]),
   ]
     .join(" ")
