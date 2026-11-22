@@ -103,7 +103,8 @@
     "restored_toast": "Restored.",
     "more_orders_one": "+ 1 more order",
     "more_orders": "+ {count} more orders",
-    "from_order": "From order {reference}"
+    "from_order": "From order {reference}",
+    "part": "parcel {index} of {count}"
   },
   "dialog": {
     "create_title": "Add shipment",

@@ -363,6 +363,23 @@ class Store:
             loaded = self._load(rows)
         return loaded[0] if loaded else None
 
+    def find_order(self, source: str, order: str) -> list[dict[str, Any]]:
+        """Every shipment filed for an order: the order itself and its parcels of their own."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM shipments WHERE source=? AND (reference=? OR reference LIKE ?) "
+                "ORDER BY id",
+                (source, order, order.replace("%", "") + "#%"),
+            ).fetchall()
+            return self._load(rows)
+
+    def move_parcel(self, parcel_id: int, shipment_id: int) -> None:
+        """Hand a parcel, with its history, to another shipment."""
+        with self._lock, self._db:
+            self._db.execute(
+                "UPDATE parcels SET shipment_id=? WHERE id=?", (shipment_id, parcel_id)
+            )
+
     def add_parcel(
         self, shipment_id: int, carrier: str, tracking_number: str, extra: dict[str, str]
     ) -> int:

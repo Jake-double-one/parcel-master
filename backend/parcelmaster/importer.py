@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import json
 import logging
 import shutil
@@ -146,6 +147,70 @@ def _same_parcel_elsewhere(
     return None
 
 
+#: Separates an order number from the key of a parcel that has a card of its own.
+PART = "#"
+
+
+def order_of(reference: str) -> str:
+    """The order a shipment belongs to: its reference without a parcel part."""
+    return reference.split(PART, 1)[0]
+
+
+def split_orders(found: list[ImportedShipment]) -> list[ImportedShipment]:
+    """One card per parcel once its carrier number is known.
+
+    Parcels the shop has not handed to a carrier yet stay together under the
+    order. Each parcel with a tracking number becomes a shipment of its own,
+    titled after what is inside, so it can arrive and leave the overview on
+    its own. Orders sharing one box meet again on one card (see together.py).
+    """
+    result: list[ImportedShipment] = []
+    for item in found:
+        numbered = [p for p in item.parcels if p.tracking_number]
+        if item.reference.startswith(SHARED) or not numbered:
+            result.append(item)
+            continue
+        waiting = [p for p in item.parcels if not p.tracking_number]
+        if waiting:
+            result.append(ImportedShipment(item.reference, item.title, waiting))
+        total = len(item.parcels)
+        for position, parcel in enumerate(item.parcels, start=1):
+            if not parcel.tracking_number:
+                continue
+            title = parcel.items[0] if parcel.items else item.title
+            result.append(
+                ImportedShipment(
+                    f"{item.reference}{PART}{parcel.key}",
+                    title,
+                    [dataclasses.replace(parcel, part=f"{position}/{total}")],
+                )
+            )
+    return result
+
+
+def _take_from_order(store: Store, module: ImporterModule, shipment: dict[str, Any], key: str):
+    """Move a parcel that so far lay in its order's card into its own card."""
+    order = store.find_by_reference(module.name, order_of(shipment["reference"]))
+    if order is None or order["id"] == shipment["id"]:
+        return
+    for parcel in order["parcels"]:
+        if parcel["extra"].get("import_key") == key:
+            store.move_parcel(parcel["id"], shipment["id"])
+    if not store.get_shipment(order["id"])["parcels"]:
+        store.delete_shipment(order["id"])  # every parcel has a card of its own now
+
+
+def _in_order_card(store: Store, module: ImporterModule, item: ImportedShipment) -> bool:
+    """Whether a parcel of this card still lies in its order's card and must move out."""
+    if PART not in item.reference:
+        return False
+    order = store.find_by_reference(module.name, order_of(item.reference))
+    keys = {parcel.key for parcel in item.parcels}
+    return order is not None and any(
+        parcel["extra"].get("import_key") in keys for parcel in order["parcels"]
+    )
+
+
 def _replace_found(store: Store, item: ImportedShipment) -> None:
     """A shipment a companion script came across steps aside once an order holds
     the same parcel: the order is the fuller entry."""
@@ -179,7 +244,7 @@ def apply(
     # Orders that arrived within the days they would stay in the overview anyway.
     recent_days = int(settings["polling"]["auto_archive_days"]) or DEFAULT_RECENT_DAYS
 
-    for item in found:
+    for item in split_orders(found):
         # The same parcel may be heard of twice: in the account's order and through a
         # link shared for it. The order is the fuller entry and wins either way.
         twin = _same_parcel_elsewhere(store, module, item)
@@ -200,10 +265,14 @@ def apply(
         _replace_found(store, item)
         if shipment is None:
             if not wanted:
-                if [module.name, item.reference] in dismissed:
-                    continue  # the user deleted this order here
-                if all(parcel.status in FINAL for parcel in item.parcels) and not _just_arrived(
-                    item, now, zone, recent_days
+                if [module.name, item.reference] in dismissed or (
+                    [module.name, order_of(item.reference)] in dismissed
+                ):
+                    continue  # the user deleted this order (or this parcel) here
+                if (
+                    all(parcel.status in FINAL for parcel in item.parcels)
+                    and not _just_arrived(item, now, zone, recent_days)
+                    and not _in_order_card(store, module, item)
                 ):
                     continue  # arrived a while ago; no need to list old orders
             shipment_id = store.save_shipment(
@@ -218,6 +287,11 @@ def apply(
                 [],
             )
             shipment = store.get_shipment(shipment_id)
+        if PART in item.reference:
+            # A parcel that just got its number: it leaves the order's card with its history.
+            for imported in item.parcels:
+                _take_from_order(store, module, shipment, imported.key)
+            shipment = store.get_shipment(shipment["id"])
 
         known = {
             parcel["extra"]["import_key"]: parcel
@@ -267,6 +341,8 @@ def apply(
             shared_box = False
             if imported.items:
                 extra["items"] = json.dumps(imported.items, ensure_ascii=False)
+            if imported.part:
+                extra["part"] = imported.part
             if taker:
                 number = taker.normalize(imported.tracking_number)
                 already_there = parcel is not None and (
@@ -482,7 +558,7 @@ async def fetch_one(
             dismissed.remove([module.name, found.reference])
             store.set_value(DISMISSED_KEY, dismissed)
         apply(store, registry, module, [found], wanted=True)
-        filed = store.find_by_reference(module.name, found.reference)
+        filed = next(iter(store.find_order(module.name, found.reference)), None)
         # A shared link for a parcel of an order we already have leads to that order.
         filed = filed or _same_parcel_elsewhere(store, module, found)
         if filed is None:
@@ -513,7 +589,9 @@ async def follow_deliveries(
             continue  # a day without hours: the usual sync will do
         if not start - timedelta(minutes=30) <= now <= end + timedelta(hours=2):
             continue
-        reference = (store.get_shipment(parcel["shipment_id"]) or {}).get("reference")
+        reference = order_of(
+            (store.get_shipment(parcel["shipment_id"]) or {}).get("reference") or ""
+        )
         if parcel["extra"].get("import_key", "").startswith(SHARED):
             reference = parcel["extra"].get("url")  # a shared delivery is read by its link
         last = _followed.get((module.id, reference or ""))

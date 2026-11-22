@@ -199,6 +199,8 @@ class ImportedParcel:
     items: list[str] = field(default_factory=list)
     #: The parcel's history if the service shows one; None keeps what is stored.
     events: list[TrackingEvent] | None = None
+    #: Which parcel of its order this is, as "2/3"; set when it gets a card of its own.
+    part: str | None = None
 
 
 @dataclass

@@ -67,7 +67,11 @@
       <p class="micro">
         {#if shipment.suggested}<span class="new">{t("shipment.new")}</span>{/if}
         {t(`direction.${shipment.direction}`)}{#if shipment.reference}
-          · {t("shipment.reference", { reference: shipment.reference })}{/if}{#if shipment.together.length}
+          · {t("shipment.reference", { reference: shipment.reference })}{/if}{#if shipment.part && shipment.part !== "1/1"}
+          · {t("shipment.part", {
+            index: shipment.part.split("/")[0],
+            count: shipment.part.split("/")[1],
+          })}{/if}{#if shipment.together.length}
           · <span
             class="more"
             title={shipment.together.map((o) => `${o.reference} · ${o.title}`).join("\n")}

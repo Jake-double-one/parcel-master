@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 import re
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
@@ -196,13 +197,17 @@ def test_two_orders_in_one_box_both_show_their_parcel(world):
     store = world[0]
     box = {"status": Status.IN_TRANSIT, "carrier_name": "Post", "tracking_number": "PO123456"}
     sync(world, order("302-1", "Kettle", key="a", **box), order("302-2", "Cable", key="b", **box))
-    shipments = {s["reference"]: s["parcels"] for s in store.list_shipments(False)}
+    shipments = {
+        importer.order_of(s["reference"]): s["parcels"] for s in store.list_shipments(False)
+    }
     assert len(shipments["302-1"]) == 1 and len(shipments["302-2"]) == 1
 
     # Once the carrier is set up, one of them is handed over; the other stays visible.
     configure_post(store)
     sync(world, order("302-1", "Kettle", key="a", **box), order("302-2", "Cable", key="b", **box))
-    shipments = {s["reference"]: s["parcels"] for s in store.list_shipments(False)}
+    shipments = {
+        importer.order_of(s["reference"]): s["parcels"] for s in store.list_shipments(False)
+    }
     assert [p["carrier"] for p in shipments["302-1"]] == ["test.post"]
     assert [p["carrier"] for p in shipments["302-2"]] == ["test.shop"]
     assert all(p[0]["tracking_number"] == "PO123456" for p in shipments.values())
@@ -231,25 +236,64 @@ def test_orders_in_one_box_share_one_card_and_speak_once(world):
 
     shipments = store.list_shipments(False)
     ids = {s["reference"]: s["id"] for s in shipments}
+    # Each order's parcel has a card of its own, and the three meet on one.
+    assert set(ids) == {"302-1#a", "302-2#b", "302-3#c"}
     joined = together.groups(shipments, registry)
-    assert joined == {ids["302-1"]: [ids["302-2"], ids["302-3"]]}
-    assert together.companions(shipments, registry, ids["302-3"]) == [
-        ids["302-1"],
-        ids["302-2"],
-        ids["302-3"],
+    assert joined == {ids["302-1#a"]: [ids["302-2#b"], ids["302-3#c"]]}
+    assert together.companions(shipments, registry, ids["302-3#c"]) == [
+        ids["302-1#a"],
+        ids["302-2#b"],
+        ids["302-3#c"],
     ]
 
-    # An order with a parcel of its own keeps its own card.
+    # A second parcel of one of the orders gets a card of its own.
     extra = ImportedShipment(
         "302-3",
         "Mug",
         [
-            ImportedParcel(key="c", status=Status.IN_TRANSIT, **box),
+            ImportedParcel(key="c", status=Status.OUT_FOR_DELIVERY, **box),
             ImportedParcel(key="d", status=Status.IN_TRANSIT, tracking_number="PO999999"),
         ],
     )
     sync(world, *three(Status.OUT_FOR_DELIVERY, "Out for delivery")[:2], extra)
-    assert together.groups(store.list_shipments(False), registry) == {ids["302-1"]: [ids["302-2"]]}
+    shipments = store.list_shipments(False)
+    refs = {s["reference"]: s for s in shipments}
+    assert refs["302-3#d"]["parcels"][0]["extra"]["part"] == "2/2"
+    assert together.groups(shipments, registry) == {
+        ids["302-1#a"]: [ids["302-2#b"], ids["302-3#c"]]
+    }
+
+
+def test_a_parcel_leaves_its_order_once_its_number_is_known(world):
+    store = world[0]
+    waiting = {"status": Status.REGISTERED, "description": "Not yet dispatched"}
+    two = [
+        ImportedParcel(key="a", items=["Kettle"], **waiting),
+        ImportedParcel(key="b", items=["Cable"], **waiting),
+    ]
+    sync(world, ImportedShipment("302-1", "Kettle", two))
+    [card] = store.list_shipments(False)
+    assert card["reference"] == "302-1" and len(card["parcels"]) == 2
+    kept = card["parcels"][1]["id"]
+
+    # Parcel b is handed to a carrier: it moves out, with its history, as "Cable".
+    sent = dataclasses.replace(
+        two[1], status=Status.IN_TRANSIT, carrier_name="Post", tracking_number="PO123456"
+    )
+    sync(world, ImportedShipment("302-1", "Kettle", [two[0], sent]))
+    cards = {s["reference"]: s for s in store.list_shipments(False)}
+    assert set(cards) == {"302-1", "302-1#b"}
+    assert cards["302-1#b"]["title"] == "Cable"
+    assert cards["302-1#b"]["parcels"][0]["id"] == kept
+    assert cards["302-1#b"]["parcels"][0]["extra"]["part"] == "2/2"
+    assert [p["extra"]["import_key"] for p in cards["302-1"]["parcels"]] == ["a"]
+
+    # Once every parcel has its number, the order's own card is gone.
+    first = dataclasses.replace(
+        two[0], status=Status.IN_TRANSIT, carrier_name="Post", tracking_number="PO654321"
+    )
+    sync(world, ImportedShipment("302-1", "Kettle", [first, sent]))
+    assert sorted(s["reference"] for s in store.list_shipments(False)) == ["302-1#a", "302-1#b"]
 
 
 CREDENTIALS = {"email": "me@example.org", "password": "pw"}
@@ -983,11 +1027,11 @@ def test_a_delivery_shared_with_oneself_ends_up_in_its_order(world):
     sync(world, shared)
     assert [s["reference"] for s in store.list_shipments(False)] == ["share:abc"]
     sync(world, order(tracking_number="AB1"), shared)
-    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+    assert [importer.order_of(s["reference"]) for s in store.list_shipments(False)] == ["302-1"]
     assert len(store.list_shipments(False)[0]["parcels"]) == 1
     # Shared afterwards: nothing new appears.
     sync(world, shared)
-    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+    assert [importer.order_of(s["reference"]) for s in store.list_shipments(False)] == ["302-1"]
 
 
 def test_an_order_takes_the_place_of_a_shipment_found_at_the_carrier(world):
@@ -1005,7 +1049,7 @@ def test_an_order_takes_the_place_of_a_shipment_found_at_the_carrier(world):
         [{"carrier": "de.dhl", "tracking_number": "AB1", "extra": {}}],
     )
     sync(world, order(tracking_number="AB1"))
-    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+    assert [importer.order_of(s["reference"]) for s in store.list_shipments(False)] == ["302-1"]
     # And an order in the bin stays there.
     store.set_deleted(store.list_shipments(False)[0]["id"], True)
     sync(world, order(tracking_number="AB1"))

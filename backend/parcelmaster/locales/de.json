@@ -103,7 +103,8 @@
     "restored_toast": "Wiederhergestellt.",
     "more_orders_one": "+ 1 weitere Bestellung",
     "more_orders": "+ {count} weitere Bestellungen",
-    "from_order": "Aus Bestellung {reference}"
+    "from_order": "Aus Bestellung {reference}",
+    "part": "Paket {index} von {count}"
   },
   "dialog": {
     "create_title": "Sendung anlegen",

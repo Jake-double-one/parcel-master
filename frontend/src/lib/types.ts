@@ -69,6 +69,8 @@ export interface Shipment {
   pickup_deadline: string | null;
   last_checked_at: string | null;
   parcels: Parcel[];
+  /** Which parcel of its order this card is, as "2/3"; null for the whole order. */
+  part: string | null;
   /** Other orders that came in the same box and share this card. */
   together: { id: number; reference: string; title: string }[];
 }

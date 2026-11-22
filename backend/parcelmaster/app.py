@@ -272,8 +272,13 @@ def create_app(config: Config) -> FastAPI:
         eta_ends = sorted(p["eta_to"] for p in open_parcels if p["eta_from"] and p["eta_to"])
         deadlines = sorted(p["pickup_deadline"] for p in parcels if p["pickup_deadline"])
         checked = [p["last_checked_at"] for p in (open_parcels or parcels)]
+        parts = [p["extra"].get("part") for p in shipment["parcels"] if p["extra"].get("part")]
         return {
             **shipment,
+            # A parcel with a card of its own shows the order it came from.
+            "reference": importer.order_of(shipment["reference"]),
+            # "2/3": the second of the order's three parcels.
+            "part": parts[0] if len(parts) == 1 else None,
             "parcels": parcels,
             "status": str(aggregate(statuses)),
             "parcel_count": len(parcels),
