@@ -130,6 +130,12 @@
   /** The browser's own words help more here than "that did not work". */
   function failPush(caught: unknown) {
     if (caught instanceof ApiError) return fail(caught);
+    // Brave turns off the push service Chromium relies on until the user allows it.
+    const brave = "brave" in navigator;
+    if (brave && caught instanceof Error && caught.name === "AbortError") {
+      error = t("settings.push_failed_brave");
+      return;
+    }
     const reason = caught instanceof Error ? `${caught.name}: ${caught.message}` : String(caught);
     error = t("settings.push_failed", { reason });
   }

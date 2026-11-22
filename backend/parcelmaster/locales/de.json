@@ -255,7 +255,8 @@
     "discovery_button": "Nur auf Knopfdruck auf der Seite des Paketdienstes",
     "discovery_suggest": "Vorschlagen, ich entscheide",
     "discovery_auto": "Sofort verfolgen",
-    "event_discovered": "das Begleit-Skript eine neue Sendung entdeckt"
+    "event_discovered": "das Begleit-Skript eine neue Sendung entdeckt",
+    "push_failed_brave": "Brave hat den Push-Dienst ausgeschaltet. Öffne brave://settings/privacy, schalte „Google-Dienste für Push-Nachrichten verwenden“ ein, starte Brave neu und versuche es noch einmal. Ohne Google geht es über die Dienste unter Meldungen."
   },
   "login": {
     "password": "Passwort",

@@ -26,6 +26,9 @@ AUTO_ARCHIVED_KEY = "auto_archived"
 #: and of one whose delivery is still days away.
 ANNOUNCED_MINUTES = 6 * 60
 FAR_AWAY_MINUTES = 12 * 60
+#: On the day a parcel is expected, it is asked about at least this often, so
+#: "out for delivery" shows up soon after the van is loaded.
+DELIVERY_DAY_MINUTES = 30
 #: A parcel is not asked about twice within this time, whoever wants it.
 MIN_GAP_SECONDS = 10
 #: The shortest wait a module may ask for between two lookups of one parcel.
@@ -103,6 +106,7 @@ def next_delay_minutes(
     last_event_at: datetime | None,
     eta_from: datetime | None = None,
     saver: bool = False,
+    zone: ZoneInfo | None = None,
 ) -> int | None:
     """How long to wait before asking again; None once nothing more can happen."""
     base = max(MIN_INTERVAL_MINUTES, base)
@@ -113,6 +117,10 @@ def next_delay_minutes(
         return max(MIN_INTERVAL_MINUTES, base // 4)
     if status is Status.READY_FOR_PICKUP:
         return base * 3
+    local = zone or ZoneInfo("UTC")
+    if eta_from and eta_from.astimezone(local).date() == now.astimezone(local).date():
+        # The expected day: the van may be loaded any time now.
+        return min(base, DELIVERY_DAY_MINUTES)
     if saver and status is Status.REGISTERED:
         return max(base, ANNOUNCED_MINUTES)  # only announced: little happens for a while
     if saver and eta_from and (eta_from - now) > timedelta(days=1, hours=12):
@@ -223,6 +231,7 @@ def record_result(
         parse_iso(last_event_at),
         parse_iso(eta_from_iso),
         saver_on(store.get_settings()),
+        zone,
     )
     if result.again_in_minutes and delay:
         delay = min(delay, max(MIN_LIVE_MINUTES, result.again_in_minutes))

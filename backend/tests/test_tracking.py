@@ -424,3 +424,34 @@ def test_live_news_stand_against_an_ordinary_answer_for_a_while(world, monkeypat
     parcel = store.get_parcel(parcel_id)
     assert "stops_left" not in parcel["extra"]
     assert parcel["eta_from"] < live_from  # back to the plan, ten minutes earlier
+
+
+def test_a_parcel_is_asked_about_more_often_on_its_expected_day():
+    from zoneinfo import ZoneInfo
+
+    from parcelmaster.tracking import DELIVERY_DAY_MINUTES
+
+    berlin = ZoneInfo("Europe/Berlin")
+    today = datetime.now(berlin).replace(hour=0, minute=0, second=0, microsecond=0)
+    for status in (Status.IN_TRANSIT, Status.REGISTERED):
+        assert (
+            next_delay_minutes(status, 120, None, today, saver=True, zone=berlin)
+            == DELIVERY_DAY_MINUTES
+        )
+    tomorrow = today + timedelta(days=1)
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, None, tomorrow, zone=berlin) == 120
+
+
+def test_postal_codes_are_masked_in_the_log():
+    import logging
+
+    from parcelmaster.journal import JOURNAL, setup
+
+    setup()
+    logging.getLogger("parcelmaster.carriers.de.dhl").warning(
+        'answer <data _zip-code="12345"> for %s', "zip-code%3D%2212345%22"
+    )
+    logging.getLogger("httpx").info("GET /track?trackingNumber=1&recipientPostalCode=12345")
+    lines = [entry["message"] for entry in list(JOURNAL.entries)[-2:]]
+    assert all("12345" not in line for line in lines)
+    assert '_zip-code="***"' in lines[0] and "recipientPostalCode=***" in lines[1]

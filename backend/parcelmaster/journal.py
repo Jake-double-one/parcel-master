@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from collections import deque
 from datetime import UTC, datetime
 from typing import Any
@@ -15,6 +16,33 @@ from typing import Any
 KEEP = 400
 #: Loggers worth keeping: our own, and one line per outgoing request.
 WATCHED = ("parcelmaster", "httpx")
+
+
+#: Where a recipient's postal code shows up in log lines: DHL's XML request and
+#: answer (also URL-encoded inside a request URL) and the plain query parameters.
+_POSTAL = (
+    re.compile(r"(_?zip-code(?:=|%3D)(?:\"|%22))[^\"%&\s]*"),
+    re.compile(r"(\b(?:recipientPostalCode|zip)=)[^&\s\"]+"),
+)
+
+
+def mask(text: str) -> str:
+    """The text with postal codes replaced, so a copied log gives away less."""
+    for pattern in _POSTAL:
+        text = pattern.sub(r"\1***", text)
+    return text
+
+
+class Masking(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        masked = mask(message)
+        if masked != message:
+            record.msg, record.args = masked, None
+        return True
+
+
+MASKING = Masking()
 
 
 class Journal(logging.Handler):
@@ -57,6 +85,10 @@ def setup() -> int:
     stream = logging.StreamHandler()
     stream.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     stream.set_name("parcelmaster-stream")
+    # On the handlers, not the loggers: only these see the lines of child loggers too.
+    stream.addFilter(MASKING)
+    if MASKING not in JOURNAL.filters:
+        JOURNAL.addFilter(MASKING)
     for name in WATCHED:
         logger = logging.getLogger(name)
         # One line per request is useful; the library's own debug output is not.
