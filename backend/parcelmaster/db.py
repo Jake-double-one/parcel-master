@@ -373,6 +373,10 @@ class Store:
             ).fetchall()
             return self._load(rows)
 
+    def delete_parcel(self, parcel_id: int) -> None:
+        with self._lock, self._db:
+            self._db.execute("DELETE FROM parcels WHERE id=?", (parcel_id,))
+
     def move_parcel(self, parcel_id: int, shipment_id: int) -> None:
         """Hand a parcel, with its history, to another shipment."""
         with self._lock, self._db:

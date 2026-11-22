@@ -200,6 +200,34 @@ def _take_from_order(store: Store, module: ImporterModule, shipment: dict[str, A
         store.delete_shipment(order["id"])  # every parcel has a card of its own now
 
 
+def _drop_stale_placeholders(
+    store: Store, module: ImporterModule, found: list[ImportedShipment]
+) -> None:
+    """Forget stand-ins the service no longer reports.
+
+    Before the shop names a parcel, it is filed as "<order>/1". Once the shop
+    gives it an id, the same parcel comes back under that id, and the stand-in
+    would linger in the order's card with a status nobody updates any more.
+    """
+    for item in found:
+        if item.reference.startswith(SHARED):
+            continue
+        order = store.find_by_reference(module.name, item.reference)
+        if order is None or order["archived_at"] or order["deleted_at"]:
+            continue
+        keys = {parcel.key for parcel in item.parcels}
+        for parcel in order["parcels"]:
+            stand_in = parcel["carrier"] == module.id and "/" in parcel["tracking_number"]
+            if (
+                stand_in
+                and parcel["extra"].get("import_key") not in keys
+                and Status(parcel["status"]) not in FINAL
+            ):
+                store.delete_parcel(parcel["id"])
+        if not store.get_shipment(order["id"])["parcels"]:
+            store.delete_shipment(order["id"])  # every parcel has a card of its own
+
+
 def _in_order_card(store: Store, module: ImporterModule, item: ImportedShipment) -> bool:
     """Whether a parcel of this card still lies in its order's card and must move out."""
     if PART not in item.reference:
@@ -416,7 +444,7 @@ def apply(
                     eta_from=imported.eta_from,
                     eta_to=imported.eta_to,
                 )
-                found = record_result(store, parcel, result, base, zone, now, poll=False)
+                heard = record_result(store, parcel, result, base, zone, now, poll=False)
                 if imported.tracking_number and not shared_box:
                     # Several orders in one box that the service follows itself: the
                     # oldest of them speaks for the box.
@@ -425,13 +453,14 @@ def apply(
                         first and first["id"] != shipment["id"] and not first["deleted_at"]
                     )
                 if not shared_box:
-                    notices += found
+                    notices += heard
             elif parcel["last_success_at"] is None:
                 # Handed over, but the carrier has not answered yet: show what
                 # the service knows until it does.
                 store.update_parcel(
                     parcel_id, status=str(imported.status), description=imported.description
                 )
+    _drop_stale_placeholders(store, module, found)
     return notices
 
 

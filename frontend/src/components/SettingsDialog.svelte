@@ -446,7 +446,7 @@
               <Help text={tOr(`carrier.${carrier.id}.companion.help`, "")} />
             </div>
           {/each}
-          <label class="field">
+          <label class="field discovery">
             <span class="eyebrow">
               {t("settings.discovery")}
               <Help text={t("settings.discovery_help")} />
@@ -853,6 +853,11 @@
 <style>
   .companion + .companion {
     margin-top: 8px;
+  }
+
+  /* Its own question, set apart from the install buttons above. */
+  .discovery {
+    margin-top: 22px;
   }
 
   .journal {

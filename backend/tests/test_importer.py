@@ -1054,3 +1054,24 @@ def test_an_order_takes_the_place_of_a_shipment_found_at_the_carrier(world):
     store.set_deleted(store.list_shipments(False)[0]["id"], True)
     sync(world, order(tracking_number="AB1"))
     assert store.list_shipments(False) == [] and len(store.list_trash()) == 1
+
+
+def test_a_stand_in_goes_once_the_shop_names_the_parcel(world):
+    store = world[0]
+    # Before dispatch the shop has no id for the parcel yet: it is filed as "302-1/1".
+    waiting = ImportedParcel(key="302-1/1", status=Status.REGISTERED, items=["Kettle"])
+    sync(world, ImportedShipment("302-1", "Kettle", [waiting]))
+    assert [s["reference"] for s in store.list_shipments(False)] == ["302-1"]
+
+    # Later the same parcel comes back under its own id and with a carrier number.
+    named = ImportedParcel(
+        key="SHIP1",
+        status=Status.IN_TRANSIT,
+        items=["Kettle"],
+        carrier_name="Post",
+        tracking_number="PO123456",
+    )
+    sync(world, ImportedShipment("302-1", "Kettle", [named]))
+    cards = store.list_shipments(False)
+    assert [s["reference"] for s in cards] == ["302-1#SHIP1"]
+    assert [p["tracking_number"] for p in cards[0]["parcels"]] == ["PO123456"]
