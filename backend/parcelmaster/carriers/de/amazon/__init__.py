@@ -733,6 +733,7 @@ class AmazonDe(ImporterModule):
     id = "de.amazon"
     country = "de"
     name = "Amazon"
+    colour = "#ff9900"
     settings_fields = (
         Field("email", required=True),
         Field("password", type="secret", required=True),

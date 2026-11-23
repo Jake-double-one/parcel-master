@@ -367,6 +367,7 @@ def test_editing_an_imported_shipment_keeps_what_the_importer_noted(client):
     shipment = next(s for s in client.get("/api/shipments").json() if s["id"] == shipment_id)
     assert shipment["parcels"][0]["tracking_url"] == "https://x"
     assert shipment["parcels"][0]["site_name"] == "Amazon"
+    assert shipment["parcels"][0]["site_colour"] == "#ff9900"
     assert shipment["parcels"][0]["contents"] == ["Kettle", "2 × Filter"]
     assert shipment["parcels"][1]["contents"] == []
 

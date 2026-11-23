@@ -421,6 +421,7 @@ class DhlDe(CarrierModule):
     id = "de.dhl"
     country = "de"
     name = "DHL"
+    colour = "#ffcc00"
     patterns = (
         re.compile(r"00\d{18}"),  # NVE / SSCC licence plate
         re.compile(r"\d{12}"),

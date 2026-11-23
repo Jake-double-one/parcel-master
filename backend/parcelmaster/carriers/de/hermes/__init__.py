@@ -186,6 +186,7 @@ class HermesDe(CarrierModule):
     id = "de.hermes"
     country = "de"
     name = "Hermes"
+    colour = "#0091cd"
     patterns = (
         re.compile(r"\d{14}"),
         re.compile(r"\d{16}"),

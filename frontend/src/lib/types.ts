@@ -46,6 +46,8 @@ export interface Parcel {
   contents_by_order: { reference: string; items: string[] }[] | null;
   /** Whose website `tracking_url` opens. */
   site_name: string;
+  /** That service's brand colour ("#rrggbb"), where it has one. */
+  site_colour: string | null;
   events: TrackingEvent[];
 }
 

@@ -109,6 +109,8 @@ class CarrierModule:
     #: ISO country code of the market this module serves, or "" for none.
     country: str = ""
     name: str = ""
+    #: The carrier's brand colour as "#rrggbb"; tints the button that opens its website.
+    colour: str = ""
     #: Tracking-number shapes this carrier uses, matched against the
     #: normalized number. Used to suggest a carrier while typing.
     patterns: tuple[re.Pattern[str], ...] = ()

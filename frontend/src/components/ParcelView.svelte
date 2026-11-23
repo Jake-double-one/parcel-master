@@ -123,6 +123,8 @@
     {#if parcel.tracking_url}
       <a
         class="chip carrier"
+        class:tinted={!!parcel.site_colour}
+        style:--brand={parcel.site_colour}
         href={parcel.tracking_url}
         target="_blank"
         rel="noopener noreferrer"
@@ -138,7 +140,11 @@
         </svg>
       </a>
     {:else}
-      <span class="chip carrier still"><span class="name">{parcel.carrier_name}</span></span>
+      <!-- The label names who delivers; it wears a colour only when that is the same service. -->
+      {@const own = parcel.carrier_name === parcel.site_name ? parcel.site_colour : null}
+      <span class="chip carrier still" class:tinted={!!own} style:--brand={own}>
+        <span class="name">{parcel.carrier_name}</span>
+      </span>
     {/if}
     {#if parcel.contents.length}
       <button
@@ -231,6 +237,30 @@
 
   .carrier svg {
     opacity: 0.75;
+  }
+
+  /* A service with a brand colour wears it lightly: the border carries the colour,
+     the fill and the letters are mixed with the skin so they read in every one. */
+  .carrier.tinted {
+    --edge: color-mix(in srgb, var(--brand) 60%, var(--ink));
+    background: color-mix(in srgb, var(--brand) 16%, var(--surface));
+    border-color: var(--edge);
+    color: color-mix(in srgb, var(--brand) 30%, var(--ink));
+  }
+
+  .carrier.tinted .name {
+    color: inherit;
+  }
+
+  .carrier.tinted:hover {
+    background: color-mix(in srgb, var(--brand) 26%, var(--surface));
+    border-color: var(--edge);
+  }
+
+  .carrier.tinted.still,
+  .carrier.tinted.still:hover {
+    background: color-mix(in srgb, var(--brand) 16%, var(--surface));
+    border-color: var(--edge);
   }
 
   /* Without a link the name is only a label: it does not react like a button. */

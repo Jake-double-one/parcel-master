@@ -286,6 +286,7 @@ def create_app(config: Config) -> FastAPI:
             "map": live_map(parcel["extra"]),
             # Whose website the link below opens.
             "site_name": module.name if module else parcel["carrier"],
+            "site_colour": (module.colour or None) if module else None,
             "tracking_url": (
                 module.tracking_url(parcel["tracking_number"], parcel["extra"], language) or None
                 if module

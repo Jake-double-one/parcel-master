@@ -471,3 +471,10 @@ async def test_hermes_asks_for_the_live_round_only_with_a_postal_code_on_the_del
     assert len(calls) == 1
     await track(on_the_van, stops, postal_code="")
     assert len(calls) == 1
+
+
+def test_brand_colours_are_plain_hex():
+    import re
+
+    for module in discover().all():
+        assert module.colour == "" or re.fullmatch(r"#[0-9a-f]{6}", module.colour), module.id
