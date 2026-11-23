@@ -328,7 +328,10 @@ def parse_web_response(payload: Any) -> TrackingResult:
 
 _LATITUDE = ("lat", "latitude", "breitengrad")
 _LONGITUDE = ("lng", "lon", "long", "longitude", "laengengrad", "längengrad")
-_VAN = re.compile(r"vehicle|courier|driver|deliverer|current|fahrzeug|zusteller|standort|van", re.I)
+# DHL calls them "tourCoords" (the van on its round) and "destinationCoords".
+_VAN = re.compile(
+    r"tour|vehicle|courier|driver|deliverer|current|fahrzeug|zusteller|standort|van", re.I
+)
 _HOME = re.compile(r"destination|recipient|receiver|target|home|address|ziel|empf", re.I)
 
 

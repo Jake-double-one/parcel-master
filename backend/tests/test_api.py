@@ -1076,8 +1076,8 @@ def test_the_vans_position_reaches_the_card_unless_switched_off(client):
                 "liveTracking": {
                     "state": "ok",
                     "countdownTextKey": "CD10",
-                    "vehiclePosition": {"latitude": latitude, "longitude": 7.21},
-                    "destination": {"lat": 51.541, "lng": 7.223},
+                    "tourCoords": {"lat": latitude, "lng": 7.21},
+                    "destinationCoords": {"lat": 51.541, "lng": 7.223},
                 },
             },
         }
