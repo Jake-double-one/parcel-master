@@ -958,3 +958,56 @@ def test_orders_in_one_box_show_as_one_card(client):
     client.delete(f"/api/shipments/{ids[0]}")
     assert client.get("/api/shipments").json() == []
     assert len(client.get("/api/shipments?trash=true").json()) == 2
+
+
+def test_all_companion_scripts_come_as_one_that_updates_itself(client):
+    answer = client.get("/api/companion/all.user.js")
+    assert answer.status_code == 200
+    script = answer.text
+    assert script.count("// ==UserScript==") == 1
+    assert "// @updateURL    http://testserver/api/companion/all.user.js" in script
+    assert "// @connect      testserver" in script
+    for page in ("www.dhl.de", "www.amazon.de", "www.myhermes.de"):
+        assert f'["{page}"].includes(location.hostname)' in script
+    assert "__SERVER__" not in script and "__HOST__" not in script
+
+
+def test_the_companion_script_needs_no_login_but_holds_no_data(tmp_path):
+    with TestClient(create_app(make_config(tmp_path, password="hunter2"))) as locked:
+        # The script manager's update check may come without a session.
+        assert locked.get("/api/companion/all.user.js").status_code == 200
+        assert locked.post("/api/companion/de.hermes", json={"payload": {}}).status_code == 401
+
+
+def test_a_changed_companion_script_gets_a_new_version():
+    """A script manager only fetches an update when the version went up.
+
+    If this fails, a companion.user.js changed: raise its ``@version`` and note
+    the new version and hash in tests/fixtures/companion_versions.json.
+    """
+    import hashlib
+    import re
+
+    from parcelmaster.carriers.registry import discover
+
+    noted = json.loads((Path(__file__).parent / "fixtures/companion_versions.json").read_text())
+    for module in discover().all():
+        script = module.companion_script()
+        if not script:
+            continue
+        version = int(re.search(r"@version\s+(\d+)", script).group(1))
+        now = {"version": version, "sha256": hashlib.sha256(script.encode()).hexdigest()}
+        assert noted.get(module.id) == now, f"{module.id}: bump @version and note it"
+
+
+def test_the_hermes_page_can_hand_over_a_shipment(client):
+    shipment = json.loads((Path(__file__).parent / "fixtures/hermes_transit.json").read_text())[0]
+    shipment["atg"] = {"companyName": "Shop"}
+    body = {"payload": {"shipments": [shipment]}}
+    seen = client.post("/api/companion/de.hermes", json=body).json()
+    assert seen["suggested"] == [shipment["barcode"]] and seen["tracked"] == []
+    taken = client.post("/api/companion/de.hermes", json={**body, "take": [shipment["barcode"]]})
+    assert taken.json()["tracked"] == [shipment["barcode"]]
+    [card] = client.get("/api/shipments").json()
+    assert card["title"] == "Shop" and not card["suggested"]
+    assert card["parcels"][0]["status"] == "in_transit"

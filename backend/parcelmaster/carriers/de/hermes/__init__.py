@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -19,6 +20,7 @@ from parcelmaster.carriers.base import (
     CarrierError,
     CarrierModule,
     Field,
+    Found,
     TrackingEvent,
     TrackingResult,
     TrackRequest,
@@ -209,6 +211,61 @@ class HermesDe(CarrierModule):
             if self.matches(number):
                 return number
         return None
+
+    def companion_script(self) -> str | None:
+        return (Path(__file__).parent / "companion.user.js").read_text(encoding="utf-8")
+
+    def _shown(self, payload: Any) -> list[tuple[str, dict[str, Any]]]:
+        """Number and answer for each shipment the tracking page handed on."""
+        shipments = payload.get("shipments") if isinstance(payload, dict) else None
+        shown = []
+        for shipment in shipments if isinstance(shipments, list) else []:
+            if not isinstance(shipment, dict) or not isinstance(shipment.get("barcode"), str):
+                continue
+            number = self.normalize(shipment["barcode"])
+            if self.matches(number):
+                shown.append((number, shipment))
+        return shown
+
+    def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
+        """What the tracking page in the user's browser got from Hermes."""
+        found = []
+        for number, shipment in self._shown(payload):
+            try:
+                found.append((number, parse_response(shipment)))
+            except CarrierError:
+                continue
+        return found
+
+    def discover(self, payload: Any) -> list[Found]:
+        found = []
+        for number, shipment in self._shown(payload):
+            sender = shipment.get("atg")
+            sender = sender.get("companyName") if isinstance(sender, dict) else ""
+            attributes = shipment.get("parcelAttributes")
+            attributes = attributes if isinstance(attributes, dict) else {}
+            try:
+                settled = parse_response(shipment).status in (Status.DELIVERED, Status.RETURNED)
+            except CarrierError:
+                settled = False
+            found.append(
+                Found(
+                    number=number,
+                    title=str(sender or "").strip(),
+                    direction=(
+                        "outgoing" if attributes.get("directionEnum") == "RETURN" else "incoming"
+                    ),
+                    settled=settled,
+                )
+            )
+        return found
+
+    def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
+        return [
+            f"{number} ({'tracked' if number in known else 'not tracked'}), "
+            f"{len(shipment.get('parcelProgress') or [])} step(s)"
+            for number, shipment in self._shown(payload)
+        ]
 
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
         try:

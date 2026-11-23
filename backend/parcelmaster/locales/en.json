@@ -247,8 +247,7 @@
     "health_failing": "Failing",
     "event_stops": "the number of stops before delivery drops",
     "companion": "Companion script",
-    "companion_install": "Install script for {carrier}",
-    "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey). It passes on to Parcel Master what the carrier's page shows you, asks nothing there itself and sends only to this server.",
+    "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey), one for all carriers. It passes on to Parcel Master what the carriers' pages show you, asks nothing there itself and sends only to this server. Your script manager keeps it up to date from here. If you still have the separate scripts for DHL or Amazon installed, remove them.",
     "help": "Show explanation",
     "discovery": "New shipments the script sees",
     "discovery_help": "What happens to shipments the companion script sees at the carrier and Parcel Master does not know yet. Delivered ones are left out. What you discard is not suggested again.",
@@ -256,7 +255,8 @@
     "discovery_suggest": "Suggest them, I decide",
     "discovery_auto": "Track them right away",
     "event_discovered": "the companion script finds a new shipment",
-    "push_failed_brave": "Brave has turned off the push service. Open brave://settings/privacy, turn on “Use Google services for push messaging”, restart Brave and try again. Without Google, use the services under Notifications."
+    "push_failed_brave": "Brave has turned off the push service. Open brave://settings/privacy, turn on “Use Google services for push messaging”, restart Brave and try again. Without Google, use the services under Notifications.",
+    "companion_install_all": "Install companion script"
   },
   "login": {
     "password": "Password",

@@ -444,14 +444,20 @@
             {t("settings.companion")}
             <Help text={t("settings.companion_help")} />
           </span>
-          {#each carriers.filter((carrier) => carrier.companion) as carrier}
-            <div class="row companion">
-              <a class="chip" href={carrier.companion} target="_blank" rel="noopener">
-                {t("settings.companion_install", { carrier: carrier.name })} ↗
-              </a>
-              <Help text={tOr(`carrier.${carrier.id}.companion.help`, "")} />
-            </div>
-          {/each}
+          <!-- One script for all carriers; the script manager keeps it up to date. -->
+          <div class="row companion">
+            <a class="chip" href="/api/companion/all.user.js" target="_blank" rel="noopener">
+              {t("settings.companion_install_all")} ↗
+            </a>
+          </div>
+          <ul class="note companion-parts">
+            {#each carriers.filter((carrier) => carrier.companion) as carrier}
+              <li>
+                <strong>{carrier.name}:</strong>
+                {tOr(`carrier.${carrier.id}.companion.help`, "")}
+              </li>
+            {/each}
+          </ul>
           <label class="field discovery">
             <span class="eyebrow">
               {t("settings.discovery")}
@@ -857,8 +863,13 @@
 </dialog>
 
 <style>
-  .companion + .companion {
-    margin-top: 8px;
+  .companion-parts {
+    margin: 12px 0 0;
+    padding-left: 18px;
+  }
+
+  .companion-parts li + li {
+    margin-top: 6px;
   }
 
   /* Its own question, set apart from the install buttons above. */

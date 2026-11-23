@@ -247,8 +247,7 @@
     "health_failing": "Gestört",
     "event_stops": "die Zahl der Stopps bis zur Zustellung sinkt",
     "companion": "Begleit-Skript",
-    "companion_install": "Skript für {carrier} installieren",
-    "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey). Es reicht an Parcel Master weiter, was dir die Seite des Paketdienstes anzeigt, fragt dort selbst nichts ab und sendet nur an diesen Server.",
+    "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey), eines für alle Paketdienste. Es reicht an Parcel Master weiter, was dir die Seiten der Dienste anzeigen, fragt dort selbst nichts ab und sendet nur an diesen Server. Dein Skript-Manager hält es von hier aus aktuell. Falls du noch die einzelnen Skripte für DHL oder Amazon installiert hast, entferne sie.",
     "help": "Erklärung zeigen",
     "discovery": "Neue Sendungen, die das Skript sieht",
     "discovery_help": "Was mit Sendungen geschieht, die das Begleit-Skript beim Paketdienst sieht und die Parcel Master noch nicht kennt. Zugestellte bleiben außen vor. Was du verwirfst, wird nicht wieder vorgeschlagen.",
@@ -256,7 +255,8 @@
     "discovery_suggest": "Vorschlagen, ich entscheide",
     "discovery_auto": "Sofort verfolgen",
     "event_discovered": "das Begleit-Skript eine neue Sendung entdeckt",
-    "push_failed_brave": "Brave hat den Push-Dienst ausgeschaltet. Öffne brave://settings/privacy, schalte „Google-Dienste für Push-Nachrichten verwenden“ ein, starte Brave neu und versuche es noch einmal. Ohne Google geht es über die Dienste unter Meldungen."
+    "push_failed_brave": "Brave hat den Push-Dienst ausgeschaltet. Öffne brave://settings/privacy, schalte „Google-Dienste für Push-Nachrichten verwenden“ ein, starte Brave neu und versuche es noch einmal. Ohne Google geht es über die Dienste unter Meldungen.",
+    "companion_install_all": "Begleit-Skript installieren"
   },
   "login": {
     "password": "Passwort",

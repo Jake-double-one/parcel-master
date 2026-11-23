@@ -10,5 +10,8 @@
       "label": "Postleitzahl des Empfängers",
       "help": "Optional. Mit ihr zeigt Hermes am Zustelltag, wie viele Stopps das Fahrzeug noch vor dir hat. Sie geht nur an Hermes."
     }
+  },
+  "companion": {
+    "help": "Auf Hermes' Sendungsverfolgung erscheint ein Knopf, der die Sendung in Parcel Master übernimmt. Was die Seite dir zur Sendung zeigt, wird weitergereicht."
   }
 }

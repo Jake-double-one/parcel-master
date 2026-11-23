@@ -31,6 +31,17 @@ with one small module per carrier.
 A demo carrier (`DEMO` followed by digits) exists for the demo mode and for
 development.
 
+### Companion script
+
+Optional: one userscript for your browser (Tampermonkey or Violentmonkey),
+installed from Settings → Carriers. On the pages of DHL, Hermes and Amazon it
+passes on to your Parcel Master what the page shows you, such as the live
+delivery window and the stops left, and adds buttons to take a shipment. It
+asks the carriers nothing itself and sends only to your server. The script
+manager updates it from your server whenever a new version is there; if your
+server sits behind a login the update check cannot pass, install it again
+from the settings after an update.
+
 ### Amazon
 
 Amazon offers customers no tracking API. The Amazon module therefore signs in

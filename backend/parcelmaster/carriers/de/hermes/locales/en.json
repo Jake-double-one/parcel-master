@@ -10,5 +10,8 @@
       "label": "Recipient postal code",
       "help": "Optional. With it Hermes tells on the delivery day how many stops the van still makes before yours. It is sent to Hermes only."
     }
+  },
+  "companion": {
+    "help": "Hermes' tracking page gets a button that takes the shipment into Parcel Master. What the page shows you about it is passed on."
   }
 }

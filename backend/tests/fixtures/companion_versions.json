@@ -1,0 +1,14 @@
+{
+  "de.amazon": {
+    "sha256": "9b0e7d27439de001a91f2a46da787c760e01ec4b260d41b89ac8e1874e445a1b",
+    "version": 2
+  },
+  "de.dhl": {
+    "sha256": "3023905b2fb5dcfc2ac924b449c7fec0b32beee81a6458af4ba108a5dde867fa",
+    "version": 4
+  },
+  "de.hermes": {
+    "sha256": "dbd48dd936c01f6cddab3426e8ae658c43d3365b47cbfaa7545d2746637b3223",
+    "version": 1
+  }
+}

@@ -21,7 +21,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, discovery, importer, together
+from . import __version__, companion, discovery, importer, together
 from .carriers.base import CarrierError, CarrierModule
 from .carriers.registry import Registry, discover
 from .config import Config
@@ -554,18 +554,38 @@ def create_app(config: Config) -> FastAPI:
             )
         return result
 
+    def server_address(request: Request) -> str:
+        """This server as the browser sees it, fit to be written into a script."""
+        server = companion.safe_server(str(request.base_url))
+        if server is None:
+            raise fail(400, "bad_host")
+        return server
+
+    @app.get("/api/companion/all.user.js")
+    def companion_scripts(request: Request) -> Response:
+        """The scripts of all modules as one. Open to the script manager's update check,
+        which may come without a session; it holds program text only, no data."""
+        state: State = request.app.state.pm
+        script = companion.combined(state.registry)
+        if not script:
+            raise fail(404, "not_found")
+        return Response(
+            companion.made_out(script, server_address(request)),
+            media_type="text/javascript; charset=utf-8",
+            headers={"Cache-Control": "no-cache"},
+        )
+
     @app.get("/api/companion/{module_id}.user.js")
     def companion_script(ctx: RealContext, module_id: str, request: Request) -> Response:
-        """The module's userscript, made out to this server as the browser sees it."""
+        """One module's userscript on its own, made out to this server."""
         module = ctx.module(module_id)
         script = module.companion_script() if module else None
         if not script:
             raise fail(404, "not_found")
-        server = str(request.base_url).rstrip("/")
-        script = script.replace("__SERVER__", server).replace(
-            "__HOST__", urlparse(server).hostname or ""
+        return Response(
+            companion.made_out(script, server_address(request)),
+            media_type="text/javascript; charset=utf-8",
         )
-        return Response(script, media_type="text/javascript; charset=utf-8")
 
     @app.post("/api/companion/{module_id}")
     async def companion_news(

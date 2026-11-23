@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      3
+// @version      4
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -20,7 +20,9 @@
   const SERVER = "__SERVER__";
   const page = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
   const original = page.fetch;
-  const german = (document.documentElement.lang || navigator.language || "").startsWith("de");
+  // This early the page may not have its root element yet.
+  const root = document.documentElement;
+  const german = ((root && root.lang) || navigator.language || "").startsWith("de");
   const TEXT = german
     ? { take: "In Parcel Master verfolgen", taken: "In Parcel Master ✓", wait: "Vorgeschlagen in Parcel Master · jetzt verfolgen" }
     : { take: "Track in Parcel Master", taken: "In Parcel Master ✓", wait: "Suggested in Parcel Master · track now" };

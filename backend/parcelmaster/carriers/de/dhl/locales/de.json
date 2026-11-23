@@ -33,6 +33,6 @@
     "api_website": "API, sonst dhl.de"
   },
   "companion": {
-    "help": "Für deinen Browser, mit Tampermonkey oder Violentmonkey. Solange du die Sendungsverfolgung von dhl.de mit eingegebener Postleitzahl offen hast, reicht das Skript an Parcel Master weiter, was DHL dir dort anzeigt: das mitlaufende Zustellfenster und die Zahl der Stopps. Es fragt DHL selbst nichts und sendet nur an diesen Server."
+    "help": "Solange du die Sendungsverfolgung von dhl.de mit eingegebener Postleitzahl offen hast, reicht das Skript weiter, was DHL dir dort anzeigt: das mitlaufende Zustellfenster und die Zahl der Stopps. Im Kundenkonto bekommen Sendungen einen Knopf zum Übernehmen."
   }
 }
