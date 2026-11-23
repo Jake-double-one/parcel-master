@@ -374,6 +374,8 @@ def test_hermes_history_is_sorted_and_carries_the_window():
         ),
         ({"parcelProgress": [hermes_step("", code="RETURN_DELIVERED_TO_SENDER")]}, Status.RETURNED),
         ({"parcelProgress": []}, Status.REGISTERED),
+        ({"viewParameters": {"readyForParcelBoxCollection": True}}, Status.READY_FOR_PICKUP),
+        ({"parcelAttributes": {"shipmentStopped": True}}, Status.PROBLEM),
         # Not delivered yet, whatever the word "zugestellt" suggests.
         (
             {

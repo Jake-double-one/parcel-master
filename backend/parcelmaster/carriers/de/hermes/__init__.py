@@ -127,12 +127,20 @@ def parse_response(payload: Any) -> TrackingResult:
         status = Status.RETURNED
     elif attributes.get("delivered") or view.get("collected"):
         status = Status.DELIVERED
-    elif view.get("readyForCollection"):
+    elif (
+        view.get("readyForCollection")
+        or view.get("readyForParcelBoxCollection")
+        or attributes.get("readyForParcelBoxCollection")
+    ):
         status = Status.READY_FOR_PICKUP
     elif events:
         status = events[0].status
         if status is Status.IN_TRANSIT and view.get("deliveryFailedAttempt"):
             status = Status.PROBLEM  # nobody was met; Hermes tries again
+        if status not in (Status.DELIVERED, Status.RETURNED) and (
+            attributes.get("shipmentStopped") or attributes.get("deliveryStopped")
+        ):
+            status = Status.PROBLEM  # Hermes holds the parcel back
     else:
         status = Status.REGISTERED
 
