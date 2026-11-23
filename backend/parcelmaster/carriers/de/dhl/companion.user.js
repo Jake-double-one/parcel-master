@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      9
+// @version      10
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -85,15 +85,24 @@
   // One button on the card of each shipment the page lists.
   function paint() {
     for (const box of document.querySelectorAll("[data-shipment-id]")) {
-      place(plain(box.getAttribute("data-shipment-id")), box);
+      const number = plain(box.getAttribute("data-shipment-id"));
+      if (ready(number, box)) place(number, box);
     }
     // A parcel that arrived needs no button, unless it shows that we have it.
     for (const button of document.querySelectorAll("button[data-parcel-master]")) {
       const number = button.dataset.parcelMaster;
       const card = button.parentElement && button.parentElement.hasAttribute("data-shipment-id");
       const wanted = state.get(number) === "tracked" || !settled.has(number);
-      if (!wanted || !card) button.remove();
+      if (!wanted || !card || !ready(number, button.parentElement)) button.remove();
     }
+  }
+
+  // The page draws a card first and fills in the status later. Until then
+  // nobody knows whether the parcel has arrived, so the button waits.
+  function ready(number, card) {
+    const piece = pieces.get(number);
+    const told = !!(piece && piece.sendungsdetails && piece.sendungsdetails.sendungsverlauf);
+    return told || !!card.querySelector('[data-role="shipment-status-text"]');
   }
 
   function place(number, card) {
@@ -118,7 +127,7 @@
     // Ours: filled while there is something to press; once tracked only an
     // outline in the card's own text colour, which reads on light and on dark.
     const style =
-      "display:block;margin:4px 16px 16px " + Math.max(inset, 16) + "px;padding:7px 16px;" +
+      "display:block;width:fit-content;align-self:flex-start;margin:4px 16px 16px " + Math.max(inset, 16) + "px;padding:7px 16px;" +
       "border-radius:999px;border:1px solid #6f68d8;font:inherit;font-size:14px;font-weight:700;" +
       (tracked
         ? "background:transparent;color:inherit;cursor:default;"
