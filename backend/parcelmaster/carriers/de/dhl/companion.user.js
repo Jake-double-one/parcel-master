@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      5
+// @version      6
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -33,6 +33,7 @@
   const plain = (number) => String(number).replace(/[\s-]/g, "").toUpperCase();
   const pieces = new Map(); // number -> the fullest answer seen for it
   const state = new Map(); // number -> "tracked" | "suggested" | "unknown"
+  const settled = new Set(); // arrived or gone back: nothing left to take
 
   function send(body, done) {
     GM_xmlhttpRequest({
@@ -65,6 +66,8 @@
       const known = pieces.get(plain(piece.id));
       const full = piece.sendungsdetails && piece.sendungsdetails.sendungsverlauf;
       if (!known || full) pieces.set(plain(piece.id), piece);
+      const details = piece.sendungsdetails || {};
+      if (full && (details.istZugestellt || details.ruecksendung)) settled.add(plain(piece.id));
     }
     const body = JSON.stringify(payload);
     if (body === last) return; // nothing new since the last answer
@@ -88,8 +91,19 @@
       listed.add(number);
       place(number, box.closest("article") || box, false);
     }
-    const loose = [...state.keys()].filter((number) => !listed.has(number));
+    // A parcel that arrived needs no button, unless it shows that we have it.
+    const wanted = (number) => state.get(number) === "tracked" || !settled.has(number);
+    const loose = [...state.keys()].filter((number) => !listed.has(number) && wanted(number));
     for (const number of loose) place(number, corner(), true, loose.length > 1);
+    // Tidy up: buttons of parcels that arrived, and corner buttons whose parcel
+    // the page lists by now (the list is often drawn after the first answer).
+    for (const button of document.querySelectorAll("button[data-parcel-master]")) {
+      const number = button.dataset.parcelMaster;
+      const inCorner = button.parentElement && button.parentElement.id === "parcel-master-corner";
+      if (!wanted(number) || (inCorner && !loose.includes(number))) button.remove();
+    }
+    const box = document.getElementById("parcel-master-corner");
+    if (box && !box.children.length) box.remove();
   }
 
   // Buttons without a place in the page stack in the corner, one below the other.
@@ -109,6 +123,7 @@
   function place(number, parent, floating, named) {
     const known = state.get(number);
     if (!known) return;
+    if (known !== "tracked" && settled.has(number)) return;
     let button = parent.querySelector(':scope > button[data-parcel-master="' + number + '"]');
     if (!button) {
       button = document.createElement("button");
