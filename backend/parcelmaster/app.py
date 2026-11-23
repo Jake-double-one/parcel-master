@@ -600,7 +600,13 @@ def create_app(config: Config) -> FastAPI:
         return Response(
             companion.made_out(script, server_address(request)),
             media_type="text/javascript; charset=utf-8",
-            headers={"Cache-Control": "no-cache"},
+            # Nothing between here and the browser may keep a copy: a proxy or CDN
+            # that caches ".js" would hand out an old script after an update.
+            headers={
+                "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
         )
 
     @app.get("/api/companion/{module_id}.user.js")

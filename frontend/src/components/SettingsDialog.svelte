@@ -484,7 +484,13 @@
           </span>
           <!-- One script for all carriers; the script manager keeps it up to date. -->
           <div class="row companion">
-            <a class="chip" href="/api/companion/all.user.js" target="_blank" rel="noopener">
+            <!-- The version in the address gets past a cache that kept an older script. -->
+            <a
+              class="chip"
+              href="/api/companion/all.user.js?v={meta.companion_version ?? ''}"
+              target="_blank"
+              rel="noopener"
+            >
               {t("settings.companion_install_all")} ↗
             </a>
           </div>
