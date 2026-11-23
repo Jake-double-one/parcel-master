@@ -237,6 +237,19 @@ def create_app(config: Config) -> FastAPI:
             return []
         return [str(item) for item in items] if isinstance(items, list) else []
 
+    def live_map(extra: dict[str, str]) -> dict[str, Any] | None:
+        def point(text: str | None) -> list[float] | None:
+            try:
+                latitude, longitude = (float(part) for part in (text or "").split(","))
+            except ValueError:
+                return None
+            return [latitude, longitude]
+
+        van = point(extra.get("van"))
+        if van is None:
+            return None
+        return {"van": van, "home": point(extra.get("home")), "at": extra.get("live_at")}
+
     def present_parcel(ctx: Ctx, parcel: dict[str, Any], language: str) -> dict[str, Any]:
         module = ctx.state.registry.get(parcel["carrier"])
         deadline = pickup_deadline(parcel, module)
@@ -269,6 +282,8 @@ def create_app(config: Config) -> FastAPI:
                 if parcel["extra"].get("stops_left", "").isdigit()
                 else None
             ),
+            # Where the van is and where it is headed, while the carrier's live view tells.
+            "map": live_map(parcel["extra"]),
             # Whose website the link below opens.
             "site_name": module.name if module else parcel["carrier"],
             "tracking_url": (
@@ -689,7 +704,10 @@ def create_app(config: Config) -> FastAPI:
         mode = discovery.mode_of(settings)
         await ctx.state.notifier.handle(discovery.take(ctx.store, module, found, mode, wanted))
         mine = ctx.store.open_parcels(suggested=True)
+        keep_map = settings["carriers"].get(module.id, {}).get("live_map") != "off"
         for number, result in module.take_from_companion(payload)[:30]:
+            if not keep_map:
+                result.van = result.home = None  # the user wants no positions kept
             for parcel in mine:
                 if (parcel["carrier"], parcel["tracking_number"]) != (module.id, number):
                     continue

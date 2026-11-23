@@ -276,7 +276,7 @@ def record_result(
     before = extra.get("stops_left")
     stops = result.stops_left if status is Status.OUT_FOR_DELIVERY else None
     if not keep_live:
-        for note in ("stops_left", "stops_about", "live_at"):
+        for note in ("stops_left", "stops_about", "live_at", "van", "home"):
             extra.pop(note, None)
     if status is not Status.OUT_FOR_DELIVERY:
         extra.pop("live_lost", None)
@@ -285,6 +285,12 @@ def record_result(
         extra["live_at"] = now_iso
         if result.stops_about:
             extra["stops_about"] = "1"
+    if status is Status.OUT_FOR_DELIVERY and result.van:
+        # Where the van is, for the map on the card; gone again with the round.
+        extra["van"] = "{:.5f},{:.5f}".format(*result.van)
+        extra["live_at"] = now_iso
+        if result.home:
+            extra["home"] = "{:.5f},{:.5f}".format(*result.home)
     if extra != parcel["extra"]:
         store.set_parcel_extra(parcel["id"], extra)
 

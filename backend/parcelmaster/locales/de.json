@@ -104,7 +104,11 @@
     "more_orders_one": "+ 1 weitere Bestellung",
     "more_orders": "+ {count} weitere Bestellungen",
     "from_order": "Aus Bestellung {reference}",
-    "part": "Paket {index} von {count}"
+    "part": "Paket {index} von {count}",
+    "map_label": "Karte mit dem Standort des Zustellfahrzeugs",
+    "map_van": "Zustellfahrzeug",
+    "map_home": "Ziel",
+    "map_at": "Standort von {time}"
   },
   "dialog": {
     "create_title": "Sendung anlegen",

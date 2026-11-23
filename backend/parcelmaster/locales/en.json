@@ -104,7 +104,11 @@
     "more_orders_one": "+ 1 more order",
     "more_orders": "+ {count} more orders",
     "from_order": "From order {reference}",
-    "part": "parcel {index} of {count}"
+    "part": "parcel {index} of {count}",
+    "map_label": "Map with the delivery van's position",
+    "map_van": "Delivery van",
+    "map_home": "Destination",
+    "map_at": "Position as of {time}"
   },
   "dialog": {
     "create_title": "Add shipment",

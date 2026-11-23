@@ -3,6 +3,7 @@
   import { t, tOr } from "../lib/i18n.svelte";
   import { dayDistance } from "../lib/time";
   import type { Parcel } from "../lib/types";
+  import LiveMap from "./LiveMap.svelte";
   import Rail from "./Rail.svelte";
   import StatusTag from "./StatusTag.svelte";
 
@@ -103,6 +104,13 @@
       {/if}
       {parcel.description}{#if parcel.location}<span class="muted"> · {parcel.location}</span>{/if}
     </p>
+  {/if}
+
+  {#if parcel.map && !finished}
+    <LiveMap van={parcel.map.van} home={parcel.map.home} />
+    {#if parcel.map.at}
+      <p class="mono since map-time">{t("shipment.map_at", { time: eventTime(parcel.map.at, now) })}</p>
+    {/if}
   {/if}
 
   {#if errorText}
@@ -268,6 +276,10 @@
 
   .facts .warn {
     color: var(--warn);
+  }
+
+  .map-time {
+    margin: 4px 0 0;
   }
 
   .description {

@@ -57,6 +57,9 @@ class TrackingResult:
     live_only: bool = False
     #: The live view of the round is gone though the parcel is still on its way.
     live_lost: bool = False
+    #: Where the van is right now and where it is headed, as (latitude, longitude).
+    van: tuple[float, float] | None = None
+    home: tuple[float, float] | None = None
 
 
 @dataclass(frozen=True)

@@ -440,6 +440,7 @@ def test_dhl_offers_the_users_postal_code_as_default_for_new_parcels(client):
         "api_secret",
         "prefer",
         "default_postal_code",
+        "live_map",
     ]
     client.put("/api/settings", json={"carriers": {"de.dhl": {"default_postal_code": " 50667 "}}})
     assert dhl()["parcel_defaults"] == {"postal_code": "50667"}
@@ -1060,3 +1061,42 @@ def test_a_carriers_parcels_can_be_asked_about_by_hand_once_a_minute(client, mon
     again = client.post("/api/carriers/demo/sync")
     assert again.status_code == 429 and again.json()["detail"]["error"] == "too_soon"
     assert client.post("/api/carriers/de.amazon/sync").status_code == 404  # an account, not parcels
+
+
+def test_the_vans_position_reaches_the_card_unless_switched_off(client):
+    def piece(latitude):
+        return {
+            "id": "00340434161094042557",
+            "sendungsdetails": {
+                "sendungsverlauf": {
+                    "status": "Die Sendung wurde in das Zustellfahrzeug geladen.",
+                    "fortschritt": 4,
+                    "events": [],
+                },
+                "liveTracking": {
+                    "state": "ok",
+                    "countdownTextKey": "CD10",
+                    "vehiclePosition": {"latitude": latitude, "longitude": 7.21},
+                    "destination": {"lat": 51.541, "lng": 7.223},
+                },
+            },
+        }
+
+    store = client.app.state.pm.store
+    store.save_shipment(
+        None,
+        {"title": "x", "direction": "incoming", "note": ""},
+        [{"carrier": "de.dhl", "tracking_number": "00340434161094042557"}],
+    )
+
+    def card_map():
+        return client.get("/api/shipments").json()[0]["parcels"][0]["map"]
+
+    client.post("/api/companion/de.dhl", json={"payload": {"sendungen": [piece(51.53)]}})
+    shown = card_map()
+    assert shown["van"] == [51.53, 7.21] and shown["home"] == [51.541, 7.223] and shown["at"]
+
+    # Switched off in the DHL settings: the next news takes the positions away.
+    client.put("/api/settings", json={"carriers": {"de.dhl": {"live_map": "off"}}})
+    client.post("/api/companion/de.dhl", json={"payload": {"sendungen": [piece(51.535)]}})
+    assert card_map() is None

@@ -35,7 +35,15 @@ DISCOVERED = "discovered"  # source of a shipment a companion script came across
 #: With the saver on, a parcel goes to its carrier's module from these states on.
 HAND_OVER_FROM = frozenset({Status.OUT_FOR_DELIVERY, Status.READY_FOR_PICKUP, Status.PROBLEM})
 #: Keys in a parcel's extra that tracking writes for itself.
-TRACKING_NOTES = ("window_told", "stops_left", "stops_about", "live_at", "live_lost")
+TRACKING_NOTES = (
+    "window_told",
+    "stops_left",
+    "stops_about",
+    "live_at",
+    "live_lost",
+    "van",
+    "home",
+)
 #: How the reference of a delivery begins that is only known through a shared link.
 SHARED = "share:"
 MAX_DISMISSED = 500

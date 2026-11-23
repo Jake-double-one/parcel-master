@@ -19,6 +19,14 @@
     "default_postal_code": {
       "label": "Your postal code",
       "help": "Pre-filled as the recipient's postal code for incoming parcels. It goes into the \"Open at DHL\" link and to the API, if you use it."
+    },
+    "live_map": {
+      "label": "Live map",
+      "help": "Shows on the shipment's card where the delivery van is, while the companion script sees DHL's live view open. For that the van's position and the destination's are kept until delivery, and your browser loads the map from OpenStreetMap.",
+      "option": {
+        "on": "On",
+        "off": "Off"
+      }
     }
   },
   "parcel": {

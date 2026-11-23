@@ -39,6 +39,8 @@ export interface Parcel {
   /** The live view of the round vanished while the parcel is still on the van. */
   live_lost: boolean;
   /** What is inside, where an importer knows it. */
+  /** Where the van is and where it is headed, while the carrier's live view tells. */
+  map: { van: [number, number]; home: [number, number] | null; at: string | null } | null;
   contents: string[];
   /** Set when several orders share this parcel: which items came with which order. */
   contents_by_order: { reference: string; items: string[] }[] | null;

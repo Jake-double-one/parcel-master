@@ -317,12 +317,69 @@ def parse_web_response(payload: Any) -> TrackingResult:
     live = details.get("liveTracking")
     if isinstance(live, dict) and not delivered:
         result.stops_left, result.stops_about = live_stops(live)
+        result.van, result.home = live_places(live)
         frame = live.get("timeframe")
         if isinstance(frame, dict) and _parse_time(frame.get("from")) and frame.get("to"):
             # The round's own window is closer to the truth than the planned one.
             result.eta_from = _parse_time(frame.get("from"))
             result.eta_to = _parse_time(frame.get("to")) or result.eta_to
     return result
+
+
+_LATITUDE = ("lat", "latitude", "breitengrad")
+_LONGITUDE = ("lng", "lon", "long", "longitude", "laengengrad", "längengrad")
+_VAN = re.compile(r"vehicle|courier|driver|deliverer|current|fahrzeug|zusteller|standort|van", re.I)
+_HOME = re.compile(r"destination|recipient|receiver|target|home|address|ziel|empf", re.I)
+
+
+def _place(node: Any) -> tuple[float, float] | None:
+    """The point a dict stands for, if it holds a latitude and a longitude."""
+    if not isinstance(node, dict):
+        return None
+    keys = {str(key).lower(): value for key, value in node.items()}
+    try:
+        latitude = next(float(keys[k]) for k in _LATITUDE if keys.get(k) is not None)
+        longitude = next(float(keys[k]) for k in _LONGITUDE if keys.get(k) is not None)
+    except (StopIteration, TypeError, ValueError):
+        return None
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180) or (latitude, longitude) == (0, 0):
+        return None
+    return latitude, longitude
+
+
+def live_places(
+    live: dict[str, Any],
+) -> tuple[tuple[float, float] | None, tuple[float, float] | None]:
+    """Where the van is and where it is headed, read from the live view's data.
+
+    DHL does not document these fields. Any point in there is taken by the
+    name it stands under: one that speaks of the vehicle, one of the address.
+    """
+    van = home = None
+
+    def walk(node: Any, name: str, depth: int) -> None:
+        nonlocal van, home
+        if depth > 4 or not isinstance(node, dict):
+            return
+        point = _place(node)
+        if point and van is None and _VAN.search(name):
+            van = point
+        elif point and home is None and _HOME.search(name):
+            home = point
+        for key, value in node.items():
+            walk(value, f"{name}.{key}", depth + 1)
+
+    walk(live, "", 0)
+    return van, home
+
+
+def live_shape(live: Any, depth: int = 0) -> Any:
+    """The names in the live view's data without any value, for the log."""
+    if isinstance(live, dict) and depth < 4:
+        return {str(key): live_shape(value, depth + 1) for key, value in live.items()}
+    if isinstance(live, list):
+        return [live_shape(live[0], depth + 1)] if live else []
+    return type(live).__name__
 
 
 def live_stops(live: dict[str, Any]) -> tuple[int | None, bool]:
@@ -374,6 +431,8 @@ class DhlDe(CarrierModule):
         Field("api_secret", type="secret"),
         Field("prefer", type="choice", options=("website", "api")),
         Field("default_postal_code", placeholder="53113"),
+        # Whether the van's position from the live view is kept for a map on the card.
+        Field("live_map", type="choice", options=("on", "off")),
     )
     parcel_fields = (Field("postal_code", placeholder="53113"),)
     default_daily_budget = 250
@@ -476,6 +535,9 @@ class DhlDe(CarrierModule):
                 f"status {str(history.get('status') or '')[:60]!r}, names {named}, "
                 f"fields {sorted(piece)}, info {sorted(info)}, details {sorted(details)}"
             )
+            if isinstance(details.get("liveTracking"), dict):
+                # How the live view's data is built: names only, never a position.
+                lines.append(f"{number or '?'}: live {live_shape(details['liveTracking'])}")
         return lines
 
     def source(self, settings: dict[str, Any]) -> str | None:
