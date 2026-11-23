@@ -1,0 +1,31 @@
+[
+  {
+    "barcode": "H1000730000826301046",
+    "parcelAttributes": {"directionEnum": "DELIVERY", "delivered": false},
+    "viewParameters": {"readyForCollection": false, "collected": false},
+    "forecast": {
+      "deliveryTimeFromUTC": "2026-11-24T09:00:00Z",
+      "deliveryTimeToUTC": "2026-11-24T13:00:00Z"
+    },
+    "parcelProgress": [
+      {
+        "status": "HAPPY",
+        "parcelStatus": "ANNOUNCED",
+        "timestamp": "2026-11-21T16:02:00Z",
+        "historyText": "Die Sendung wurde Hermes elektronisch angekündigt."
+      },
+      {
+        "status": "HAPPY",
+        "parcelStatus": "SORTED",
+        "timestamp": "2026-11-23T03:41:00Z",
+        "historyText": "Die Sendung wurde im Hermes Logistikzentrum sortiert."
+      },
+      {
+        "status": "HAPPY",
+        "parcelStatus": "ACCEPTED",
+        "timestamp": "2026-11-22T18:15:00Z",
+        "historyText": "Die Sendung ist im Hermes Logistikzentrum eingegangen."
+      }
+    ]
+  }
+]

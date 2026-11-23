@@ -8,6 +8,8 @@ import pytest
 from parcelmaster.carriers.base import CarrierError, TrackRequest
 from parcelmaster.carriers.de.dhl import MODULE as DHL
 from parcelmaster.carriers.de.dhl import parse_parcel_de, parse_response, parse_web_response
+from parcelmaster.carriers.de.hermes import MODULE as HERMES
+from parcelmaster.carriers.de.hermes import parse_response as hermes_parse
 from parcelmaster.carriers.demo import MODULE as DEMO
 from parcelmaster.carriers.registry import discover
 from parcelmaster.status import Status, aggregate
@@ -300,3 +302,124 @@ def test_dhl_follows_the_delivery_day_ever_more_closely():
     narrow = (at(13, 10), at(13, 40))
     assert round_pace(*narrow, at(12, 45)) == 5
     assert round_pace(*narrow, at(12, 55)) == 1  # narrowed down and nearly due
+
+
+# -- Hermes ---------------------------------------------------------------
+
+
+def hermes_answer(**changes):
+    shipment = json.loads((FIXTURES / "hermes_transit.json").read_text())[0]
+    return [{**shipment, **changes}]
+
+
+def hermes_step(text, code="", mood="HAPPY"):
+    step = {"status": mood, "parcelStatus": code, "historyText": text}
+    return {**step, "timestamp": "2026-11-24T08:00:00Z"}
+
+
+def test_hermes_recognises_its_numbers_and_links():
+    assert HERMES.matches("H1000730000826301046")
+    assert HERMES.matches("1234 5678 9012 34")
+    assert not HERMES.matches("JJD000390016886395774")
+    link = "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation"
+    assert HERMES.extract_from_url(f"{link}#H1000730000826301046") == "H1000730000826301046"
+    assert HERMES.extract_from_url("https://example.org/#H1000730000826301046") is None
+    assert HERMES.tracking_url("12345678901234", {}, "de") == f"{link}#12345678901234"
+
+
+def test_hermes_history_is_sorted_and_carries_the_window():
+    result = hermes_parse(hermes_answer())
+    assert result.status is Status.IN_TRANSIT
+    assert result.description == "Die Sendung wurde im Hermes Logistikzentrum sortiert."
+    assert [event.status for event in result.events] == [
+        Status.IN_TRANSIT,
+        Status.IN_TRANSIT,
+        Status.REGISTERED,
+    ]
+    assert result.eta_from.isoformat() == "2026-11-24T09:00:00+00:00"
+    assert result.eta_to.isoformat() == "2026-11-24T13:00:00+00:00"
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected"),
+    [
+        (
+            {"parcelProgress": [hermes_step("Die Sendung befindet sich in der Zustellung.")]},
+            Status.OUT_FOR_DELIVERY,
+        ),
+        ({"parcelProgress": [hermes_step("Die Sendung wurde zugestellt.")]}, Status.DELIVERED),
+        ({"parcelAttributes": {"delivered": True}}, Status.DELIVERED),
+        ({"viewParameters": {"readyForCollection": True}}, Status.READY_FOR_PICKUP),
+        ({"viewParameters": {"collected": True}}, Status.DELIVERED),
+        (
+            {
+                "parcelProgress": [
+                    hermes_step("Die Sendung liegt im PaketShop zur Abholung bereit.")
+                ]
+            },
+            Status.READY_FOR_PICKUP,
+        ),
+        (
+            {
+                "parcelProgress": [
+                    hermes_step("Der Empfänger wurde nicht angetroffen.", mood="UNHAPPY")
+                ]
+            },
+            Status.PROBLEM,
+        ),
+        ({"viewParameters": {"deliveryFailedAttempt": "2026-11-24T10:00:00Z"}}, Status.PROBLEM),
+        (
+            {"parcelAttributes": {"returnDeliveredTimestamp": "2026-11-24T10:00:00Z"}},
+            Status.RETURNED,
+        ),
+        ({"parcelProgress": [hermes_step("", code="RETURN_DELIVERED_TO_SENDER")]}, Status.RETURNED),
+        ({"parcelProgress": []}, Status.REGISTERED),
+        # Not delivered yet, whatever the word "zugestellt" suggests.
+        (
+            {
+                "parcelProgress": [
+                    hermes_step("Die Sendung wird voraussichtlich morgen zugestellt.")
+                ]
+            },
+            Status.IN_TRANSIT,
+        ),
+        (
+            {"parcelProgress": [hermes_step("Die Sendung konnte nicht zugestellt werden.")]},
+            Status.PROBLEM,
+        ),
+    ],
+)
+def test_hermes_status(changes, expected):
+    result = hermes_parse(hermes_answer(**changes))
+    assert result.status is expected
+    if expected in (Status.DELIVERED, Status.RETURNED):
+        assert result.eta_from is None
+
+
+@pytest.mark.anyio
+async def test_hermes_asks_the_public_search_in_the_users_language():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["url"], seen["language"] = str(req.url), req.headers["X-Language"]
+        return httpx.Response(200, json=hermes_answer())
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+        result = await HERMES.track(request("H1000730000826301046"), http)
+    assert result.status is Status.IN_TRANSIT
+    assert seen["url"].endswith("/tnt/v2/shipments/search/H1000730000826301046")
+    assert seen["language"] == "de"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [(400, "not_found"), (404, "not_found"), (429, "rate_limited"), (503, "unavailable")],
+)
+async def test_hermes_errors_become_readable_codes(status, code):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda req: httpx.Response(status))
+    ) as http:
+        with pytest.raises(CarrierError) as caught:
+            await HERMES.track(request("H1000730000826301046"), http)
+    assert caught.value.code == code
