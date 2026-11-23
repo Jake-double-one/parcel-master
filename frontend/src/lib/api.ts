@@ -89,6 +89,9 @@ export const api = {
   status: () => request<SystemStatus>("GET", "/api/status"),
   log: () => request<LogReport>("GET", "/api/log"),
   takeNotices: () => request<{ auto_archived: number }>("POST", "/api/notices/take"),
+  switchCarrier: (id: string, enabled: boolean) =>
+    request<{ enabled: boolean }>("POST", `/api/carriers/${id}/enabled`, { enabled }),
+  syncCarrier: (id: string) => request<{ parcels: number }>("POST", `/api/carriers/${id}/sync`),
   syncImporter: (id: string) => request<SyncState>("POST", `/api/importers/${id}/sync`),
   connectImporter: (id: string, credentials: Record<string, string>) =>
     request<SyncState>("POST", `/api/importers/${id}/connect`, credentials),

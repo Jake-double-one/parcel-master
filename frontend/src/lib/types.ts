@@ -117,6 +117,11 @@ export interface Carrier {
   /** Address of a userscript for the user's browser that passes on live news, if the module has one. */
   companion: string | null;
   configured: boolean;
+  /** Off: nothing is asked, suggested or handed over to this carrier. */
+  enabled: boolean;
+  /** Open parcels this carrier tracks, and when one of them was last asked about. */
+  open_parcels: number;
+  last_checked_at: string | null;
   settings_fields: FieldSpec[];
   parcel_fields: FieldSpec[];
   /** Defaults from the settings for parcel fields, e.g. the user's postal code. */

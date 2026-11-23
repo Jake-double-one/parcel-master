@@ -455,3 +455,14 @@ def test_postal_codes_are_masked_in_the_log():
     lines = [entry["message"] for entry in list(JOURNAL.entries)[-2:]]
     assert all("12345" not in line for line in lines)
     assert '_zip-code="***"' in lines[0] and "recipientPostalCode=***" in lines[1]
+
+
+def test_a_parcel_of_a_carrier_switched_off_is_not_looked_up(world):
+    store, module, registry, _, parcel_id = world
+    settings = store.get_settings()
+    settings["carriers"]["test"]["enabled"] = False
+    store.save_settings(settings)
+    assert refresh(store, registry, parcel_id) == []
+    after = store.get_parcel(parcel_id)
+    assert after["last_error"]["code"] == "carrier_off" and after["error_count"] == 0
+    assert module.calls == 0

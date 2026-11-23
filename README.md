@@ -158,6 +158,11 @@ Amazon, which is read as a whole account and not parcel by parcel:
 A parcel that Amazon handed to a carrier ("Amazon via DHL") is asked about at
 that carrier like any other parcel.
 
+Under Settings → Carriers each carrier can be switched off: then nothing is
+asked, suggested or handed over to it, and its shipments stay as they are.
+"Ask now" there asks a carrier about all of its open parcels at once, at most
+once a minute.
+
 Limits that keep a mistake from asking without end: a parcel is not asked
 about twice within 10 seconds, a carrier gets at most 100 tries in any hour,
 and DHL gives at most 250 answers a day with an API key alone, 1000 otherwise

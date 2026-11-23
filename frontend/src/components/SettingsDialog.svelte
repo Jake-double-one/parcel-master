@@ -97,6 +97,9 @@
   let importState = $state("");
   let error = $state("");
   let working = $state("");
+  // The carrier whose parcels were just asked about by hand, and how many.
+  let asked = $state("");
+  let askedCount = $state(0);
   // Carrier sections start folded; the heading already tells whether one is set up.
   let unfolded = $state<string[]>([]);
 
@@ -181,6 +184,41 @@
   async function reloadCarriers() {
     carriers = await api.carriers().catch(() => carriers);
     prepareDrafts();
+  }
+
+  async function switchCarrier(carrier: Carrier) {
+    error = "";
+    working = carrier.id;
+    try {
+      await api.switchCarrier(carrier.id, !carrier.enabled);
+      onchanged(false);
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      working = "";
+      await reloadCarriers();
+    }
+  }
+
+  /** Ask a carrier about all of its open parcels now. */
+  async function askNow(id: string) {
+    error = "";
+    asked = "";
+    working = id;
+    try {
+      const { parcels } = await api.syncCarrier(id);
+      asked = id;
+      askedCount = parcels;
+      // The lookups run in the background; show their results once they are in.
+      setTimeout(async () => {
+        onchanged(false);
+        await reloadCarriers();
+      }, 2500);
+    } catch (caught) {
+      fail(caught);
+    } finally {
+      working = "";
+    }
   }
 
   async function syncNow(id: string) {
@@ -477,25 +515,44 @@
         {@const open = unfolded.includes(carrier.id)}
         <section class="module" class:folded={!open}>
           <!-- The heading stays visible with its state; the rest folds away. -->
-          <button
-            type="button"
-            class="row module-head fold-toggle"
-            aria-expanded={open}
-            onclick={() => toggleModule(carrier.id)}
-          >
-            <svg class="chev" class:open width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
-              <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-            <h3>{carrier.name}{carrier.country ? ` · ${carrier.country.toUpperCase()}` : ""}</h3>
-            <span
-              class="micro state"
-              class:ready={carrier.health.state === "ok"}
-              class:failing={carrier.health.state === "failing"}
+          <div class="row module-head">
+            <button
+              type="button"
+              class="row fold-toggle"
+              aria-expanded={open}
+              onclick={() => toggleModule(carrier.id)}
             >
-              {healthLabel(carrier.id, carrier.health, carrier.settings_fields.length === 0)}
-            </span>
-          </button>
-          {#if open}
+              <svg class="chev" class:open width="8" height="10" viewBox="0 0 8 10" aria-hidden="true">
+                <path d="M1 1l5 4-5 4" fill="none" stroke="currentColor" stroke-width="1.6" />
+              </svg>
+              <h3>{carrier.name}{carrier.country ? ` · ${carrier.country.toUpperCase()}` : ""}</h3>
+              {#if carrier.enabled}
+                <span
+                  class="micro state"
+                  class:ready={carrier.health.state === "ok"}
+                  class:failing={carrier.health.state === "failing"}
+                >
+                  {healthLabel(carrier.id, carrier.health, carrier.settings_fields.length === 0)}
+                </span>
+              {/if}
+            </button>
+            <!-- On or off, at the end of the line; it takes effect at once. -->
+            <button
+              type="button"
+              class="switch"
+              class:on={carrier.enabled}
+              role="switch"
+              aria-checked={carrier.enabled}
+              aria-label={t("settings.carrier_switch", { carrier: carrier.name })}
+              disabled={working === carrier.id}
+              onclick={() => switchCarrier(carrier)}
+            >
+              {carrier.enabled ? t("settings.carrier_on") : t("settings.carrier_off")}
+            </button>
+          </div>
+          {#if open && !carrier.enabled}
+            <p class="note off-note">{t("settings.carrier_off_note")}</p>
+          {:else if open}
           {#if carrier.kind === "importer"}
             {@const account = carrier.sync?.account}
             {#if account}
@@ -594,6 +651,31 @@
               {/if}
             {/if}
           {:else}
+            <!-- Its parcels are asked about on their own; this is for the impatient moment. -->
+            <div class="row sync">
+              <button
+                type="button"
+                class="chip"
+                disabled={working === carrier.id || carrier.open_parcels === 0}
+                onclick={() => askNow(carrier.id)}
+              >
+                {working === carrier.id ? t("settings.asking") : t("settings.ask_now")}
+              </button>
+            </div>
+            <p class="note sync">
+              {#if asked === carrier.id}
+                {t("settings.ask_started", { count: askedCount })}
+              {:else if carrier.open_parcels === 0}
+                {t("settings.asked_none")}
+              {:else if carrier.last_checked_at}
+                {t("settings.asked", {
+                  time: ago(carrier.last_checked_at, now),
+                  count: carrier.open_parcels,
+                })}
+              {:else}
+                {t("settings.asked_never", { count: carrier.open_parcels })}
+              {/if}
+            </p>
             {#each carrier.settings_fields as field}
               <label class="field">
                 <span class="eyebrow">{t(`carrier.${carrier.id}.settings.${field.key}.label`)} <Help text={tOr(`carrier.${carrier.id}.settings.${field.key}.help`, "")} /></span>
@@ -998,7 +1080,8 @@
   }
 
   .fold-toggle {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
     padding: 0;
     border: 0;
     background: none;
@@ -1011,6 +1094,32 @@
 
   .fold-toggle .state {
     margin-left: auto;
+  }
+
+  .switch {
+    flex: 0 0 auto;
+    min-width: 52px;
+    min-height: 30px;
+    padding: 4px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: none;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .switch.on {
+    border-color: var(--ok);
+    color: var(--ok);
+  }
+
+  .off-note {
+    margin: 0 0 14px;
   }
 
   .fold-toggle .chev {

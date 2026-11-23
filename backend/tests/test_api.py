@@ -1011,3 +1011,50 @@ def test_the_hermes_page_can_hand_over_a_shipment(client):
     [card] = client.get("/api/shipments").json()
     assert card["title"] == "Shop" and not card["suggested"]
     assert card["parcels"][0]["status"] == "in_transit"
+
+
+def test_a_carrier_can_be_switched_off_and_on(client, monkeypatch):
+    asked = []
+
+    async def fake_refresh(store, registry, http, parcel_id):
+        asked.append(parcel_id)
+        return []
+
+    monkeypatch.setattr("parcelmaster.app.refresh_parcel", fake_refresh)
+    new_shipment(client, "DEMO1234567890")
+    asked.clear()
+
+    def demo():
+        return next(c for c in client.get("/api/carriers").json() if c["id"] == "demo")
+
+    assert demo()["enabled"] is True and demo()["open_parcels"] == 1
+    assert client.post("/api/carriers/demo/enabled", json={"enabled": False}).status_code == 200
+    assert demo()["enabled"] is False
+    # Off: not suggested any more, and not asked by hand.
+    assert client.post("/api/detect", json={"text": "DEMO1234567890"}).json()["matches"] == []
+    refused = client.post("/api/carriers/demo/sync")
+    assert refused.status_code == 409 and refused.json()["detail"]["error"] == "carrier_off"
+    # Saving the settings form does not switch it back on.
+    client.put("/api/settings", json={"carriers": {"demo": {"daily_budget": 50}}})
+    assert demo()["enabled"] is False
+    # On again: its parcels are caught up at once.
+    client.post("/api/carriers/demo/enabled", json={"enabled": True})
+    assert demo()["enabled"] is True and len(asked) == 1
+    assert client.post("/api/detect", json={"text": "DEMO1234567890"}).json()["matches"]
+
+
+def test_a_carriers_parcels_can_be_asked_about_by_hand_once_a_minute(client, monkeypatch):
+    asked = []
+
+    async def fake_refresh(store, registry, http, parcel_id):
+        asked.append(parcel_id)
+        return []
+
+    monkeypatch.setattr("parcelmaster.app.refresh_parcel", fake_refresh)
+    new_shipment(client, "DEMO1234567890", "DEMO1234567891")
+    asked.clear()
+    assert client.post("/api/carriers/demo/sync").json() == {"parcels": 2}
+    assert len(asked) == 2
+    again = client.post("/api/carriers/demo/sync")
+    assert again.status_code == 429 and again.json()["detail"]["error"] == "too_soon"
+    assert client.post("/api/carriers/de.amazon/sync").status_code == 404  # an account, not parcels

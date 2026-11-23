@@ -256,7 +256,17 @@
     "discovery_auto": "Sofort verfolgen",
     "event_discovered": "das Begleit-Skript eine neue Sendung entdeckt",
     "push_failed_brave": "Brave hat den Push-Dienst ausgeschaltet. Öffne brave://settings/privacy, schalte „Google-Dienste für Push-Nachrichten verwenden“ ein, starte Brave neu und versuche es noch einmal. Ohne Google geht es über die Dienste unter Meldungen.",
-    "companion_install_all": "Begleit-Skript installieren"
+    "companion_install_all": "Begleit-Skript installieren",
+    "carrier_on": "An",
+    "carrier_off": "Aus",
+    "carrier_switch": "{carrier} ein- oder ausschalten",
+    "carrier_off_note": "Ausgeschaltet: Es wird nichts abgefragt, vorgeschlagen oder übergeben. Vorhandene Sendungen bleiben stehen.",
+    "ask_now": "Jetzt abfragen",
+    "asking": "Fragt ab …",
+    "asked": "Zuletzt abgefragt {time} · offene Sendungen: {count}",
+    "asked_none": "Keine offenen Sendungen.",
+    "ask_started": "Abfrage läuft · Sendungen: {count}",
+    "asked_never": "Noch nicht abgefragt · offene Sendungen: {count}"
   },
   "login": {
     "password": "Passwort",
@@ -298,7 +308,8 @@
     "missing_credentials": "Trag E-Mail und Passwort ein.",
     "order_alone": "Leg eine Bestellung einzeln an; ihre Pakete kommen von selbst mit.",
     "invalid_reference": "Das sieht nicht nach einer Bestellnummer aus.",
-    "invalid_saver_hours": "Gib die Nachtruhe als hh:mm ein."
+    "invalid_saver_hours": "Gib die Nachtruhe als hh:mm ein.",
+    "carrier_off": "Dieser Paketdienst ist ausgeschaltet."
   },
   "carrier_error": {
     "not_configured": "Für diesen Paketdienst ist kein Schlüssel eingerichtet.",
@@ -316,7 +327,8 @@
     "browser_failed": "Der Browser für die Anmeldeprüfung ist gescheitert.",
     "invalid_otp_secret": "Das ist kein Geheimschlüssel der Zwei-Schritt-Verifizierung. Gemeint ist der lange Schlüssel aus Buchstaben A–Z und Ziffern 2–7, den Amazon beim Hinzufügen einer Authenticator-App zeigt, nicht der sechsstellige Code.",
     "not_connected": "Verbinde zuerst das Konto in den Einstellungen.",
-    "too_many_tries": "Sehr viele Abrufe in der letzten Stunde. Parcel Master macht eine kurze Pause und fragt dann von selbst wieder."
+    "too_many_tries": "Sehr viele Abrufe in der letzten Stunde. Parcel Master macht eine kurze Pause und fragt dann von selbst wieder.",
+    "carrier_off": "Dieser Paketdienst ist ausgeschaltet. Die Sendung wird nicht abgefragt."
   },
   "notify": {
     "title": "{title}",

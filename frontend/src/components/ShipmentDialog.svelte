@@ -65,6 +65,7 @@
 
   /** Trackers take a tracking number; a connected importer may take an order number. */
   function canAdd(carrier: Carrier): boolean {
+    if (!carrier.enabled) return false; // switched off in the settings
     return carrier.kind === "tracker" || (carrier.by_reference && !!carrier.sync?.account);
   }
   const selectable = $derived(carriers.filter(canAdd));

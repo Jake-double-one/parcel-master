@@ -92,6 +92,11 @@ class Found:
     full: bool = True  # whether the page told its state, not just that it exists
 
 
+def switched_on(carrier_settings: dict[str, Any]) -> bool:
+    """Whether the user wants this carrier used at all; on unless they turned it off."""
+    return carrier_settings.get("enabled") is not False
+
+
 class CarrierModule:
     #: "tracker": the user enters a number and the module looks it up.
     #: "importer": the module finds the shipments itself (see ImporterModule).

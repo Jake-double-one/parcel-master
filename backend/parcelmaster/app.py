@@ -11,6 +11,7 @@ import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from time import monotonic
 from typing import Annotated, Any, Literal
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -22,7 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import __version__, companion, discovery, importer, together
-from .carriers.base import CarrierError, CarrierModule
+from .carriers.base import CarrierError, CarrierModule, switched_on
 from .carriers.registry import Registry, discover
 from .config import Config
 from .db import Store, merge, now_iso
@@ -63,6 +64,8 @@ class State:
     notifier: Notifier
     scheduler: Scheduler
     background: set[asyncio.Task[Any]]
+    #: When each carrier's parcels were last refreshed by hand, by store and carrier.
+    asked_by_hand: dict[tuple[int, str], float]
     #: Password checks take turns while many logins fail (see LoginThrottle).
     login_gate: asyncio.Lock
 
@@ -83,6 +86,10 @@ class Ctx:
 
     def module(self, module_id: str) -> CarrierModule | None:
         return next((m for m in self.modules() if m.id == module_id), None)
+
+    def on(self, module: CarrierModule) -> bool:
+        """Whether the user has this carrier switched on."""
+        return switched_on(self.store.get_settings()["carriers"].get(module.id, {}))
 
 
 class ParcelIn(BaseModel):
@@ -149,6 +156,7 @@ def create_app(config: Config) -> FastAPI:
             notifier=notifier,
             scheduler=scheduler,
             background=set(),
+            asked_by_hand={},
             login_gate=asyncio.Lock(),
         )
         if config.scheduler:
@@ -533,6 +541,17 @@ def create_app(config: Config) -> FastAPI:
                     "name": module.name,
                     "country": module.country,
                     "health": health(ctx, module, parcels),
+                    # Off: nothing is asked, suggested or handed over to this carrier.
+                    "enabled": switched_on(own),
+                    "open_parcels": sum(1 for p in parcels if p["carrier"] == module.id),
+                    "last_checked_at": max(
+                        (
+                            p["last_checked_at"]
+                            for p in parcels
+                            if p["carrier"] == module.id and p["last_checked_at"]
+                        ),
+                        default=None,
+                    ),
                     "kind": module.kind,
                     "sync": sync_state(ctx, module),
                     # Whether a single order can be added by its number.
@@ -540,7 +559,7 @@ def create_app(config: Config) -> FastAPI:
                     # A userscript that passes on what the carrier's page shows the user.
                     "companion": (
                         f"/api/companion/{module.id}.user.js"
-                        if module.companion_script() and not ctx.demo
+                        if module.companion_script() and not ctx.demo and switched_on(own)
                         else None
                     ),
                     "configured": module.is_configured(own),
@@ -587,6 +606,44 @@ def create_app(config: Config) -> FastAPI:
             media_type="text/javascript; charset=utf-8",
         )
 
+    @app.post("/api/carriers/{module_id}/enabled")
+    async def switch_carrier(
+        ctx: Context, module_id: str, enabled: Annotated[bool, Body(embed=True)]
+    ) -> dict[str, bool]:
+        """Turn a carrier on or off. Off: its parcels stay, but nothing is asked any more."""
+        module = ctx.module(module_id)
+        if module is None:
+            raise fail(404, "not_found")
+        settings = ctx.store.get_settings()
+        own = dict(settings["carriers"].get(module.id, {}))
+        was = switched_on(own)
+        own["enabled"] = enabled
+        settings["carriers"][module.id] = own
+        ctx.store.save_settings(settings)
+        if enabled and not was:
+            # Catch up at once on what was missed while it was off.
+            refresh_soon(
+                ctx, [p["id"] for p in ctx.store.open_parcels() if p["carrier"] == module.id]
+            )
+        return {"enabled": enabled}
+
+    @app.post("/api/carriers/{module_id}/sync")
+    async def sync_carrier(ctx: Context, module_id: str) -> dict[str, int]:
+        """Ask the carrier about all of its open parcels now, not when they are due."""
+        module = ctx.module(module_id)
+        if module is None or module.kind != "tracker":
+            raise fail(404, "not_found")
+        if not ctx.on(module):
+            raise fail(409, "carrier_off")
+        key = (id(ctx.store), module.id)
+        last = ctx.state.asked_by_hand.get(key)
+        if last is not None and monotonic() - last < 60:
+            raise fail(429, "too_soon")
+        ctx.state.asked_by_hand[key] = monotonic()
+        ids = [p["id"] for p in ctx.store.open_parcels() if p["carrier"] == module.id]
+        refresh_soon(ctx, ids)
+        return {"parcels": len(ids)}
+
     @app.post("/api/companion/{module_id}")
     async def companion_news(
         ctx: RealContext,
@@ -598,7 +655,7 @@ def create_app(config: Config) -> FastAPI:
         know, and parcels we do not know are filed as the settings say. ``take`` names
         the ones the user clicked on in the page."""
         module = ctx.module(module_id)
-        if module is None or not module.companion_script():
+        if module is None or not module.companion_script() or not ctx.on(module):
             raise fail(404, "not_found")
         settings = ctx.store.get_settings()
         zone = timezone(settings)
@@ -645,10 +702,11 @@ def create_app(config: Config) -> FastAPI:
         """Find carrier and tracking number in pasted text: a link or a bare number."""
         text = text.strip()
         matches: list[dict[str, str]] = []
+        usable = [module for module in ctx.modules() if ctx.on(module)]
         for candidate in re.findall(r"https?://\S+", text):
             if not urlparse(candidate).hostname:
                 continue
-            for module in ctx.modules():
+            for module in usable:
                 number = module.extract_from_url(candidate)
                 if number:
                     matches.append({"carrier": module.id, "tracking_number": number})
@@ -661,7 +719,7 @@ def create_app(config: Config) -> FastAPI:
                 *re.findall(r"\d[\d ]{6,40}\d", text),
             ]
             for token in tokens:
-                for module in ctx.modules():
+                for module in usable:
                     pattern = getattr(module, "reference_pattern", None)
                     if pattern and pattern.fullmatch(token.strip()):
                         match = {"carrier": module.id, "tracking_number": token.strip()}

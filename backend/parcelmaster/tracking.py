@@ -12,7 +12,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
-from .carriers.base import CarrierError, CarrierModule, TrackingResult, TrackRequest
+from .carriers.base import (
+    CarrierError,
+    CarrierModule,
+    TrackingResult,
+    TrackRequest,
+    switched_on,
+)
 from .carriers.registry import Registry
 from .db import Store
 from .status import FINAL, Status
@@ -420,6 +426,9 @@ async def refresh_parcel(
     module = registry.get(parcel["carrier"])
     if module is None:
         return fail("unknown_carrier", parcel["carrier"], 24 * 60, count_error=False)
+    if not switched_on(settings["carriers"].get(module.id, {})):
+        # The user turned this carrier off: nothing is asked, and the parcel says why.
+        return fail("carrier_off", "", 60, count_error=False)
     if module.kind == "importer":
         # Its status comes with the service's sync, not from a lookup by number.
         store.update_parcel(parcel_id, next_check_at=NEVER)

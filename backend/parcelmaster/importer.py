@@ -20,6 +20,7 @@ from .carriers.base import (
     SyncRequest,
     TrackingEvent,
     TrackingResult,
+    switched_on,
 )
 from .carriers.registry import Registry
 from .db import Store
@@ -121,7 +122,11 @@ def carrier_for(
     registry: Registry, name: str | None, number: str, carrier_settings: dict[str, Any]
 ) -> CarrierModule | None:
     """The tracker module that can take over this parcel, if one is set up."""
-    trackers = [m for m in registry.all() if m.kind == "tracker" and m.id != "demo"]
+    trackers = [
+        m
+        for m in registry.all()
+        if m.kind == "tracker" and m.id != "demo" and switched_on(carrier_settings.get(m.id, {}))
+    ]
     wanted = (name or "").casefold()
     by_name = [m for m in trackers if wanted and m.name.casefold() in wanted]
     by_number = [m for m in trackers if m.matches(number)]
@@ -505,6 +510,8 @@ def next_sync_at(
 
 def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) -> bool:
     state = get_state(store, module.id)
+    if not switched_on(carrier_settings):
+        return False
     # Only an account whose sign-in was checked is synced on its own.
     if not state.get("connected") or not module.is_configured(carrier_settings):
         return False
@@ -607,6 +614,8 @@ async def follow_deliveries(
     own = settings["carriers"].get(module.id, {})
     state = get_state(store, module.id)
     if not state.get("connected") or state.get("blocked") or not module.is_configured(own):
+        return []
+    if not switched_on(own):
         return []
     now = datetime.now(UTC)
     references: list[str] = []

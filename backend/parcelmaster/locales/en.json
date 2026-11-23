@@ -256,7 +256,17 @@
     "discovery_auto": "Track them right away",
     "event_discovered": "the companion script finds a new shipment",
     "push_failed_brave": "Brave has turned off the push service. Open brave://settings/privacy, turn on “Use Google services for push messaging”, restart Brave and try again. Without Google, use the services under Notifications.",
-    "companion_install_all": "Install companion script"
+    "companion_install_all": "Install companion script",
+    "carrier_on": "On",
+    "carrier_off": "Off",
+    "carrier_switch": "Switch {carrier} on or off",
+    "carrier_off_note": "Switched off: nothing is asked, suggested or handed over. Existing shipments stay.",
+    "ask_now": "Ask now",
+    "asking": "Asking …",
+    "asked": "Last asked {time} · open parcels: {count}",
+    "asked_none": "No open parcels.",
+    "ask_started": "Asking · parcels: {count}",
+    "asked_never": "Not asked yet · open parcels: {count}"
   },
   "login": {
     "password": "Password",
@@ -298,7 +308,8 @@
     "missing_credentials": "Enter e-mail and password.",
     "order_alone": "Add an order on its own; its parcels come with it.",
     "invalid_reference": "That does not look like an order number.",
-    "invalid_saver_hours": "Enter the night rest as hh:mm."
+    "invalid_saver_hours": "Enter the night rest as hh:mm.",
+    "carrier_off": "This carrier is switched off."
   },
   "carrier_error": {
     "not_configured": "No key set up for this carrier.",
@@ -316,7 +327,8 @@
     "browser_failed": "The browser needed for the sign-in check failed.",
     "invalid_otp_secret": "That is not a two-step secret key. It is the long key of letters A–Z and digits 2–7 that Amazon shows when you add an authenticator app, not the six-digit code.",
     "not_connected": "Connect the account in the settings first.",
-    "too_many_tries": "A lot of lookups within the last hour. Parcel Master pauses briefly and then asks again by itself."
+    "too_many_tries": "A lot of lookups within the last hour. Parcel Master pauses briefly and then asks again by itself.",
+    "carrier_off": "This carrier is switched off. The parcel is not being looked up."
   },
   "notify": {
     "title": "{title}",
