@@ -44,4 +44,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
 # "*" suits the usual reverse proxy in another container; set your proxy's
 # address to stop clients that reach the port directly from making them up.
 ENV FORWARDED_ALLOW_IPS="*"
+# The commit this image is built from; shown in the log and the settings. Set
+# last, so that a new commit does not rebuild the layers above.
+ARG PM_BUILD=dev
+ENV PM_BUILD=$PM_BUILD
 CMD ["uvicorn", "parcelmaster.asgi:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

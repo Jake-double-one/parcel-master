@@ -79,6 +79,8 @@ open <http://localhost:8000>, go to **Settings → Carriers** and enter your
 keys.
 
 Image tags: `latest` is the newest release, `main` follows the main branch.
+Which build runs is in the first line of the log and under Settings → Status,
+e.g. `Parcel Master 0.1.0, build 65c4e1f, companion script 1.11`.
 
 ### Configuration
 

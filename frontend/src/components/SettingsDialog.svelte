@@ -922,7 +922,11 @@
         </label>
       </div>
       <p class="note gap" role="status">{importState}</p>
-      <p class="micro gap">{t("settings.version", { version: meta.version })}</p>
+      <p class="micro gap">{t("settings.version", {
+          version: meta.version,
+          build: meta.build,
+          script: meta.companion_version ?? "–",
+        })}</p>
       {#if meta.password_set && !meta.demo}
         <div class="row gap">
           <button type="button" class="chip" onclick={onlogout}>{t("settings.logout")}</button>

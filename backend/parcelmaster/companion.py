@@ -39,6 +39,13 @@ def _split(script: str) -> tuple[dict[str, list[str]], str]:
     return fields, script[header.end() :]
 
 
+def version(registry: Registry) -> str | None:
+    """The version the combined script carries, e.g. "1.11"; None without any script."""
+    script = combined(registry)
+    found = re.search(r"^// @version\s+(\S+)", script or "", re.M)
+    return found.group(1) if found else None
+
+
 def combined(registry: Registry) -> str | None:
     """All companion scripts as one, with ``__SERVER__`` and ``__HOST__`` left to fill in."""
     parts = []

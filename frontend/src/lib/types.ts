@@ -133,6 +133,10 @@ export interface Carrier {
 
 export interface Meta {
   version: string;
+  /** The commit the running image was built from, shortened. */
+  build: string;
+  /** Version of the companion script the server hands out; null if it has none. */
+  companion_version: string | null;
   login_required: boolean;
   password_set: boolean;
   demo_available: boolean;

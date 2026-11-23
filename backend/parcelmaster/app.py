@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import __version__, companion, discovery, importer, together
+from . import __version__, build, companion, discovery, importer, together
 from .carriers.base import CarrierError, CarrierModule, switched_on
 from .carriers.registry import Registry, discover
 from .config import Config
@@ -141,6 +141,13 @@ def create_app(config: Config) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        # Which build runs, for the log: the first thing to check when something is off.
+        journal.info(
+            "Parcel Master %s, build %s, companion script %s",
+            __version__,
+            build(),
+            companion.version(registry) or "none",
+        )
         http = httpx.AsyncClient(timeout=20, headers={"User-Agent": f"ParcelMaster/{__version__}"})
         notifier = Notifier(store, registry, translations, config.push_contact)
         scheduler = Scheduler(store, registry, http, notifier, config.data_dir)
@@ -363,6 +370,8 @@ def create_app(config: Config) -> FastAPI:
         show_settings = demo or logged_in or not password_set
         return {
             "version": __version__,
+            "build": build(),
+            "companion_version": companion.version(state.registry),
             "login_required": password_set and not logged_in and not demo,
             "password_set": password_set,
             "demo_available": state.config.demo,

@@ -192,7 +192,7 @@
     "import": "Import shipments",
     "import_done": "{imported} imported, {skipped} skipped.",
     "import_failed": "This is not a Parcel Master export.",
-    "version": "Version {version}",
+    "version": "Version {version} · build {build} · companion script {script}",
     "logout": "Log out",
     "sync_now": "Sync now",
     "syncing": "Syncing",

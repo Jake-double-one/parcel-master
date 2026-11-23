@@ -192,7 +192,7 @@
     "import": "Sendungen importieren",
     "import_done": "{imported} importiert, {skipped} übersprungen.",
     "import_failed": "Das ist kein Parcel-Master-Export.",
-    "version": "Version {version}",
+    "version": "Version {version} · Build {build} · Begleit-Skript {script}",
     "logout": "Abmelden",
     "sync_now": "Jetzt abgleichen",
     "syncing": "Gleiche ab",
