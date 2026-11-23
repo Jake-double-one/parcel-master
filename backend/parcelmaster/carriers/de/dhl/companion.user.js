@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      8
+// @version      9
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -82,76 +82,54 @@
     send({ payload: { sendungen: [piece] }, take: [number] });
   }
 
-  // One button per shipment the page lists; where the page has no such list,
-  // one in the corner for the shipment it shows.
+  // One button on the card of each shipment the page lists.
   function paint() {
-    const listed = new Set();
     for (const box of document.querySelectorAll("[data-shipment-id]")) {
-      const number = plain(box.getAttribute("data-shipment-id"));
-      listed.add(number);
-      place(number, box.closest("article") || box, false);
+      place(plain(box.getAttribute("data-shipment-id")), box);
     }
     // A parcel that arrived needs no button, unless it shows that we have it.
-    const wanted = (number) => state.get(number) === "tracked" || !settled.has(number);
-    // In the corner only what the page is about: the account's answers name every
-    // parcel of the account, most of them without saying whether they arrived.
-    const shown = plain(new URLSearchParams(location.search).get("piececode") || "");
-    const told = (number) => {
-      const piece = pieces.get(number);
-      return !!(piece && piece.sendungsdetails && piece.sendungsdetails.sendungsverlauf);
-    };
-    const loose = [...state.keys()].filter(
-      (number) =>
-        !listed.has(number) && wanted(number) && told(number) && (!shown || number === shown),
-    );
-    for (const number of loose) place(number, corner(), true, loose.length > 1);
-    // Tidy up: buttons of parcels that arrived, and corner buttons whose parcel
-    // the page lists by now (the list is often drawn after the first answer).
     for (const button of document.querySelectorAll("button[data-parcel-master]")) {
       const number = button.dataset.parcelMaster;
-      const inCorner = button.parentElement && button.parentElement.id === "parcel-master-corner";
-      if (!wanted(number) || (inCorner && !loose.includes(number))) button.remove();
+      const card = button.parentElement && button.parentElement.hasAttribute("data-shipment-id");
+      const wanted = state.get(number) === "tracked" || !settled.has(number);
+      if (!wanted || !card) button.remove();
     }
-    const box = document.getElementById("parcel-master-corner");
-    if (box && !box.children.length) box.remove();
   }
 
-  // Buttons without a place in the page stack in the corner, one below the other.
-  function corner() {
-    let box = document.getElementById("parcel-master-corner");
-    if (!box) {
-      box = document.createElement("div");
-      box.id = "parcel-master-corner";
-      box.style.cssText =
-        "position:fixed;right:16px;bottom:16px;z-index:99999;display:flex;" +
-        "flex-direction:column;align-items:flex-end;gap:8px;";
-      document.body.appendChild(box);
-    }
-    return box;
-  }
-
-  function place(number, parent, floating, named) {
+  function place(number, card) {
     const known = state.get(number);
     if (!known) return;
     if (known !== "tracked" && settled.has(number)) return;
-    let button = parent.querySelector(':scope > button[data-parcel-master="' + number + '"]');
+    let button = card.querySelector(':scope > button[data-parcel-master="' + number + '"]');
     if (!button) {
       button = document.createElement("button");
       button.type = "button";
       button.dataset.parcelMaster = number;
-      button.style.cssText =
-        "margin:8px 16px 12px;padding:6px 14px;border-radius:999px;border:1px solid #888;" +
-        "background:#fff;color:#111;font:inherit;font-size:14px;cursor:pointer;" +
-        (floating ? "margin:0;" : "");
       button.title = number;
       button.addEventListener("click", () => take(number, button));
-      parent.appendChild(button);
     }
-    button.disabled = known === "tracked";
-    button.style.opacity = known === "tracked" ? "0.6" : "1";
+    if (card.lastElementChild !== button) card.appendChild(button);
+    // In line with the card's heading, whatever stands left of it.
+    const heading = card.querySelector("h3");
+    const inset = heading
+      ? Math.round(heading.getBoundingClientRect().left - card.getBoundingClientRect().left)
+      : 16;
+    const tracked = known === "tracked";
+    // Ours: filled while there is something to press; once tracked only an
+    // outline in the card's own text colour, which reads on light and on dark.
+    const style =
+      "display:block;margin:4px 16px 16px " + Math.max(inset, 16) + "px;padding:7px 16px;" +
+      "border-radius:999px;border:1px solid #6f68d8;font:inherit;font-size:14px;font-weight:700;" +
+      (tracked
+        ? "background:transparent;color:inherit;cursor:default;"
+        : "background:#4b45a8;color:#fff;cursor:pointer;");
+    if (button.dataset.look !== style) {
+      button.style.cssText = style;
+      button.dataset.look = style;
+    }
+    button.disabled = tracked;
     const TEXT = texts();
-    let label = known === "tracked" ? TEXT.taken : known === "suggested" ? TEXT.wait : TEXT.take;
-    if (named) label += " · " + number; // several in the corner: say which is which
+    const label = tracked ? TEXT.taken : known === "suggested" ? TEXT.wait : TEXT.take;
     if (button.textContent !== label) button.textContent = label; // no needless redraw
   }
 
