@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      7
+// @version      8
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -93,7 +93,17 @@
     }
     // A parcel that arrived needs no button, unless it shows that we have it.
     const wanted = (number) => state.get(number) === "tracked" || !settled.has(number);
-    const loose = [...state.keys()].filter((number) => !listed.has(number) && wanted(number));
+    // In the corner only what the page is about: the account's answers name every
+    // parcel of the account, most of them without saying whether they arrived.
+    const shown = plain(new URLSearchParams(location.search).get("piececode") || "");
+    const told = (number) => {
+      const piece = pieces.get(number);
+      return !!(piece && piece.sendungsdetails && piece.sendungsdetails.sendungsverlauf);
+    };
+    const loose = [...state.keys()].filter(
+      (number) =>
+        !listed.has(number) && wanted(number) && told(number) && (!shown || number === shown),
+    );
     for (const number of loose) place(number, corner(), true, loose.length > 1);
     // Tidy up: buttons of parcels that arrived, and corner buttons whose parcel
     // the page lists by now (the list is often drawn after the first answer).
