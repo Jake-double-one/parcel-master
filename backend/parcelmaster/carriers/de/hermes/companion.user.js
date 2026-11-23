@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: Hermes
 // @namespace    parcel-master
-// @version      1
+// @version      2
 // @description  Adds a button to Hermes' tracking page that takes the shipment into your Parcel Master, and passes on what the page shows you about it.
 // @match        https://www.myhermes.de/empfangen/sendungsverfolgung/*
 // @grant        GM_xmlhttpRequest
@@ -88,7 +88,7 @@
     const anchor = document.querySelector(".c-sv2-alert");
     const fixed = "position:fixed;right:16px;bottom:16px;z-index:99999;width:auto;";
     button.style.cssText =
-      "display:flex;align-items:center;gap:14px;width:100%;margin:14px 0 18px;padding:14px 18px;" +
+      "display:flex;align-items:center;gap:14px;width:100%;margin:14px 0 26px;padding:14px 18px;" +
       "border:0;border-radius:10px;background:#4b45a8;color:#fff;font:inherit;font-size:18px;" +
       "font-weight:800;text-align:left;cursor:pointer;" +
       (anchor ? "" : fixed);
