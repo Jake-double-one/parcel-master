@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      6
+// @version      7
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -158,6 +158,87 @@
   }
   if (document.documentElement) watch();
   else document.addEventListener("DOMContentLoaded", watch);
+
+  // -- pressing "Status aktualisieren" for the user ------------------------
+  // The live view only moves when its button is pressed. While it is open the
+  // script presses it at a calm pace, faster as the van comes near, and shows
+  // the seconds left next to it. A click on that note pauses and resumes.
+  const REFRESH = /status aktualisieren|update status|refresh status/i;
+  let left = 0; // seconds until the next press
+  let paused = false;
+
+  function refreshButton() {
+    return [...document.querySelectorAll("button")].find(
+      (button) => REFRESH.test(button.textContent || "") && !button.disabled,
+    );
+  }
+
+  function pace(button) {
+    const area = button.closest("section, article, div[class]") || document.body;
+    const words = (area.parentElement || area).textContent || "";
+    const found = /(\d+)\s*(Zustellstopps?|stops?)/i.exec(words);
+    const stops = found ? Number(found[1]) : null;
+    if (stops !== null && stops < 5) return 30;
+    if (stops !== null && stops < 10) return 60;
+    return 120;
+  }
+
+  function note(button) {
+    let label = button.parentElement.querySelector("[data-parcel-master-refresh]");
+    if (!label) {
+      label = document.createElement("button");
+      label.type = "button";
+      label.dataset.parcelMasterRefresh = "1";
+      label.style.cssText =
+        "margin-left:12px;padding:6px 12px;border-radius:999px;border:1px solid #888;" +
+        "background:#fff;color:#111;font:inherit;font-size:13px;cursor:pointer;";
+      label.addEventListener("click", () => {
+        paused = !paused;
+        tick();
+      });
+      button.insertAdjacentElement("afterend", label);
+    }
+    const german = texts().take.includes("verfolgen");
+    const text = paused
+      ? german ? "Parcel Master: pausiert · weiter" : "Parcel Master: paused · resume"
+      : german ? "Parcel Master drückt in " + left + " s" : "Parcel Master presses in " + left + " s";
+    if (label.textContent !== text) label.textContent = text;
+  }
+
+  function tick() {
+    const button = refreshButton();
+    if (!button) {
+      left = 0; // no live view open: start afresh when one appears
+      return;
+    }
+    if (left <= 0) left = pace(button);
+    if (!paused) {
+      left -= 1;
+      if (left <= 0) {
+        button.click();
+        left = pace(button);
+      }
+    }
+    note(button);
+  }
+
+  // A worker keeps time in a tab that is not in front, where the page's own
+  // timers are slowed down; if the page does not allow one, a plain timer does.
+  function startClock() {
+    try {
+      const code = "setInterval(() => postMessage(0), 1000);";
+      const worker = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })));
+      worker.onmessage = tick;
+      worker.onerror = () => {
+        worker.terminate();
+        setInterval(tick, 1000);
+      };
+    } catch (error) {
+      setInterval(tick, 1000);
+    }
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", startClock);
+  else startClock();
 
   page.fetch = function (...args) {
     const answer = original.apply(this, args);

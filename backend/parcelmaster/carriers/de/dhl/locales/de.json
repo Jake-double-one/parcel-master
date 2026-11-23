@@ -33,6 +33,6 @@
     "api_website": "API, sonst dhl.de"
   },
   "companion": {
-    "help": "Solange du die Sendungsverfolgung von dhl.de mit eingegebener Postleitzahl offen hast, reicht das Skript weiter, was DHL dir dort anzeigt: das mitlaufende Zustellfenster und die Zahl der Stopps. Im Kundenkonto bekommen Sendungen einen Knopf zum Übernehmen."
+    "help": "Solange du die Sendungsverfolgung von dhl.de mit eingegebener Postleitzahl offen hast, reicht das Skript weiter, was DHL dir dort anzeigt: das mitlaufende Zustellfenster und die Zahl der Stopps. Ist die Live-Ansicht offen, drückt es „Status aktualisieren“ für dich: alle 2 Minuten, unter 10 Stopps jede Minute, unter 5 alle 30 Sekunden. Ein Klick auf den Zähler daneben pausiert das. Im Kundenkonto bekommen Sendungen einen Knopf zum Übernehmen."
   }
 }
