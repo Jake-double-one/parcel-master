@@ -13,8 +13,10 @@ from urllib.parse import urlparse
 
 from .carriers.registry import Registry
 
+#: Where the combined script is served, and where it looks for its updates.
+PATH = "/api/companion/parcel-master.user.js"
 #: Raised when the way the parts are put together changes.
-BUILD = 1
+BUILD = 2
 _HEADER = re.compile(r"// ==UserScript==\n(.*?)// ==/UserScript==\n", re.S)
 _LINE = re.compile(r"^// @(\S+)\s+(.*?)\s*$", re.M)
 #: What may stand in the address a script is made out to; anything else could
@@ -70,8 +72,8 @@ def combined(registry: Registry) -> str | None:
         *(f"// @match        {match}" for match in matches),
         *(f"// @grant        {grant}" for grant in grants),
         "// @connect      __HOST__",
-        "// @updateURL    __SERVER__/api/companion/all.user.js",
-        "// @downloadURL  __SERVER__/api/companion/all.user.js",
+        f"// @updateURL    __SERVER__{PATH}",
+        f"// @downloadURL  __SERVER__{PATH}",
         "// @run-at       document-start",
         "// ==/UserScript==",
         "",

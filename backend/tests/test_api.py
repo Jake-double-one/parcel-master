@@ -961,11 +961,13 @@ def test_orders_in_one_box_show_as_one_card(client):
 
 
 def test_all_companion_scripts_come_as_one_that_updates_itself(client):
-    answer = client.get("/api/companion/all.user.js")
+    answer = client.get("/api/companion/parcel-master.user.js")
     assert answer.status_code == 200
+    assert "no-store" in answer.headers["cache-control"]
+    assert client.get("/api/companion/all.user.js").text == answer.text  # the first address
     script = answer.text
     assert script.count("// ==UserScript==") == 1
-    assert "// @updateURL    http://testserver/api/companion/all.user.js" in script
+    assert "// @updateURL    http://testserver/api/companion/parcel-master.user.js" in script
     assert "// @connect      testserver" in script
     for page in ("www.dhl.de", "www.amazon.de", "www.myhermes.de"):
         assert f'["{page}"].includes(location.hostname)' in script

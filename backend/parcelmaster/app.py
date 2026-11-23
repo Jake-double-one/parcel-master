@@ -589,7 +589,11 @@ def create_app(config: Config) -> FastAPI:
             raise fail(400, "bad_host")
         return server
 
+    # The first address stays for scripts installed from it; some caches in
+    # front of a server keep ".js" answers, and a copy kept there is why the
+    # script moved to an address that never allowed one.
     @app.get("/api/companion/all.user.js")
+    @app.get(companion.PATH)
     def companion_scripts(request: Request) -> Response:
         """The scripts of all modules as one. Open to the script manager's update check,
         which may come without a session; it holds program text only, no data."""

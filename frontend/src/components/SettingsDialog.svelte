@@ -487,7 +487,7 @@
             <!-- The version in the address gets past a cache that kept an older script. -->
             <a
               class="chip"
-              href="/api/companion/all.user.js?v={meta.companion_version ?? ''}"
+              href="/api/companion/parcel-master.user.js?v={meta.companion_version ?? ''}"
               target="_blank"
               rel="noopener"
             >
