@@ -425,3 +425,49 @@ async def test_hermes_errors_become_readable_codes(status, code):
         with pytest.raises(CarrierError) as caught:
             await HERMES.track(request("H1000730000826301046"), http)
     assert caught.value.code == code
+
+
+@pytest.mark.anyio
+async def test_hermes_asks_for_the_live_round_only_with_a_postal_code_on_the_delivery_day():
+    calls = []
+    on_the_van = hermes_answer(
+        parcelProgress=[hermes_step("Die Sendung befindet sich in der Zustellung.")]
+    )
+
+    def handler(answer, live):
+        def handle(req: httpx.Request) -> httpx.Response:
+            calls.append((req.url.path, req.headers.get("X-ZipCode")))
+            if "/address/" in req.url.path:
+                return live
+            return httpx.Response(200, json=answer)
+
+        return handle
+
+    async def track(answer, live, postal_code="50667"):
+        calls.clear()
+        wanted = TrackRequest(
+            "H1000730000826301046", {"postal_code": postal_code}, {}, "de", datetime.now()
+        )
+        transport = httpx.MockTransport(handler(answer, live))
+        async with httpx.AsyncClient(transport=transport) as http:
+            return await HERMES.track(wanted, http)
+
+    stops = httpx.Response(200, json={"zipCode": "50667", "livetracking": {"stopsRemaining": 4}})
+    result = await track(on_the_van, stops)
+    assert (result.stops_left, result.stops_about, result.again_in_minutes) == (4, False, 1)
+    assert calls[-1] == ("/tnt/v2/address/H1000730000826301046", "50667")
+
+    many = httpx.Response(200, json={"address": {"livetracking": {"stopsRemaining": 31}}})
+    result = await track(on_the_van, many)
+    assert (result.stops_left, result.stops_about, result.again_in_minutes) == (30, True, 5)
+
+    # A wrong postal code or no live view costs nothing but the stops.
+    for live in (httpx.Response(403), httpx.Response(200, json={"zipCode": "50667"})):
+        result = await track(on_the_van, live)
+        assert result.status is Status.OUT_FOR_DELIVERY and result.stops_left is None
+
+    # Not on the van, or no postal code: Hermes is not asked a second time.
+    await track(hermes_answer(), stops)
+    assert len(calls) == 1
+    await track(on_the_van, stops, postal_code="")
+    assert len(calls) == 1

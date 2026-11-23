@@ -18,6 +18,7 @@ import httpx
 from parcelmaster.carriers.base import (
     CarrierError,
     CarrierModule,
+    Field,
     TrackingEvent,
     TrackingResult,
     TrackRequest,
@@ -27,9 +28,15 @@ from parcelmaster.status import Status
 log = logging.getLogger(__name__)
 
 SEARCH_URL = "https://api.my-deliveries.de/tnt/v2/shipments/search/"
+#: What Hermes shows only to who knows the recipient's postal code: the live round.
+ADDRESS_URL = "https://api.my-deliveries.de/tnt/v2/address/"
 PAGE_URL = "https://www.myhermes.de/empfangen/sendungsverfolgung/sendungsinformation"
 #: The website names no limit; this only keeps a mistake from asking without end.
 DAILY_BUDGET = 500
+#: Hermes writes this many stops for "more than 30".
+MANY_STOPS = 31
+#: From this many stops on, the round is followed by the minute.
+CLOSE_STOPS = 5
 
 # The answer names each step in words and with a code of its own. The codes are
 # not documented, so both are read: the code where it is plain, else the words.
@@ -160,6 +167,19 @@ def parse_response(payload: Any) -> TrackingResult:
     )
 
 
+def read_live(payload: Any, result: TrackingResult) -> None:
+    """Add what the address answer knows about the delivery round: the stops left."""
+    address = payload.get("address") if isinstance(payload, dict) else None
+    address = address if isinstance(address, dict) else payload
+    live = address.get("livetracking") if isinstance(address, dict) else None
+    stops = live.get("stopsRemaining") if isinstance(live, dict) else None
+    if isinstance(stops, bool) or not isinstance(stops, int) or stops < 0:
+        return
+    result.stops_about = stops >= MANY_STOPS
+    result.stops_left = min(stops, MANY_STOPS - 1)
+    result.again_in_minutes = 1 if stops <= CLOSE_STOPS else 5
+
+
 class HermesDe(CarrierModule):
     id = "de.hermes"
     country = "de"
@@ -169,6 +189,8 @@ class HermesDe(CarrierModule):
         re.compile(r"\d{16}"),
         re.compile(r"H\d{19}"),
     )
+    settings_fields = (Field("default_postal_code", placeholder="53113"),)
+    parcel_fields = (Field("postal_code", placeholder="53113"),)
     default_daily_budget = DAILY_BUDGET
     pickup_hold_days = 7
 
@@ -211,7 +233,34 @@ class HermesDe(CarrierModule):
         except ValueError as error:
             log.warning("Hermes answered something else than JSON: %s", response.text[:300])
             raise CarrierError("invalid_response", "not JSON") from error
-        return parse_response(payload)
+        result = parse_response(payload)
+        postal_code = (request.extra.get("postal_code") or "").strip()
+        if postal_code and result.status is Status.OUT_FOR_DELIVERY:
+            await self._add_live(request.tracking_number, postal_code, result, http)
+        return result
+
+    async def _add_live(
+        self, number: str, postal_code: str, result: TrackingResult, http: httpx.AsyncClient
+    ) -> None:
+        """Ask for the live round; whatever goes wrong here, the status itself stands."""
+        try:
+            response = await http.get(
+                ADDRESS_URL + number,
+                headers={"Accept": "application/json", "X-ZipCode": postal_code},
+            )
+        except httpx.HTTPError as error:
+            log.warning("Hermes live round for %s failed: %s", number, type(error).__name__)
+            return
+        if response.status_code == 403:
+            log.warning("Hermes does not accept the postal code entered for %s", number)
+            return
+        if response.status_code >= 400:
+            log.warning("Hermes live round for %s: HTTP %s", number, response.status_code)
+            return
+        try:
+            read_live(response.json(), result)
+        except ValueError:
+            log.warning("Hermes live round for %s was not JSON", number)
 
 
 MODULE = HermesDe()

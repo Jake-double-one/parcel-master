@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "default_postal_code": {
+      "label": "Deine Postleitzahl",
+      "help": "Wird bei eingehenden Paketen als Postleitzahl des Empfängers vorausgefüllt."
+    }
+  },
+  "parcel": {
+    "postal_code": {
+      "label": "Postleitzahl des Empfängers",
+      "help": "Optional. Mit ihr zeigt Hermes am Zustelltag, wie viele Stopps das Fahrzeug noch vor dir hat. Sie geht nur an Hermes."
+    }
+  }
+}

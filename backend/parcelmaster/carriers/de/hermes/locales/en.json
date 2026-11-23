@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "default_postal_code": {
+      "label": "Your postal code",
+      "help": "Pre-filled as the recipient's postal code for incoming parcels."
+    }
+  },
+  "parcel": {
+    "postal_code": {
+      "label": "Recipient postal code",
+      "help": "Optional. With it Hermes tells on the delivery day how many stops the van still makes before yours. It is sent to Hermes only."
+    }
+  }
+}
