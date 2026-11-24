@@ -249,8 +249,12 @@ def test_dhl_reads_the_stops_left_from_live_tracking():
     result = parse_web_response(payload)
     assert (result.stops_left, result.stops_about) == (10, True)
     # The script brings these on: lookups of our own wait an hour after its last word.
+    # Ten stops and more: the usual pace. Fewer: only the script is listened to.
+    ((_, far),) = DHL.take_from_companion(payload)
+    assert (far.stops_left, far.hold_minutes, far.again_in_minutes) == (10, None, None)
+    payload["sendungen"][0]["sendungsdetails"]["liveTracking"]["countdownTextKey"] = "CD02"
     ((_, live),) = DHL.take_from_companion(payload)
-    assert (live.stops_left, live.hold_minutes, live.again_in_minutes) == (10, 60, None)
+    assert (live.stops_left, live.hold_minutes, live.again_in_minutes) == (9, 60, None)
     del payload["sendungen"][0]["sendungsdetails"]["liveTracking"]
     ((_, plain),) = DHL.take_from_companion(payload)
     assert plain.hold_minutes is None

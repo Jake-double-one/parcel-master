@@ -150,7 +150,7 @@ DHL on the day of delivery, while the parcel is out for delivery:
 | | 5 stops or fewer | 1 min |
 
 The companion's live news stand for 10 minutes against an ordinary answer.
-While DHL's page counts the stops and the script passes them on, the DHL API
+While DHL's page counts fewer than 10 stops and the script passes them on, the DHL API
 is not asked at all: one lookup follows an hour after the script's last word,
 unless that word was "delivered".
 

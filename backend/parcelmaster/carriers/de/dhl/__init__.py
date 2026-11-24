@@ -415,6 +415,8 @@ def live_stops(live: dict[str, Any]) -> tuple[int | None, bool]:
 
 #: After the companion script's last word on a round, the API is asked this much later.
 QUIET_AFTER_LIVE_MINUTES = 60
+#: Below this many stops the script alone is listened to; DHL counts from 20 on.
+FEW_STOPS = 10
 
 
 class DhlDe(CarrierModule):
@@ -477,8 +479,8 @@ class DhlDe(CarrierModule):
                 result = parse_web_response({"sendungen": [piece]})
             except CarrierError:
                 continue
-            if result.stops_left is not None:
-                # The page counts the stops and the script passes each change on:
+            if result.stops_left is not None and result.stops_left < FEW_STOPS:
+                # The van is near and the script passes each change on:
                 # asking the API meanwhile would only put its planned window back.
                 # One lookup of our own follows when the script has been quiet for
                 # a while, to close the parcel if the tab was shut before the door.
