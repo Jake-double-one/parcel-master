@@ -15,6 +15,7 @@ import httpx
 from .carriers.base import (
     CarrierError,
     CarrierModule,
+    TrackingEvent,
     TrackingResult,
     TrackRequest,
     switched_on,
@@ -212,6 +213,23 @@ def pickup_deadline(parcel: dict[str, Any], module: CarrierModule | None) -> dat
     return ready + timedelta(days=module.pickup_hold_days)
 
 
+def _collected(
+    store: Store, parcel: dict[str, Any], result: TrackingResult, now: datetime
+) -> list[TrackingEvent]:
+    """The steps kept so far, with the state just told added if it is a new one."""
+    events = [
+        TrackingEvent(
+            parse_iso(e["timestamp"]), Status(e["status"]), e["description"], e["location"]
+        )
+        for e in store.parcel_events(parcel["id"])
+    ]
+    newest = events[-1] if events else None
+    told = (result.status, result.description)
+    if result.description and (newest is None or (newest.status, newest.description) != told):
+        events.append(TrackingEvent(now, result.status, result.description, result.location))
+    return events
+
+
 def record_result(
     store: Store,
     parcel: dict[str, Any],
@@ -226,6 +244,8 @@ def record_result(
     With ``poll=False`` the parcel is not scheduled for lookups of its own:
     its status arrives with the next sync of the service that imported it.
     """
+    if result.collect:
+        result.events = _collected(store, parcel, result, now)
     events = sorted(
         (
             {

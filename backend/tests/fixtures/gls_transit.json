@@ -1,0 +1,27 @@
+{
+  "tuStatus": [
+    {
+      "postalCode": "",
+      "emailNotificationCard": false,
+      "progressBar": {
+        "level": 50,
+        "statusInfo": "INTRANSIT",
+        "evtNos": ["2.0", "2.0", "0.0", "0.100"],
+        "statusBar": [
+          {"status": "PREADVICE", "statusText": "", "imageStatus": "COMPLETE", "imageText": "Datenerfassung"},
+          {"status": "INTRANSIT", "statusText": "Das Paket ist unterwegs zum Ziel-Paketzentrum.", "imageStatus": "CURRENT", "imageText": "Unterwegs"},
+          {"status": "INWAREHOUSE", "statusText": "", "imageStatus": "PENDING", "imageText": "Ziel-Paketzentrum"},
+          {"status": "INDELIVERY", "statusText": "", "imageStatus": "PENDING", "imageText": "In Zustellung"},
+          {"status": "DELIVERED", "statusText": "", "imageStatus": "PENDING", "imageText": "Zugestellt"}
+        ],
+        "statusText": "Unterwegs",
+        "retourFlag": false,
+        "colourIndex": 3
+      },
+      "arrivalTime": {"name": "Zustellung voraussichtlich:", "value": "25.11.2026, 12:45 - 16:00"},
+      "owners": [],
+      "tuNo": "10000000001",
+      "betterMileRTTAvailable": false
+    }
+  ]
+}

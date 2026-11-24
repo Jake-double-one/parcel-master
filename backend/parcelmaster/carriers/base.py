@@ -56,6 +56,9 @@ class TrackingResult:
     #: The opposite: whoever brought this keeps bringing news, so lookups of our
     #: own can wait this long. Each new answer moves the wait along.
     hold_minutes: int | None = None
+    #: The carrier tells only where the parcel stands now, no history: each new
+    #: state is added to the steps collected so far.
+    collect: bool = False
     #: Only the live notes (stops, window) are news; status and history stay as filed.
     live_only: bool = False
     #: The live view of the round is gone though the parcel is still on its way.

@@ -569,3 +569,18 @@ def test_a_new_step_is_told_once_and_only_if_wanted(world):
     assert sorted(notice.kind for notice in both) == ["out_for_delivery", "step"]
     asyncio.run(notifier.handle(both))
     assert sent == ["step", "out_for_delivery"]  # told by the status message alone
+
+
+def test_states_of_a_carrier_without_history_are_collected(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    module.answers = [
+        TrackingResult(Status.IN_TRANSIT, "On its way", collect=True),
+        TrackingResult(Status.IN_TRANSIT, "On its way", collect=True),  # nothing new
+        TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", collect=True),
+    ]
+    for _ in module.answers[:]:
+        refresh(store, registry, parcel_id)
+    steps = store.parcel_events(parcel_id)
+    assert [step["description"] for step in steps] == ["On its way", "On the van"]
+    assert all(step["timestamp"] for step in steps)

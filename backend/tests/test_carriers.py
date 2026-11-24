@@ -8,6 +8,9 @@ import pytest
 from parcelmaster.carriers.base import CarrierError, TrackRequest
 from parcelmaster.carriers.de.dhl import MODULE as DHL
 from parcelmaster.carriers.de.dhl import parse_parcel_de, parse_response, parse_web_response
+from parcelmaster.carriers.de.gls import MODULE as GLS
+from parcelmaster.carriers.de.gls import parse_response as gls_parse
+from parcelmaster.carriers.de.gls import read_window as gls_window
 from parcelmaster.carriers.de.hermes import MODULE as HERMES
 from parcelmaster.carriers.de.hermes import parse_response as hermes_parse
 from parcelmaster.carriers.demo import MODULE as DEMO
@@ -514,3 +517,69 @@ def test_brand_colours_are_plain_hex():
 
     for module in discover().all():
         assert module.colour == "" or re.fullmatch(r"#[0-9a-f]{6}", module.colour), module.id
+
+
+# -- GLS ------------------------------------------------------------------
+
+
+def gls_answer(stage="INTRANSIT", **changes):
+    payload = json.loads((FIXTURES / "gls_transit.json").read_text())
+    parcel = payload["tuStatus"][0]
+    parcel["progressBar"]["statusInfo"] = stage
+    parcel["progressBar"].update(changes)
+    return payload
+
+
+def test_gls_recognises_its_numbers_and_links():
+    assert GLS.matches("10000000001")
+    assert GLS.matches("100000000012")
+    assert not GLS.matches("1000000000")
+    link = "https://www.gls-pakete.de/reach-sendungsverfolgung?match=10000000001"
+    assert GLS.extract_from_url(link + "&trackingNumber=10000000001") == "10000000001"
+    assert GLS.extract_from_url("https://example.com/?match=10000000001") is None
+    assert GLS.tracking_url("10000000001", {}, "de").startswith(link)
+
+
+def test_gls_reads_stage_sentence_and_window():
+    result = gls_parse(gls_answer())
+    assert result.status is Status.IN_TRANSIT
+    assert result.description == "Das Paket ist unterwegs zum Ziel-Paketzentrum."
+    assert result.eta_from == datetime(2026, 11, 25, 12, 45)
+    assert result.eta_to == datetime(2026, 11, 25, 16, 0)
+    assert result.collect and result.events == []
+
+
+@pytest.mark.parametrize(
+    ("stage", "changes", "status"),
+    [
+        ("PREADVICE", {}, Status.REGISTERED),
+        ("INWAREHOUSE", {}, Status.IN_TRANSIT),
+        ("INDELIVERY", {}, Status.OUT_FOR_DELIVERY),
+        ("DELIVERED", {}, Status.DELIVERED),
+        ("DELIVERED", {"retourFlag": True}, Status.RETURNED),
+        ("DELIVEREDPS", {}, Status.READY_FOR_PICKUP),
+        ("NOTDELIVERED", {}, Status.PROBLEM),
+        ("SOMETHING_NEW", {}, Status.IN_TRANSIT),
+    ],
+)
+def test_gls_stages(stage, changes, status):
+    result = gls_parse(gls_answer(stage, **changes))
+    assert result.status is status
+    if status in (Status.DELIVERED, Status.RETURNED):
+        assert result.eta_from is None  # the time named then is no forecast
+
+
+def test_gls_window_in_both_languages():
+    assert gls_window("25-Nov-2026, 12:45 - 16:00") == (
+        datetime(2026, 11, 25, 12, 45),
+        datetime(2026, 11, 25, 16, 0),
+    )
+    assert gls_window("25.11.2026") == (datetime(2026, 11, 25), datetime(2026, 11, 25, 23, 59))
+    assert gls_window("bald") == (None, None)
+    assert gls_window(None) == (None, None)
+
+
+def test_gls_without_a_parcel_is_not_found():
+    with pytest.raises(CarrierError) as caught:
+        gls_parse({"tuStatus": []})
+    assert caught.value.code == "not_found"
