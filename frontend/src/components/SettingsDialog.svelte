@@ -42,6 +42,7 @@
     "problem",
     "stale",
     "pickup_reminder",
+    "step",
     "any_change",
   ];
 

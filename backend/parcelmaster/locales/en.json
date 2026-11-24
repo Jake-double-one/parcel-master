@@ -249,6 +249,7 @@
     "health_untested": "Not asked yet",
     "health_ok": "Working",
     "health_failing": "Failing",
+    "event_step": "the history shows a new step",
     "event_stops": "the number of stops before delivery drops",
     "companion": "Companion script",
     "companion_help": "A userscript for your browser (Tampermonkey or Violentmonkey), one for all carriers. It passes on to Parcel Master what the carriers' pages show you, asks nothing there itself and sends only to this server. Your script manager keeps it up to date from here. If you still have the separate scripts for DHL or Amazon installed, remove them.",
@@ -360,6 +361,9 @@
     "test": {
       "title": "Parcel Master",
       "body": "Test message. Notifications work."
+    },
+    "step": {
+      "body": "{carrier}: {description}"
     },
     "delivery_window": {
       "body": "{carrier} names a delivery window: {window}"

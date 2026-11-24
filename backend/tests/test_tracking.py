@@ -513,3 +513,46 @@ def test_parcels_closed_on_the_vans_loading_are_taken_up_again():
     assert store.due_parcels(datetime.now(UTC).isoformat(), 10) == [ids[0]]
     assert right["status"] == "delivered"
     assert reopen_mistaken(store) == 0
+
+
+def test_a_new_step_is_told_once_and_only_if_wanted(world):
+    from parcelmaster.carriers.base import TrackingEvent
+
+    store, module, registry, _, parcel_id = world
+    notifier = Notifier(store, registry, Translations({}), "mailto:test@example.org")
+    sent = []
+
+    async def fake_send(message, settings):
+        sent.append(message["kind"])
+
+    notifier.send = fake_send
+
+    def answer(status, *hours):
+        steps = [
+            TrackingEvent(
+                datetime(2026, 11, 24, hour, tzinfo=UTC), Status.IN_TRANSIT, f"Step {hour}"
+            )
+            for hour in hours
+        ]
+        return TrackingResult(status, f"Step {hours[-1]}", events=steps)
+
+    module.answers = [
+        answer(Status.IN_TRANSIT, 6),
+        answer(Status.IN_TRANSIT, 6, 8),  # a new step, same status
+        answer(Status.OUT_FOR_DELIVERY, 6, 8, 10),  # a step that changes the status
+    ]
+    assert refresh(store, registry, parcel_id) == []  # the first answer is not news
+    step = refresh(store, registry, parcel_id)
+    assert [notice.kind for notice in step] == ["step"]
+    asyncio.run(notifier.handle(step))
+    assert sent == []  # off unless switched on
+
+    settings = store.get_settings()
+    settings["notifications"]["events"]["step"] = True
+    store.save_settings(settings)
+    asyncio.run(notifier.handle(step))
+    assert sent == ["step"]
+    both = refresh(store, registry, parcel_id)
+    assert sorted(notice.kind for notice in both) == ["out_for_delivery", "step"]
+    asyncio.run(notifier.handle(both))
+    assert sent == ["step", "out_for_delivery"]  # told by the status message alone

@@ -104,6 +104,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
             "delivered": True,
             "delivery_window": True,
             "stops": True,
+            "step": False,
             "discovered": True,
             "problem": True,
             "stale": True,

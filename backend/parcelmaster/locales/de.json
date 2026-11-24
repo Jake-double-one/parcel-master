@@ -249,6 +249,7 @@
     "health_untested": "Noch nicht abgefragt",
     "health_ok": "Läuft",
     "health_failing": "Gestört",
+    "event_step": "der Verlauf einen neuen Schritt zeigt",
     "event_stops": "die Zahl der Stopps bis zur Zustellung sinkt",
     "companion": "Begleit-Skript",
     "companion_help": "Ein Userscript für deinen Browser (Tampermonkey oder Violentmonkey), eines für alle Paketdienste. Es reicht an Parcel Master weiter, was dir die Seiten der Dienste anzeigen, fragt dort selbst nichts ab und sendet nur an diesen Server. Dein Skript-Manager hält es von hier aus aktuell. Falls du noch die einzelnen Skripte für DHL oder Amazon installiert hast, entferne sie.",
@@ -360,6 +361,9 @@
     "test": {
       "title": "Parcel Master",
       "body": "Testmeldung. Meldungen funktionieren."
+    },
+    "step": {
+      "body": "{carrier}: {description}"
     },
     "delivery_window": {
       "body": "{carrier} nennt Zustellfenster: {window}"

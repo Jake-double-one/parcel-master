@@ -12,6 +12,7 @@ from typing import Any
 from .carriers.registry import Registry
 from .db import Store
 from .i18n import Translations
+from .status import Status
 from .tracking import Notice, in_window, timezone
 
 log = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ def in_quiet_hours(settings: dict[str, Any], now: datetime | None = None) -> boo
 
 def wanted(settings: dict[str, Any], kind: str) -> bool:
     events = settings["notifications"]["events"]
-    if kind in ("stale", "pickup_reminder", "delivery_window", "stops", "discovered"):
+    if kind in ("stale", "pickup_reminder", "delivery_window", "stops", "discovered", "step"):
         return bool(events.get(kind))
     return bool(events.get("any_change") or (kind in STATUS_KINDS and events.get(kind)))
 
@@ -91,8 +92,16 @@ class Notifier:
         if not notices:
             return
         settings = self.store.get_settings()
+        # A step that also changed the status is told once, by the status message.
+        told = {
+            notice.parcel["id"]
+            for notice in notices
+            if notice.kind in {str(status) for status in Status} and wanted(settings, notice.kind)
+        }
         for notice in notices:
             if not wanted(settings, notice.kind):
+                continue
+            if notice.kind == "step" and notice.parcel["id"] in told:
                 continue
             message = self.compose(notice, settings["language"])
             if in_quiet_hours(settings):

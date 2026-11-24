@@ -59,7 +59,7 @@ NEVER = "9999-12-31T00:00:00+00:00"
 class Notice:
     """Something worth telling the user about."""
 
-    kind: str  # a Status value, "stale" or "pickup_reminder"
+    kind: str  # a Status value, "step", "stale", "pickup_reminder" and the like
     parcel: dict[str, Any]
     params: dict[str, Any]
 
@@ -351,6 +351,14 @@ def record_result(
     # The first answer for a parcel is not news: the user just added it.
     if parcel["last_success_at"] is not None and status != old_status:
         notices.append(Notice(str(status), updated, {"description": result.description}))
+    # A new step in the history, for who wants to hear of each one.
+    if (
+        parcel["last_success_at"] is not None
+        and events
+        and last_event_at
+        and last_event_at > (parcel["last_event_at"] or "")
+    ):
+        notices.append(Notice("step", updated, {"description": events[-1]["description"]}))
     return notices
 
 
