@@ -609,6 +609,33 @@ def _link_shape(link: str | None) -> str:
     return f"{parsed.path}?{'&'.join(sorted(parse_qs(parsed.query)))}"
 
 
+_LIVE_WORDS = re.compile(
+    r"[^<>{}\"]{0,40}(Stopps? entfernt|stops? away|n\S{1,2}chste[rn]? (Halt|Stopp)|next stop)"
+    r"[^<>{}\"]{0,20}",
+    re.I,
+)
+
+
+def _live_clues(page: Any) -> str:
+    """Whether the page as the server gets it carries the live round, and how.
+
+    Amazon draws the map in the browser. This tells from the log whether the
+    fetched page holds it too: the map's element, what it is fed with, and any
+    wording about stops. Names and shapes only, no addresses or positions.
+    """
+    if page is None:
+        return ""
+    clues = []
+    box = page.select_one("#mapTracker")
+    if box is not None:
+        fed = sorted(name for name in box.attrs if name.startswith("data-"))
+        clues.append(f"map element, fed by {fed}, {len(box.find_all(True))} parts inside")
+    words = sorted({found.group(0).strip()[:80] for found in _LIVE_WORDS.finditer(str(page))})
+    if words:
+        clues.append(f"wording {words[:5]}")
+    return "; ".join(clues)
+
+
 def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) -> Any:
     """The carrier page of one parcel, or None if Amazon shows none that can be read.
 
@@ -648,6 +675,9 @@ def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) 
         number,
         lines,
     )
+    live = _live_clues(getattr(found, "parsed", None))
+    if live:
+        log.info("amazon %s: live view in the fetched page: %s", order_number, live)
     if found is not None and not (carrier and number and lines):
         log.info("amazon %s: page %s", order_number, _page_clues(getattr(found, "parsed", None)))
     return found
