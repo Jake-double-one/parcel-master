@@ -1,0 +1,5 @@
+{
+  "companion": {
+    "help": "GLS zeigt den Verlauf einer Sendung nur auf seiner eigenen Sendungsverfolgung. Öffnest du sie, reicht das Skript den Verlauf mit den echten Zeiten weiter, und ein Knopf übernimmt die Sendung in Parcel Master."
+  }
+}

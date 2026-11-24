@@ -216,18 +216,25 @@ def pickup_deadline(parcel: dict[str, Any], module: CarrierModule | None) -> dat
 def _collected(
     store: Store, parcel: dict[str, Any], result: TrackingResult, now: datetime
 ) -> list[TrackingEvent]:
-    """The steps kept so far, with the state just told added if it is a new one."""
+    """The steps kept so far, with the state just told added if the carrier tells a new one.
+
+    What it told last is remembered apart from the steps: a companion script may
+    have brought the real history meanwhile, and that one already holds the state.
+    """
     events = [
         TrackingEvent(
             parse_iso(e["timestamp"]), Status(e["status"]), e["description"], e["location"]
         )
         for e in store.parcel_events(parcel["id"])
     ]
-    newest = events[-1] if events else None
-    told = (result.status, result.description)
-    if result.description and (newest is None or (newest.status, newest.description) != told):
+    told = parcel["extra"].get("told")
+    if result.description and told != _told(result) and (told is not None or not events):
         events.append(TrackingEvent(now, result.status, result.description, result.location))
     return events
+
+
+def _told(result: TrackingResult) -> str:
+    return f"{result.status}|{result.description}"
 
 
 def record_result(
@@ -279,7 +286,7 @@ def record_result(
         and seen_live is not None
         and now - seen_live < LIVE_STAYS
     )
-    if keep_live:
+    if keep_live or (result.keep_window and status not in FINAL):
         eta_from_iso, eta_to_iso = parcel["eta_from"], parcel["eta_to"]
     delay = next_delay_minutes(
         status,
@@ -343,6 +350,8 @@ def record_result(
         extra["live_at"] = now_iso
         if result.home:
             extra["home"] = "{:.5f},{:.5f}".format(*result.home)
+    if result.collect:
+        extra["told"] = _told(result)
     if extra != parcel["extra"]:
         store.set_parcel_extra(parcel["id"], extra)
 

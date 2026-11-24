@@ -26,7 +26,7 @@ with one small module per carrier.
 | --- | --- | --- | --- |
 | DE | DHL | Reads the public tracking of dhl.de; with an app's key and secret, the official "Parcel DE Tracking" API | Nothing. Optionally a free app at [developer.dhl.com](https://developer.dhl.com) with "Parcel DE Tracking" enabled; no business account needed |
 | DE | Hermes | Reads the public tracking of myhermes.de | Nothing |
-| DE | GLS | Reads the open status GLS gives for a parcel number: stage and delivery window. GLS tells no history there, so Parcel Master notes each new stage itself | Nothing |
+| DE | GLS | Reads the open status GLS gives for a parcel number: stage and delivery window. The history stands only on GLS' own tracking page; the companion script passes it on when you open that page, and in between Parcel Master notes each new stage itself | Nothing |
 | DE | Amazon | Reads the order history of your account with [amazon-orders](https://github.com/alexdlaird/amazon-orders) | Account e-mail and password; the two-step secret key if two-step verification is on |
 
 A demo carrier (`DEMO` followed by digits) exists for the demo mode and for
@@ -35,7 +35,7 @@ development.
 ### Companion script
 
 Optional: one userscript for your browser (Tampermonkey or Violentmonkey),
-installed from Settings → Carriers. On the pages of DHL, Hermes and Amazon it
+installed from Settings → Carriers. On the pages of DHL, Hermes, GLS and Amazon it
 passes on to your Parcel Master what the page shows you, such as the live
 delivery window and the stops left, and adds buttons to take a shipment. It
 asks the carriers nothing itself and sends only to your server. While DHL's

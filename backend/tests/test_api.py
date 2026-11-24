@@ -971,7 +971,7 @@ def test_all_companion_scripts_come_as_one_that_updates_itself(client):
     assert script.count("// ==UserScript==") == 1
     assert "// @updateURL    http://testserver/api/companion/parcel-master.user.js" in script
     assert "// @connect      testserver" in script
-    for page in ("www.dhl.de", "www.amazon.de", "www.myhermes.de"):
+    for page in ("www.dhl.de", "www.amazon.de", "www.myhermes.de", "www.gls-pakete.de"):
         assert f'["{page}"].includes(location.hostname)' in script
     assert "__SERVER__" not in script and "__HOST__" not in script
 
@@ -1101,3 +1101,18 @@ def test_the_vans_position_reaches_the_card_unless_switched_off(client):
     client.put("/api/settings", json={"carriers": {"de.dhl": {"live_map": "off"}}})
     client.post("/api/companion/de.dhl", json={"payload": {"sendungen": [piece(51.535)]}})
     assert card_map() is None
+
+
+def test_the_gls_page_hands_over_its_history(client):
+    steps = [
+        {"time": "2026-11-24 09:27:28", "text": "Das Paket ist im Paketzentrum eingetroffen."},
+        {"time": "2026-11-23 17:31:20", "text": "Das Paket wurde durch GLS übernommen."},
+    ]
+    parcel = {"number": "100 0000 0001", "sender": "Shop", "events": steps}
+    body = {"payload": {"parcels": [parcel]}}
+    seen = client.post("/api/companion/de.gls", json=body).json()
+    assert seen["suggested"] == ["10000000001"] and seen["tracked"] == []
+    taken = client.post("/api/companion/de.gls", json={**body, "take": ["10000000001"]})
+    assert taken.json()["tracked"] == ["10000000001"]
+    [card] = client.get("/api/shipments").json()
+    assert card["title"] == "Shop" and card["parcels"][0]["status"] == "in_transit"

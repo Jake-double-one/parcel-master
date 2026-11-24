@@ -59,6 +59,8 @@ class TrackingResult:
     #: The carrier tells only where the parcel stands now, no history: each new
     #: state is added to the steps collected so far.
     collect: bool = False
+    #: Says nothing about when the parcel comes: the window filed stays.
+    keep_window: bool = False
     #: Only the live notes (stops, window) are news; status and history stay as filed.
     live_only: bool = False
     #: The live view of the round is gone though the parcel is still on its way.

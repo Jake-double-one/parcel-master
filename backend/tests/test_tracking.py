@@ -1,10 +1,17 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
 
-from parcelmaster.carriers.base import CarrierError, CarrierModule, Field, TrackingResult
+from parcelmaster.carriers.base import (
+    CarrierError,
+    CarrierModule,
+    Field,
+    TrackingEvent,
+    TrackingResult,
+)
 from parcelmaster.carriers.registry import Registry
 from parcelmaster.db import Store
 from parcelmaster.i18n import Translations
@@ -15,6 +22,7 @@ from parcelmaster.tracking import (
     delivery_window,
     next_delay_minutes,
     periodic_notices,
+    record_result,
     refresh_parcel,
     resting,
 )
@@ -584,3 +592,28 @@ def test_states_of_a_carrier_without_history_are_collected(world, monkeypatch):
     steps = store.parcel_events(parcel_id)
     assert [step["description"] for step in steps] == ["On its way", "On the van"]
     assert all(step["timestamp"] for step in steps)
+
+
+def test_a_history_brought_from_the_page_is_not_doubled_and_keeps_the_window(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    zone, now = ZoneInfo("Europe/Berlin"), datetime.now(UTC)
+    window = now + timedelta(days=1)
+    page = TrackingResult(
+        Status.IN_TRANSIT,
+        "At the depot",
+        events=[TrackingEvent(now - timedelta(hours=3), Status.IN_TRANSIT, "At the depot")],
+        keep_window=True,
+    )
+    record_result(store, store.get_parcel(parcel_id), page, 120, zone, now)
+    module.answers = [
+        TrackingResult(Status.IN_TRANSIT, "On its way", collect=True, eta_from=window),
+        TrackingResult(Status.OUT_FOR_DELIVERY, "On the van", collect=True, eta_from=window),
+    ]
+    refresh(store, registry, parcel_id)
+    # The page's history already holds this state: nothing is added.
+    assert [e["description"] for e in store.parcel_events(parcel_id)] == ["At the depot"]
+    record_result(store, store.get_parcel(parcel_id), page, 120, zone, now)
+    assert store.get_parcel(parcel_id)["eta_from"]  # the page says nothing against it
+    refresh(store, registry, parcel_id)
+    assert [e["description"] for e in store.parcel_events(parcel_id)][-1] == "On the van"

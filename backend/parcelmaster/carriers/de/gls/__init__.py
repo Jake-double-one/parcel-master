@@ -2,7 +2,9 @@
 
 Reads the open answer GLS gives about a parcel number: where the parcel
 stands and when it is expected. That answer holds no history, so each new
-state is added to the one collected so far.
+state is added to the one collected so far. The real history stands only on
+GLS' own tracking page, which answers a browser and no server: the companion
+script passes it on when the user looks at that page.
 """
 
 from __future__ import annotations
@@ -10,6 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -18,6 +21,8 @@ import httpx
 from parcelmaster.carriers.base import (
     CarrierError,
     CarrierModule,
+    Found,
+    TrackingEvent,
     TrackingResult,
     TrackRequest,
 )
@@ -47,6 +52,51 @@ _WINDOW = re.compile(
     r"(\d{1,2})[.\-](\d{1,2}|[A-Za-z]{3})[.\-](\d{4})"
     r"(?:\D{1,3}(\d{1,2}):(\d{2})(?:\s*-\s*(\d{1,2}):(\d{2}))?)?"
 )
+
+
+# The sentences of the history on GLS' page. "Delivered" ends the tracking, so
+# it only counts as the plain past: not "wird zugestellt", not "konnte nicht".
+_STEPS = (
+    (re.compile(r"zurück an den (absender|versender)|retourniert|rücksendung", re.I), "returned"),
+    (
+        re.compile(
+            r"nicht (zugestellt|angetroffen|zustellbar|möglich)|konnte nicht|zustellversuch"
+            r"|verzöger|beschädigt|annahme verweigert",
+            re.I,
+        ),
+        "problem",
+    ),
+    (
+        re.compile(
+            r"(paketshop|paketstation|abholort)[^.]*(zugestellt|abgegeben|bereit)"
+            r"|zur abholung bereit|abholbereit",
+            re.I,
+        ),
+        "ready_for_pickup",
+    ),
+    (re.compile(r"^das paket wurde (erfolgreich )?(zugestellt|abgeholt)\b", re.I), "delivered"),
+    (
+        re.compile(r"in (der )?zustellung|zustellfahrzeug|im laufe des tages zugestellt", re.I),
+        "out_for_delivery",
+    ),
+    (re.compile(r"noch nicht an gls übergeben|paketdaten wurden", re.I), "registered"),
+)
+
+
+def step_status(text: str) -> Status:
+    """The status one sentence of the page's history stands for."""
+    for words, status in _STEPS:
+        if words.search(text):
+            return Status(status)
+    return Status.IN_TRANSIT
+
+
+def _page_time(value: Any) -> datetime | None:
+    """A time as the page notes it: "2026-11-24 09:27:28", local."""
+    try:
+        return datetime.fromisoformat(value.strip()) if isinstance(value, str) else None
+    except ValueError:
+        return None
 
 
 def read_window(text: Any) -> tuple[datetime | None, datetime | None]:
@@ -129,6 +179,73 @@ class GlsDe(CarrierModule):
             if self.matches(number):
                 return number
         return None
+
+    def companion_script(self) -> str | None:
+        return (Path(__file__).parent / "companion.user.js").read_text(encoding="utf-8")
+
+    def _shown(self, payload: Any) -> list[tuple[str, dict[str, Any], list[TrackingEvent]]]:
+        """Number, entry and history for each parcel the tracking page handed on."""
+        parcels = payload.get("parcels") if isinstance(payload, dict) else None
+        shown = []
+        for parcel in (parcels if isinstance(parcels, list) else [])[:10]:
+            if not isinstance(parcel, dict) or not isinstance(parcel.get("number"), str):
+                continue
+            number = self.normalize(parcel["number"])
+            if not self.matches(number):
+                continue
+            events = []
+            steps = parcel.get("events")
+            for step in (steps if isinstance(steps, list) else [])[:100]:
+                text = step.get("text") if isinstance(step, dict) else None
+                when = _page_time(step.get("time")) if isinstance(step, dict) else None
+                if not isinstance(text, str) or not text.strip() or when is None:
+                    continue
+                place = step.get("place")
+                events.append(
+                    TrackingEvent(
+                        timestamp=when,
+                        status=step_status(text.strip()),
+                        description=text.strip()[:300],
+                        location=place.strip()[:100] or None if isinstance(place, str) else None,
+                    )
+                )
+            events.sort(key=lambda event: event.timestamp, reverse=True)  # newest first
+            shown.append((number, parcel, events))
+        return shown
+
+    def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
+        """The history GLS' tracking page showed in the user's browser."""
+        return [
+            (
+                number,
+                TrackingResult(
+                    status=events[0].status,
+                    description=events[0].description,
+                    location=events[0].location,
+                    events=events,
+                    keep_window=True,  # the page's history names no window
+                ),
+            )
+            for number, _, events in self._shown(payload)
+            if events
+        ]
+
+    def discover(self, payload: Any) -> list[Found]:
+        return [
+            Found(
+                number=number,
+                title=str(parcel.get("sender") or "").strip()[:200],
+                settled=bool(events) and events[0].status in (Status.DELIVERED, Status.RETURNED),
+                full=bool(events),
+            )
+            for number, parcel, events in self._shown(payload)
+        ]
+
+    def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
+        return [
+            f"{number} ({'tracked' if number in known else 'not tracked'}), {len(events)} step(s)"
+            for number, _, events in self._shown(payload)
+        ]
 
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
         place = "DE/de" if request.language == "de" else "GROUP/en"

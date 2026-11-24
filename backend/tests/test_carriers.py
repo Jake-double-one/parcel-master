@@ -11,6 +11,7 @@ from parcelmaster.carriers.de.dhl import parse_parcel_de, parse_response, parse_
 from parcelmaster.carriers.de.gls import MODULE as GLS
 from parcelmaster.carriers.de.gls import parse_response as gls_parse
 from parcelmaster.carriers.de.gls import read_window as gls_window
+from parcelmaster.carriers.de.gls import step_status as gls_step
 from parcelmaster.carriers.de.hermes import MODULE as HERMES
 from parcelmaster.carriers.de.hermes import parse_response as hermes_parse
 from parcelmaster.carriers.demo import MODULE as DEMO
@@ -583,3 +584,52 @@ def test_gls_without_a_parcel_is_not_found():
     with pytest.raises(CarrierError) as caught:
         gls_parse({"tuStatus": []})
     assert caught.value.code == "not_found"
+
+
+@pytest.mark.parametrize(
+    ("text", "status"),
+    [
+        (
+            "Die Paketdaten wurden im GLS IT-System erfasst; "
+            "das Paket wurde noch nicht an GLS übergeben.",
+            Status.REGISTERED,
+        ),
+        ("Das Paket wurde durch GLS übernommen.", Status.IN_TRANSIT),
+        ("Das Paket ist im Paketzentrum eingetroffen.", Status.IN_TRANSIT),
+        ("Das Paket wird voraussichtlich im Laufe des Tages zugestellt.", Status.OUT_FOR_DELIVERY),
+        ("Das Paket wurde zugestellt.", Status.DELIVERED),
+        ("Das Paket wurde im PaketShop zugestellt.", Status.READY_FOR_PICKUP),
+        ("Das Paket konnte nicht zugestellt werden.", Status.PROBLEM),
+        ("Das Paket wurde verladen und wird heute zugestellt.", Status.IN_TRANSIT),
+    ],
+)
+def test_gls_sentences_of_the_page(text, status):
+    assert gls_step(text) is status
+
+
+def test_gls_page_history_keeps_times_and_drops_what_is_not_a_step():
+    payload = {
+        "parcels": [
+            {
+                "number": "100 0000 0001",
+                "events": [
+                    {
+                        "time": "2026-11-23 17:31:20",
+                        "text": "Das Paket wurde durch GLS übernommen.",
+                    },
+                    {"time": "2026-11-24 09:27:28", "text": "Im Paketzentrum.", "place": "Polen"},
+                    {"time": "bald", "text": "x"},
+                    "nonsense",
+                ],
+            },
+            {"number": "nope", "events": []},
+        ]
+    }
+    [(number, result)] = GLS.take_from_companion(payload)
+    assert number == "10000000001"
+    assert [event.description for event in result.events] == [
+        "Im Paketzentrum.",
+        "Das Paket wurde durch GLS übernommen.",
+    ]
+    assert result.events[0].timestamp == datetime(2026, 11, 24, 9, 27, 28)
+    assert result.location == "Polen" and result.keep_window

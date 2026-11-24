@@ -1,0 +1,5 @@
+{
+  "companion": {
+    "help": "GLS shows a parcel's history only on its own tracking page. When you open it, the script passes the history on with its real times, and a button takes the shipment into Parcel Master."
+  }
+}
