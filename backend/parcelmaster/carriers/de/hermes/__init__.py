@@ -48,9 +48,11 @@ _RETURNED = re.compile(
     re.I,
 )
 # "Delivered" ends the tracking, so only the past tense counts: "wird morgen
-# zugestellt" and "konnte nicht zugestellt werden" must not match.
+# zugestellt" and "konnte nicht zugestellt werden" must not match, and neither
+# "wurde geladen und wird heute zugestellt", where "wurde" belongs to the loading.
 _DELIVERED = re.compile(
-    r"DELIVERED|COLLECTED|wurde[^.]{0,80}(zugestellt|abgeholt|übergeben)|erfolgreich zugestellt"
+    r"DELIVERED|COLLECTED|wurde(?:(?!\bwird\b)[^.]){0,80}?(zugestellt|abgeholt|übergeben)"
+    r"|erfolgreich zugestellt"
     r"|(has|was) been (successfully )?(delivered|collected)|was delivered",
     re.I,
 )
@@ -66,7 +68,7 @@ _READY_FOR_PICKUP = re.compile(
     re.I,
 )
 _OUT_FOR_DELIVERY = re.compile(
-    r"OUT_FOR_DELIVERY|IN_DELIVERY|in (der )?zustellung|zustellfahrzeug|zustelltour"
+    r"OUT_FOR_DELIVERY|IN_DELIVERY|DELIVERY_TOUR|in (der )?zustellung|zustellfahrzeug|zustelltour"
     r"|wird (heute|voraussichtlich heute) zugestellt|out for delivery|on the delivery vehicle",
     re.I,
 )
@@ -86,10 +88,23 @@ def _parse_time(value: Any) -> datetime | None:
         return None
 
 
+#: Codes seen in real answers. A known code settles the step; its wording is
+#: only read for codes not listed here.
+_CODES = {
+    "ANNOUNCED": Status.REGISTERED,
+    "TAKEN_OVER_BY_HERMES": Status.IN_TRANSIT,
+    "SORTED": Status.IN_TRANSIT,
+    "ARRIVED_IN_DESTINATION_REGION": Status.IN_TRANSIT,
+    "DELIVERY_TOUR_STARTED": Status.OUT_FOR_DELIVERY,
+}
+
+
 def _step_status(step: dict[str, Any]) -> Status:
     """The status one step of the history stands for."""
     code = str(step.get("parcelStatus") or "")
     text = str(step.get("historyText") or "")
+    if code.upper() in _CODES:
+        return _CODES[code.upper()]
     for words in (code, text):
         if not words:
             continue

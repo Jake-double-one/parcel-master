@@ -35,6 +35,8 @@ FAR_AWAY_MINUTES = 12 * 60
 #: On the day a parcel is expected, it is asked about at least this often, so
 #: "out for delivery" shows up soon after the van is loaded.
 DELIVERY_DAY_MINUTES = 30
+#: The day before, the parcel moves through the last depots: asked about hourly.
+DAY_BEFORE_MINUTES = 60
 #: A parcel is not asked about twice within this time, whoever wants it.
 MIN_GAP_SECONDS = 10
 #: The shortest wait a module may ask for between two lookups of one parcel.
@@ -106,6 +108,31 @@ def resting(settings: dict[str, Any], now: datetime | None = None) -> bool:
     return in_window(settings["polling"].get("saver", {}), timezone(settings), now)
 
 
+#: What Hermes writes when the van is loaded. An earlier version read it as
+#: "delivered" and stopped tracking the parcel.
+_LOADED_NOT_DELIVERED = "wird voraussichtlich heute zugestellt"
+
+
+def reopen_mistaken(store: Store) -> int:
+    """Take up again parcels that were closed as delivered on the van's loading."""
+    reopened = 0
+    for shipment in store.list_shipments(False) + store.list_shipments(True):
+        for parcel in shipment["parcels"]:
+            if parcel["carrier"] != "de.hermes" or parcel["status"] != Status.DELIVERED:
+                continue
+            events = sorted(parcel["events"], key=lambda e: e["timestamp"] or "")
+            if not events or _LOADED_NOT_DELIVERED not in (events[-1]["description"] or ""):
+                continue
+            store.update_parcel(
+                parcel["id"],
+                status=str(Status.IN_TRANSIT),
+                delivered_at=None,
+                next_check_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            )
+            reopened += 1
+    return reopened
+
+
 def next_delay_minutes(
     status: Status,
     base: int,
@@ -127,6 +154,9 @@ def next_delay_minutes(
     if eta_from and eta_from.astimezone(local).date() == now.astimezone(local).date():
         # The expected day: the van may be loaded any time now.
         return min(base, DELIVERY_DAY_MINUTES)
+    tomorrow = (now.astimezone(local) + timedelta(days=1)).date()
+    if eta_from and eta_from.astimezone(local).date() == tomorrow:
+        return min(base, DAY_BEFORE_MINUTES)
     if saver and status is Status.REGISTERED:
         return max(base, ANNOUNCED_MINUTES)  # only announced: little happens for a while
     if saver and eta_from and (eta_from - now) > timedelta(days=1, hours=12):

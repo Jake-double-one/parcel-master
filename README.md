@@ -125,6 +125,7 @@ A parcel that a carrier module tracks by its number:
 | --- | --- | --- |
 | On its way | the interval | 2 h |
 | No news for more than 3 days | twice the interval | 4 h |
+| The day before it is expected | 1 h, or the interval if shorter | 1 h |
 | On the day it is expected, not yet out for delivery | 30 min, or the interval if shorter | 30 min |
 | Out for delivery | a quarter of the interval, at least 15 min | 30 min |
 | Ready for pickup | three times the interval | 6 h |

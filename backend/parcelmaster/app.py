@@ -41,6 +41,7 @@ from .tracking import (
     record_live,
     record_result,
     refresh_parcel,
+    reopen_mistaken,
     take_auto_archived,
     timezone,
 )
@@ -148,6 +149,9 @@ def create_app(config: Config) -> FastAPI:
             build(),
             companion.version(registry) or "none",
         )
+        reopened = reopen_mistaken(store)
+        if reopened:
+            journal.info("took up %d parcel(s) again that were closed as delivered", reopened)
         http = httpx.AsyncClient(timeout=20, headers={"User-Agent": f"ParcelMaster/{__version__}"})
         notifier = Notifier(store, registry, translations, config.push_contact)
         scheduler = Scheduler(store, registry, http, notifier, config.data_dir)

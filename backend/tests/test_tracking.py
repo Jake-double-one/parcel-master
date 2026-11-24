@@ -226,7 +226,8 @@ def test_the_saver_asks_less_while_little_can_happen():
     assert next_delay_minutes(Status.REGISTERED, 120, now, saver=False) == 120
     # Days away: twice a day, so movement still shows.
     assert next_delay_minutes(Status.IN_TRANSIT, 120, now, far, saver=True) == 720
-    assert next_delay_minutes(Status.IN_TRANSIT, 120, now, soon, saver=True) == 120
+    # Twenty hours away is today or tomorrow: asked about more often, never less.
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, now, soon, saver=True) in (30, 60)
     assert next_delay_minutes(Status.IN_TRANSIT, 120, now, far, saver=False) == 120
     # On the day itself nothing is slowed down.
     assert next_delay_minutes(Status.OUT_FOR_DELIVERY, 120, now, far, saver=True) == 30
@@ -439,7 +440,11 @@ def test_a_parcel_is_asked_about_more_often_on_its_expected_day():
             == DELIVERY_DAY_MINUTES
         )
     tomorrow = today + timedelta(days=1)
-    assert next_delay_minutes(Status.IN_TRANSIT, 120, None, tomorrow, zone=berlin) == 120
+    # The day before it is asked about hourly; further away the interval holds.
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, None, tomorrow, zone=berlin) == 60
+    assert next_delay_minutes(Status.IN_TRANSIT, 30, None, tomorrow, zone=berlin) == 30
+    later = today + timedelta(days=2)
+    assert next_delay_minutes(Status.IN_TRANSIT, 120, None, later, zone=berlin) == 120
 
 
 def test_postal_codes_are_masked_in_the_log():
@@ -466,3 +471,45 @@ def test_a_parcel_of_a_carrier_switched_off_is_not_looked_up(world):
     after = store.get_parcel(parcel_id)
     assert after["last_error"]["code"] == "carrier_off" and after["error_count"] == 0
     assert module.calls == 0
+
+
+def test_parcels_closed_on_the_vans_loading_are_taken_up_again():
+    from parcelmaster.tracking import reopen_mistaken
+
+    store = Store(None)
+    loaded = (
+        "Die Sendung wurde ins Zustellfahrzeug geladen und wird voraussichtlich heute zugestellt."
+    )
+    ids = []
+    for number, text in (("H1", loaded), ("H2", "Die Sendung wurde zugestellt.")):
+        shipment_id = store.save_shipment(
+            None,
+            {"title": number, "direction": "incoming", "note": ""},
+            [{"carrier": "de.hermes", "tracking_number": number}],
+        )
+        parcel_id = store.get_shipment(shipment_id)["parcels"][0]["id"]
+        store.update_parcel(parcel_id, status="delivered", delivered_at="2026-11-24T09:31:00+00:00")
+        store.replace_events(
+            parcel_id,
+            [
+                {
+                    "timestamp": "2026-11-24T07:06:00+00:00",
+                    "status": "in_transit",
+                    "description": "Die Sendung ist in der Zielregion angekommen.",
+                    "location": None,
+                },
+                {
+                    "timestamp": "2026-11-24T09:15:00+00:00",
+                    "status": "delivered",
+                    "description": text,
+                    "location": None,
+                },
+            ],
+        )
+        ids.append(parcel_id)
+    assert reopen_mistaken(store) == 1
+    wrong, right = (store.get_parcel(parcel_id) for parcel_id in ids)
+    assert wrong["status"] == "in_transit" and wrong["delivered_at"] is None
+    assert store.due_parcels(datetime.now(UTC).isoformat(), 10) == [ids[0]]
+    assert right["status"] == "delivered"
+    assert reopen_mistaken(store) == 0

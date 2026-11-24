@@ -389,6 +389,32 @@ def test_hermes_history_is_sorted_and_carries_the_window():
             {"parcelProgress": [hermes_step("Die Sendung konnte nicht zugestellt werden.")]},
             Status.PROBLEM,
         ),
+        # Loaded onto the van, as Hermes really words it: "wurde" is the loading.
+        (
+            {
+                "parcelAttributes": {"delivered": False},
+                "parcelProgress": [
+                    hermes_step(
+                        "Die Sendung wurde ins Zustellfahrzeug geladen und wird "
+                        "voraussichtlich heute zugestellt.",
+                        code="DELIVERY_TOUR_STARTED",
+                    )
+                ],
+            },
+            Status.OUT_FOR_DELIVERY,
+        ),
+        (
+            {
+                "parcelProgress": [
+                    hermes_step(
+                        "Die Sendung wurde ins Zustellfahrzeug geladen und wird "
+                        "voraussichtlich heute zugestellt."
+                    )
+                ]
+            },
+            Status.OUT_FOR_DELIVERY,
+        ),
+        ({"parcelProgress": [hermes_step("Die Sendung wurde zugestellt.")]}, Status.DELIVERED),
     ],
 )
 def test_hermes_status(changes, expected):
