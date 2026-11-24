@@ -158,6 +158,8 @@ Amazon, which is read as a whole account and not parcel by parcel:
 | Sync of the orders | every 3 h; you can choose 30 min to 24 h under Settings → Carriers |
 | While Amazon itself has a parcel out for delivery | every 30 min at most |
 | An order whose delivery window is near (30 min before until 2 h after) | that one order every 10 min |
+| …while the shop names the stops left | every 5 min |
+| …with fewer than 5 stops left | every 2 min |
 | "Sync now" by hand | at most once a minute |
 | Companion script on Amazon's tracking page | reads the page every 15 s while it is open |
 

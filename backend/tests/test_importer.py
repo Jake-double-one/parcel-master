@@ -1125,3 +1125,18 @@ def test_stops_the_shop_names_reach_the_card_and_quicken_the_following(world, mo
     clock[0] += 61
     follow()
     assert len(fetched) == 2  # five minutes while the stops are named
+    # Fewer than five stops: every two minutes.
+    monkeypatch.setattr(
+        shop,
+        "fetch",
+        lambda request, ref: fetched.append(ref) or order(**on_van, stops_left=4),
+        raising=False,
+    )
+    clock[0] += 5 * 60
+    follow()
+    clock[0] += 119
+    follow()
+    assert len(fetched) == 3
+    clock[0] += 2
+    follow()
+    assert len(fetched) == 4

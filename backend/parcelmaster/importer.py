@@ -65,6 +65,9 @@ _locks: dict[str, asyncio.Lock] = {}
 FOLLOW_MINUTES = 10
 #: The same while the service names the stops left on the round.
 FOLLOW_NEAR_MINUTES = 5
+#: Fewer stops than CLOSE_STOPS: the van is minutes away.
+FOLLOW_CLOSE_MINUTES = 2
+CLOSE_STOPS = 5
 _followed: dict[tuple[str, str], float] = {}
 
 
@@ -645,7 +648,10 @@ async def follow_deliveries(
             reference = parcel["extra"].get("url")  # a shared delivery is read by its link
         last = _followed.get((module.id, reference or ""))
         # Once the service counts the stops, the van is near: look twice as often.
-        pause = FOLLOW_NEAR_MINUTES if "stops_left" in parcel["extra"] else FOLLOW_MINUTES
+        stops = parcel["extra"].get("stops_left", "")
+        pause = FOLLOW_NEAR_MINUTES if stops else FOLLOW_MINUTES
+        if stops.isdigit() and int(stops) < CLOSE_STOPS:
+            pause = FOLLOW_CLOSE_MINUTES
         if (
             reference
             and reference not in references
