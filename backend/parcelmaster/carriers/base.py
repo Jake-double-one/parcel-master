@@ -53,6 +53,9 @@ class TrackingResult:
     stops_about: bool = False
     #: The module's wish to be asked again sooner than usual, e.g. while a van is close.
     again_in_minutes: float | None = None
+    #: The opposite: whoever brought this keeps bringing news, so lookups of our
+    #: own can wait this long. Each new answer moves the wait along.
+    hold_minutes: int | None = None
     #: Only the live notes (stops, window) are news; status and history stay as filed.
     live_only: bool = False
     #: The live view of the round is gone though the parcel is still on its way.

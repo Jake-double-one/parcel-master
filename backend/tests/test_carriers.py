@@ -248,6 +248,12 @@ def test_dhl_reads_the_stops_left_from_live_tracking():
     }
     result = parse_web_response(payload)
     assert (result.stops_left, result.stops_about) == (10, True)
+    # The script brings these on: lookups of our own wait an hour after its last word.
+    ((_, live),) = DHL.take_from_companion(payload)
+    assert (live.stops_left, live.hold_minutes, live.again_in_minutes) == (10, 60, None)
+    del payload["sendungen"][0]["sendungsdetails"]["liveTracking"]
+    ((_, plain),) = DHL.take_from_companion(payload)
+    assert plain.hold_minutes is None
     assert result.eta_from.isoformat() == "2026-11-18T12:30:00+01:00"
 
 

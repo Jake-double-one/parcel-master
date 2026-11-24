@@ -413,8 +413,8 @@ def live_stops(live: dict[str, Any]) -> tuple[int | None, bool]:
     return (counts[0], False) if counts else (9, True)
 
 
-#: From this many stops on, the round is followed by the minute.
-CLOSE_STOPS = 5
+#: After the companion script's last word on a round, the API is asked this much later.
+QUIET_AFTER_LIVE_MINUTES = 60
 
 
 class DhlDe(CarrierModule):
@@ -478,8 +478,11 @@ class DhlDe(CarrierModule):
             except CarrierError:
                 continue
             if result.stops_left is not None:
-                pace = 1 if result.stops_left <= CLOSE_STOPS else 5
-                result.again_in_minutes = pace
+                # The page counts the stops and the script passes each change on:
+                # asking the API meanwhile would only put its planned window back.
+                # One lookup of our own follows when the script has been quiet for
+                # a while, to close the parcel if the tab was shut before the door.
+                result.hold_minutes = QUIET_AFTER_LIVE_MINUTES
             found.append((self.normalize(piece["id"]), result))
         return found
 

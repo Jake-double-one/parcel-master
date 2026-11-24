@@ -271,6 +271,8 @@ def record_result(
     )
     if result.again_in_minutes and delay:
         delay = min(delay, max(MIN_LIVE_MINUTES, result.again_in_minutes))
+    if result.hold_minutes and delay:
+        delay = result.hold_minutes
     store.update_parcel(
         parcel["id"],
         status=str(status),
