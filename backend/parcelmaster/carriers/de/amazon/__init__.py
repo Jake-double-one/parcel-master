@@ -596,6 +596,7 @@ def shared_shipment(page: Any, link: str, today: date) -> ImportedShipment | Non
                 tracking_number=number,
                 url=link,
                 events=parse_events(page, today),
+                stops_left=stops_in_page(page) if status is Status.OUT_FOR_DELIVERY else None,
             )
         ],
     )
@@ -634,6 +635,18 @@ def _live_clues(page: Any) -> str:
     if words:
         clues.append(f"wording {words[:5]}")
     return "; ".join(clues)
+
+
+def stops_in_page(page: Any) -> int | None:
+    """Stops before ours as the fetched tracking page words them, if it does.
+
+    The map itself is drawn in the browser, but the sentence of its bubble
+    ("7 stops away") comes along in the page.
+    """
+    if page is None:
+        return None
+    found = _LIVE_WORDS.search(str(page))
+    return stops_on_map(found.group(0)) if found else None
 
 
 def _read_tracking(client: Any, session: Any, order_number: str, shipment: Any) -> Any:
@@ -736,6 +749,7 @@ def to_shipments(
                         if getattr(item, "title", None)
                     ],
                     events=parse_events(getattr(found, "parsed", None), today),
+                    stops_left=stops_in_page(getattr(found, "parsed", None)),
                 )
             )
         if not titles:

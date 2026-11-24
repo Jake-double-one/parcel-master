@@ -211,6 +211,8 @@ class ImportedParcel:
     events: list[TrackingEvent] | None = None
     #: Which parcel of its order this is, as "2/3"; set when it gets a card of its own.
     part: str | None = None
+    #: Stops the vehicle still makes before this parcel, where the service tells.
+    stops_left: int | None = None
 
 
 @dataclass

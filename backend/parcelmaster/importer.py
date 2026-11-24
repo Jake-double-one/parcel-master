@@ -63,6 +63,8 @@ MAX_SYNC_MINUTES = 24 * 60
 _locks: dict[str, asyncio.Lock] = {}
 #: Minutes between two looks at an order whose parcel is being delivered right now.
 FOLLOW_MINUTES = 10
+#: The same while the service names the stops left on the round.
+FOLLOW_NEAR_MINUTES = 5
 _followed: dict[tuple[str, str], float] = {}
 
 
@@ -456,6 +458,7 @@ def apply(
                     events=events,
                     eta_from=imported.eta_from,
                     eta_to=imported.eta_to,
+                    stops_left=imported.stops_left,
                 )
                 heard = record_result(store, parcel, result, base, zone, now, poll=False)
                 if imported.tracking_number and not shared_box:
@@ -641,10 +644,12 @@ async def follow_deliveries(
         if parcel["extra"].get("import_key", "").startswith(SHARED):
             reference = parcel["extra"].get("url")  # a shared delivery is read by its link
         last = _followed.get((module.id, reference or ""))
+        # Once the service counts the stops, the van is near: look twice as often.
+        pause = FOLLOW_NEAR_MINUTES if "stops_left" in parcel["extra"] else FOLLOW_MINUTES
         if (
             reference
             and reference not in references
-            and (last is None or monotonic() - last >= FOLLOW_MINUTES * 60)
+            and (last is None or monotonic() - last >= pause * 60)
         ):
             references.append(reference)
     notices: list[Notice] = []

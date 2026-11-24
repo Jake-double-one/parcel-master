@@ -1075,3 +1075,53 @@ def test_a_stand_in_goes_once_the_shop_names_the_parcel(world):
     cards = store.list_shipments(False)
     assert [s["reference"] for s in cards] == ["302-1#SHIP1"]
     assert [p["tracking_number"] for p in cards[0]["parcels"]] == ["PO123456"]
+
+
+def test_stops_the_shop_names_reach_the_card_and_quicken_the_following(world, monkeypatch):
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import stops_in_page
+
+    page = BeautifulSoup(
+        '<div id="mapTracker"></div><script>{"bubble":"7 stops away"}</script>', "html.parser"
+    )
+    assert stops_in_page(page) == 7
+    assert stops_in_page(BeautifulSoup("<p>Du bist der nächste Halt</p>", "html.parser")) == 0
+    assert stops_in_page(BeautifulSoup("<p>Arriving today</p>", "html.parser")) is None
+
+    store, registry, shop, tmp_path = world
+    monkeypatch.setattr(importer, "_followed", {})
+    importer._set_state(store, shop.id, connected=True)
+    now = datetime.now()
+    on_van = {
+        "status": Status.OUT_FOR_DELIVERY,
+        "description": "Arriving today",
+        "eta_from": now - timedelta(minutes=5),
+        "eta_to": now + timedelta(hours=1),
+    }
+    sync(world, order(**on_van))
+    notices = sync(world, order(**on_van, stops_left=7))
+    assert [(n.kind, n.params["count"]) for n in notices] == [("stops", 7)]
+    parcel = store.list_shipments(False)[0]["parcels"][0]
+    assert parcel["extra"]["stops_left"] == "7"
+
+    fetched = []
+    clock = [1000.0]
+    monkeypatch.setattr(importer, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(
+        shop,
+        "fetch",
+        lambda request, ref: fetched.append(ref) or order(**on_van, stops_left=6),
+        raising=False,
+    )
+
+    def follow():
+        return asyncio.run(importer.follow_deliveries(store, registry, shop, tmp_path))
+
+    follow()
+    clock[0] += 4 * 60
+    follow()
+    assert len(fetched) == 1  # not yet
+    clock[0] += 61
+    follow()
+    assert len(fetched) == 2  # five minutes while the stops are named
