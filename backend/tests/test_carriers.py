@@ -598,6 +598,7 @@ def test_gls_without_a_parcel_is_not_found():
         ("Das Paket ist im Paketzentrum eingetroffen.", Status.IN_TRANSIT),
         ("Das Paket wird voraussichtlich im Laufe des Tages zugestellt.", Status.OUT_FOR_DELIVERY),
         ("Das Paket wurde zugestellt.", Status.DELIVERED),
+        ("Das Paket wurde erfolgreich zugestellt.", Status.DELIVERED),  # as GLS words it
         ("Das Paket wurde im PaketShop zugestellt.", Status.READY_FOR_PICKUP),
         ("Das Paket konnte nicht zugestellt werden.", Status.PROBLEM),
         ("Das Paket wurde verladen und wird heute zugestellt.", Status.IN_TRANSIT),
