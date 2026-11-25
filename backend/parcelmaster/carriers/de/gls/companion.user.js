@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         Parcel Master: GLS
 // @namespace    parcel-master
-// @version      4
+// @version      5
 // @description  Passes the history GLS' tracking page shows you on to your Parcel Master and adds a button that takes the parcel.
 // @match        https://www.gls-pakete.de/*
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @connect      __HOST__
 // @run-at       document-idle
 // ==/UserScript==
@@ -12,7 +13,8 @@
 // GLS shows a parcel's history only on this page. This script reads it from
 // what the page displays and hands it to your own server: the parcel number,
 // the steps, the sender's name and, on the delivery day, the window and the
-// stops left. It asks GLS nothing by itself, leaves the recipient out and
+// stops left, and where the van and the destination are on GLS' live map. It
+// asks GLS nothing by itself, leaves the recipient's name and address out and
 // sends nothing anywhere else. While the live view is open it presses the
 // page's own "Update" button for you.
 (function () {
@@ -22,6 +24,9 @@
   const TEXT = german
     ? { take: "In Parcel Master importieren", taken: "In Parcel Master ✓", wait: "Vorgeschlagen in Parcel Master · jetzt importieren" }
     : { take: "Import into Parcel Master", taken: "In Parcel Master ✓", wait: "Suggested in Parcel Master · import now" };
+  const page = typeof unsafeWindow === "undefined" ? window : unsafeWindow;
+  // Where the van is and where it is headed, as the page's own data names them.
+  const spots = { van: null, home: null };
   let parcel = null; // what the page shows right now
   let known = ""; // "tracked" | "suggested" | "unknown"
   let last = "";
@@ -39,7 +44,10 @@
     // The live view of the delivery day: the window as it moves, and the stops.
     // GLS swaps the two lines as the van comes near: first the window on top and
     // the stops below, then the stops on top. Both are read from either line.
-    const lines = [...document.querySelectorAll('[data-testid="heading"], [data-testid="subheading"]')];
+    // The page holds the view twice, for wide and for narrow screens; the first counts.
+    const lines = ['[data-testid="heading"]', '[data-testid="subheading"]']
+      .map((line) => document.querySelector(line))
+      .filter(Boolean);
     const times = lines.flatMap((line) => [...line.querySelectorAll("time[datetime]")]);
     const live = !!document.querySelector('[data-testid="rtt-live-update"]');
     const span = live && times.length === 2
@@ -69,6 +77,8 @@
       events: events,
       window: span,
       stops: stops,
+      van: live ? spots.van : null,
+      home: live ? spots.home : null,
     };
   }
 
@@ -145,6 +155,45 @@
     }
     paint();
   }
+
+  // -- the live map ----------------------------------------------------------
+  // The map itself is a drawing; the two places stand in the data the page was
+  // built from and in what GLS answers when "Update" is pressed. Both are read
+  // as they arrive. Quotes may come escaped, as the page embeds its data as text.
+  const Q = '\\\\*"';
+  const PAIR =
+    ":\\{" + Q + "latitude" + Q + ":(-?\\d+(?:\\.\\d+)?)," + Q + "longitude" + Q + ":(-?\\d+(?:\\.\\d+)?)";
+  const VAN = new RegExp(Q + "position" + Q + PAIR);
+  const HOME = new RegExp(Q + "consigneeInformation" + Q + ":\\{[^}]*?" + Q + "coordinates" + Q + PAIR);
+
+  function mine(words) {
+    if (typeof words !== "string" || !words) return;
+    const van = VAN.exec(words);
+    const home = HOME.exec(words);
+    if (van) spots.van = [Number(van[1]), Number(van[2])];
+    if (home) spots.home = [Number(home[1]), Number(home[2])];
+    if (van || home) look();
+  }
+
+  const original = page.fetch;
+  page.fetch = function (...args) {
+    const answer = original.apply(this, args);
+    try {
+      const asked = args[0];
+      const url = new URL(String(asked && asked.url ? asked.url : asked), location.href);
+      const method = String((args[1] && args[1].method) || (asked && asked.method) || "GET");
+      // Only what the page itself is answered when it asks for an update.
+      if (url.origin === location.origin && method.toUpperCase() === "POST") {
+        answer
+          .then((response) => (response.ok ? response.clone().text() : ""))
+          .then(mine)
+          .catch(() => {});
+      }
+    } catch (error) {
+      // Never get in the page's way.
+    }
+    return answer;
+  };
 
   // -- pressing "Update" for the user ---------------------------------------
   // The live view only moves when its button is pressed. While it is open the
@@ -230,5 +279,6 @@
       look();
     }, 700);
   }).observe(document.documentElement, { childList: true, subtree: true });
+  for (const script of document.querySelectorAll("script:not([src])")) mine(script.textContent);
   look();
 })();

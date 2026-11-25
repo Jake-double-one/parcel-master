@@ -652,3 +652,13 @@ def test_gls_live_view_brings_window_and_stops():
     odd = {"number": "10000000001", "events": [step], "window": {"from": "x"}, "stops": "50+"}
     [(_, result)] = GLS.take_from_companion({"parcels": [odd]})
     assert result.stops_left is None and result.keep_window
+
+
+def test_gls_live_map_places():
+    step = {"time": "2026-11-25 06:56:00", "text": "Das Paket ist in Zustellung."}
+    parcel = {"number": "10000000001", "events": [step], "van": [52.51, 13.41], "home": [52.5, 13]}
+    [(_, result)] = GLS.take_from_companion({"parcels": [parcel]})
+    assert result.van == (52.51, 13.41) and result.home == (52.5, 13.0)
+    for odd in ([52.51], [True, 1], ["52", "13"], [520, 13], "52,13", None):
+        [(_, result)] = GLS.take_from_companion({"parcels": [{**parcel, "van": odd}]})
+        assert result.van is None and result.home is None  # no van, no map

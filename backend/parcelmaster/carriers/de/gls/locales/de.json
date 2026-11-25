@@ -1,4 +1,14 @@
 {
+  "settings": {
+    "live_map": {
+      "label": "Live-Karte",
+      "help": "Zeigt auf der Karte der Sendung, wo das Zustellfahrzeug gerade ist, solange das Begleit-Skript die Live-Ansicht von GLS offen sieht. Dafür werden die Position des Fahrzeugs und die des Ziels bis zur Zustellung gespeichert, und dein Browser lädt den Kartenausschnitt von OpenStreetMap.",
+      "option": {
+        "on": "An",
+        "off": "Aus"
+      }
+    }
+  },
   "companion": {
     "help": "GLS zeigt den Verlauf einer Sendung nur auf seiner eigenen Sendungsverfolgung. Öffnest du sie, reicht das Skript den Verlauf mit den echten Zeiten weiter, und ein Knopf übernimmt die Sendung in Parcel Master."
   }

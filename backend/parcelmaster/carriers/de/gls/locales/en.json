@@ -1,4 +1,14 @@
 {
+  "settings": {
+    "live_map": {
+      "label": "Live map",
+      "help": "Shows on the shipment's card where the delivery van is, while the companion script sees GLS' live view open. For that the van's position and the destination's are kept until delivery, and your browser loads the map from OpenStreetMap.",
+      "option": {
+        "on": "On",
+        "off": "Off"
+      }
+    }
+  },
   "companion": {
     "help": "GLS shows a parcel's history only on its own tracking page. When you open it, the script passes the history on with its real times, and a button takes the shipment into Parcel Master."
   }

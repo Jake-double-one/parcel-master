@@ -21,6 +21,7 @@ import httpx
 from parcelmaster.carriers.base import (
     CarrierError,
     CarrierModule,
+    Field,
     Found,
     TrackingEvent,
     TrackingResult,
@@ -118,6 +119,18 @@ def _live_window(value: Any) -> tuple[datetime | None, datetime | None]:
     return start, end
 
 
+def _spot(value: Any) -> tuple[float, float] | None:
+    """A place on the page's live map as (latitude, longitude)."""
+    if not isinstance(value, list) or len(value) != 2:
+        return None
+    if any(isinstance(part, bool) or not isinstance(part, int | float) for part in value):
+        return None
+    latitude, longitude = float(value[0]), float(value[1])
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        return None
+    return latitude, longitude
+
+
 def read_window(text: Any) -> tuple[datetime | None, datetime | None]:
     """The day and, where named, the hours GLS expects to deliver in; local time."""
     found = _WINDOW.search(text) if isinstance(text, str) else None
@@ -182,6 +195,7 @@ class GlsDe(CarrierModule):
     name = "GLS"
     colour = "#061ab1"
     patterns = (re.compile(r"\d{11,12}"),)
+    settings_fields = (Field("live_map", type="choice", options=("on", "off")),)
     default_daily_budget = DAILY_BUDGET
 
     def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
@@ -240,8 +254,11 @@ class GlsDe(CarrierModule):
             stops = parcel.get("stops")
             if isinstance(stops, bool) or not isinstance(stops, int) or not 0 <= stops < 1000:
                 stops = None
+            van, home = _spot(parcel.get("van")), _spot(parcel.get("home"))
             if events:
                 result = TrackingResult(
+                    van=van,
+                    home=home if van else None,
                     status=events[0].status,
                     description=events[0].description,
                     location=events[0].location,
