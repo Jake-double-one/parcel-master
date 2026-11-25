@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: GLS
 // @namespace    parcel-master
-// @version      2
+// @version      3
 // @description  Passes the history GLS' tracking page shows you on to your Parcel Master and adds a button that takes the parcel.
 // @match        https://www.gls-pakete.de/*
 // @grant        GM_xmlhttpRequest
@@ -169,17 +169,21 @@
       label.type = "button";
       label.dataset.parcelMasterRefresh = "1";
       label.style.cssText =
-        "display:block;margin-top:6px;padding:4px 10px;border-radius:999px;border:1px solid #888;" +
-        "background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer;";
+        "display:block;margin:6px auto 0;padding:3px 8px;border-radius:999px;border:1px solid #888;" +
+        "background:transparent;color:inherit;font:inherit;font-size:11px;white-space:nowrap;" +
+        "font-variant-numeric:tabular-nums;cursor:pointer;";
       label.addEventListener("click", () => {
         paused = !paused;
         tick();
       });
       button.parentElement.appendChild(label);
     }
-    const words = paused
-      ? german ? "Parcel Master: pausiert · weiter" : "Parcel Master: paused · resume"
-      : german ? "Parcel Master drückt in " + left + " s" : "Parcel Master presses in " + left + " s";
+    // Short and on one line: the column it sits in is narrow.
+    const words = "Parcel Master · " + (paused ? (german ? "pausiert" : "paused") : left + " s");
+    const hint = german
+      ? "Parcel Master drückt „Update“ für dich. Klick: pausieren oder fortsetzen."
+      : "Parcel Master presses “Update” for you. Click to pause or resume.";
+    if (label.title !== hint) label.title = hint;
     if (label.textContent !== words) label.textContent = words;
   }
 
