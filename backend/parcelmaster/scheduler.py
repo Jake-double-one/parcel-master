@@ -20,6 +20,8 @@ log = logging.getLogger(__name__)
 
 TICK_SECONDS = 30
 BATCH = 20
+# How many parcels the round at the start of the night rest asks at most.
+LAST_CALL = 200
 PAUSE_BETWEEN_LOOKUPS = 0.5
 
 
@@ -38,6 +40,8 @@ class Scheduler:
         self.http = http
         self.notifier = notifier
         self.last_run: datetime | None = None
+        # Whether the last run fell into the night rest; unknown after a start.
+        self._rested: bool | None = None
         self._task: asyncio.Task[None] | None = None
 
     @property
@@ -64,8 +68,21 @@ class Scheduler:
         now = datetime.now(UTC)
         settings = self.store.get_settings()
         # During the saver's night rest nothing is asked; what is due waits for the morning.
-        if not resting(settings):
-            for parcel_id in self.store.due_parcels(now.isoformat(timespec="seconds"), BATCH):
+        # As the rest begins everything is asked once more, due or not, so the
+        # night starts from what the carriers know by then.
+        rest = resting(settings)
+        last_call = (
+            rest and self._rested is False and settings["polling"]["saver"].get("last_call", True)
+        )
+        self._rested = rest
+        if last_call:
+            log.info("night rest begins: asking everything once more")
+        if not rest or last_call:
+            due = self.store.due_parcels(
+                None if last_call else now.isoformat(timespec="seconds"),
+                LAST_CALL if last_call else BATCH,
+            )
+            for parcel_id in due:
                 # One parcel that fails must not keep the others from being asked.
                 try:
                     notices = await refresh_parcel(self.store, self.registry, self.http, parcel_id)
@@ -75,7 +92,8 @@ class Scheduler:
                 await asyncio.sleep(PAUSE_BETWEEN_LOOKUPS)
             for module in importer.importers(self.registry):
                 try:
-                    if importer.due(self.store, module, settings["carriers"].get(module.id, {})):
+                    carrier_settings = settings["carriers"].get(module.id, {})
+                    if importer.due(self.store, module, carrier_settings, early=last_call):
                         notices = await importer.run(
                             self.store, self.registry, module, self.data_dir
                         )

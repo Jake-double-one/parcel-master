@@ -277,6 +277,47 @@ def test_scheduler_asks_nobody_during_the_night_rest(world, monkeypatch):
     assert module.calls == 1
 
 
+def test_as_the_night_rest_begins_everything_is_asked_once_more(world, monkeypatch):
+    from parcelmaster import scheduler as scheduler_module
+    from parcelmaster.scheduler import Scheduler
+
+    store, module, registry, _, parcel_id = world
+
+    class Quiet:
+        async def handle(self, notices):
+            pass
+
+        async def flush_held(self):
+            pass
+
+    def not_due():
+        # Asked a while ago, and the next lookup is hours away.
+        store.update_parcel(
+            parcel_id,
+            last_checked_at="2026-01-01T00:00:00+00:00",
+            next_check_at="2999-01-01T00:00:00+00:00",
+        )
+
+    async def run(nights, last_call=True):
+        settings = store.get_settings()
+        settings["polling"]["saver"]["last_call"] = last_call
+        store.save_settings(settings)
+        module.calls = 0
+        async with httpx.AsyncClient() as http:
+            scheduler = Scheduler(store, registry, http, Quiet(), None)
+            for night in nights:
+                module.answers = [TrackingResult(Status.IN_TRANSIT, "On its way")]
+                not_due()
+                monkeypatch.setattr(scheduler_module, "resting", lambda settings, n=night: n)
+                await scheduler.run_once()
+        return module.calls
+
+    assert asyncio.run(run([False, False])) == 0  # by day only what is due
+    assert asyncio.run(run([False, True, True])) == 1  # once, as the rest begins
+    assert asyncio.run(run([True, True])) == 0  # a start in the night asks nothing
+    assert asyncio.run(run([False, True], last_call=False)) == 0
+
+
 def test_a_new_delivery_window_is_news(world):
     store, module, registry, _, parcel_id = world
     # Not a parcel the user added a moment ago.

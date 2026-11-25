@@ -158,9 +158,12 @@ def test_settings_are_validated_and_bounded(client):
         "interval_minutes": 15,
         "stale_days": 30,
         "auto_archive_days": 3,
-        "saver": {"enabled": True, "from": "22:00", "to": "06:00"},  # on unless switched off
+        # on unless switched off
+        "saver": {"enabled": True, "from": "22:00", "to": "06:00", "last_call": True},
     }
-    off = {"polling": {"saver": {"enabled": False, "from": "23:00", "to": "05:30"}}}
+    off = {
+        "polling": {"saver": {"enabled": False, "from": "23:00", "to": "05:30", "last_call": False}}
+    }
     assert (
         client.put("/api/settings", json=off).json()["polling"]["saver"] == off["polling"]["saver"]
     )

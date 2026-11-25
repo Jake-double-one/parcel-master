@@ -529,7 +529,10 @@ def next_sync_at(
     return due_at.isoformat(timespec="seconds")
 
 
-def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) -> bool:
+def due(
+    store: Store, module: ImporterModule, carrier_settings: dict[str, Any], early: bool = False
+) -> bool:
+    """Whether the account is synced now; ``early`` does not wait for its pace."""
     state = get_state(store, module.id)
     if not switched_on(carrier_settings):
         return False
@@ -539,7 +542,11 @@ def due(store: Store, module: ImporterModule, carrier_settings: dict[str, Any]) 
     if state.get("blocked"):
         return False  # wait until the credentials change or the user asks
     last = parse_iso(state.get("last_attempt_at"))
-    interval = timedelta(minutes=pace_minutes(store, module, carrier_settings))
+    interval = (
+        MIN_MANUAL_GAP
+        if early
+        else timedelta(minutes=pace_minutes(store, module, carrier_settings))
+    )
     return last is None or datetime.now(UTC) - last >= interval
 
 

@@ -93,7 +93,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         # Ask carriers less where it costs nothing: not at night, rarely while a
         # parcel is only announced or days away, and an importer's parcels only
         # once they are out for delivery.
-        "saver": {"enabled": True, "from": "22:00", "to": "06:00"},
+        # "last_call" asks everything once more as the night rest begins.
+        "saver": {"enabled": True, "from": "22:00", "to": "06:00", "last_call": True},
     },
     "carriers": {},
     "notifications": {
@@ -508,16 +509,17 @@ class Store:
                 ],
             )
 
-    def due_parcels(self, now: str, limit: int) -> list[int]:
+    def due_parcels(self, now: str | None, limit: int) -> list[int]:
+        """Unfinished parcels whose next lookup is due; without ``now`` all of them."""
         final = ",".join(f"'{status}'" for status in FINAL)
         with self._lock:
             rows = self._db.execute(
                 "SELECT p.id FROM parcels p JOIN shipments s ON s.id = p.shipment_id "
                 "WHERE s.archived_at IS NULL AND s.deleted_at IS NULL "
                 f"AND s.suggested_at IS NULL AND p.status NOT IN ({final}) "
-                "AND (p.next_check_at IS NULL OR p.next_check_at <= ?) "
+                "AND (? IS NULL OR p.next_check_at IS NULL OR p.next_check_at <= ?) "
                 "ORDER BY p.next_check_at LIMIT ?",
-                (now, limit),
+                (now, now, limit),
             ).fetchall()
         return [row["id"] for row in rows]
 

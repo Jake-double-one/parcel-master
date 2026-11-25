@@ -453,6 +453,14 @@
             <span class="micro">{t("settings.quiet_to")}</span>
             <input type="time" bind:value={settings.polling.saver.to} />
           </label>
+          <button
+            type="button"
+            class="chip"
+            aria-pressed={settings.polling.saver.last_call}
+            onclick={() => (settings!.polling.saver.last_call = !settings!.polling.saver.last_call)}
+          >
+            {settings.polling.saver.last_call ? t("settings.saver_last_call_on") : t("settings.saver_last_call_off")}
+          </button>
         </div>
       </div>
 
