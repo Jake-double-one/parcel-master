@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: GLS
 // @namespace    parcel-master
-// @version      3
+// @version      4
 // @description  Passes the history GLS' tracking page shows you on to your Parcel Master and adds a button that takes the parcel.
 // @match        https://www.gls-pakete.de/*
 // @grant        GM_xmlhttpRequest
@@ -37,13 +37,16 @@
     const number = (shown || query.get("trackingNumber") || query.get("match") || "").replace(/\D/g, "");
     const list = document.querySelector('[data-testid="event-container"]');
     // The live view of the delivery day: the window as it moves, and the stops.
-    const times = [...document.querySelectorAll('[data-testid="heading"] time[datetime]')];
+    // GLS swaps the two lines as the van comes near: first the window on top and
+    // the stops below, then the stops on top. Both are read from either line.
+    const lines = [...document.querySelectorAll('[data-testid="heading"], [data-testid="subheading"]')];
+    const times = lines.flatMap((line) => [...line.querySelectorAll("time[datetime]")]);
     const live = !!document.querySelector('[data-testid="rtt-live-update"]');
     const span = live && times.length === 2
       ? { from: times[0].getAttribute("datetime"), to: times[1].getAttribute("datetime") }
       : null;
     // "50+" is no number worth passing on; only a real count is.
-    const count = /^(\d+)\s*Stopp/.exec(text(document.querySelector('[data-testid="subheading"]')));
+    const count = lines.map((line) => /^(\d+)\s*Stopp/.exec(text(line))).find(Boolean);
     const stops = live && count ? Number(count[1]) : null;
     if (!/^\d{11,12}$/.test(number) || (!list && !span && stops === null)) return null;
     const events = [];
