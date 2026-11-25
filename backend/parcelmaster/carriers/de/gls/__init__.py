@@ -74,7 +74,7 @@ _STEPS = (
     ),
     (
         re.compile(
-            r"(paketshop|paketstation|abholort)[^.]*(zugestellt|abgegeben|bereit)"
+            r"(paketshop|paketstation|abholort)[^.]{0,200}?(zugestellt|abgegeben|bereit)"
             r"|zur abholung bereit|abholbereit",
             re.I,
         ),
@@ -233,12 +233,13 @@ class GlsDe(CarrierModule):
                 when = _page_time(step.get("time")) if isinstance(step, dict) else None
                 if not isinstance(text, str) or not text.strip() or when is None:
                     continue
+                text = text.strip()[:300]  # cut first: nothing longer is matched or kept
                 place = step.get("place")
                 events.append(
                     TrackingEvent(
                         timestamp=when,
-                        status=step_status(text.strip()),
-                        description=text.strip()[:300],
+                        status=step_status(text),
+                        description=text,
                         location=place.strip()[:100] or None if isinstance(place, str) else None,
                     )
                 )

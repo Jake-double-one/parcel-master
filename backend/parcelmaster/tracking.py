@@ -240,6 +240,34 @@ def _told(result: TrackingResult) -> str:
     return f"{result.status}|{result.description}"
 
 
+#: Times outside these years are placeholders or mistakes of the carrier, and at
+#: the edges of what a date can hold they cannot even be put into UTC.
+EARLIEST_YEAR, LATEST_YEAR = 2000, 2100
+
+
+def plausible(value: datetime | None) -> datetime | None:
+    """A carrier's time if it can be one, else None."""
+    if value is None or not EARLIEST_YEAR <= value.year <= LATEST_YEAR:
+        return None
+    return value
+
+
+def _place(point: tuple[float, float] | None) -> tuple[float, float] | None:
+    """A position if both numbers are real coordinates, else None."""
+    if point is None or len(point) != 2 or not all(math.isfinite(part) for part in point):
+        return None
+    return point if -90 <= point[0] <= 90 and -180 <= point[1] <= 180 else None
+
+
+def tidy(result: TrackingResult) -> None:
+    """Drop from a carrier's answer what cannot be true, so that storing it cannot fail."""
+    for event in result.events:
+        event.timestamp = plausible(event.timestamp)
+    if plausible(result.eta_from) is None or plausible(result.eta_to or result.eta_from) is None:
+        result.eta_from = result.eta_to = None
+    result.van, result.home = _place(result.van), _place(result.home)
+
+
 def record_result(
     store: Store,
     parcel: dict[str, Any],
@@ -254,6 +282,7 @@ def record_result(
     With ``poll=False`` the parcel is not scheduled for lookups of its own:
     its status arrives with the next sync of the service that imported it.
     """
+    tidy(result)
     if result.collect:
         result.events = _collected(store, parcel, result, now)
     events = sorted(
@@ -437,6 +466,7 @@ def record_live(
     """
     if Status(parcel["status"]) in FINAL:
         return []
+    tidy(result)
     changes: dict[str, Any] = {}
     if result.eta_from and result.eta_to:
         changes = {"eta_from": to_iso(result.eta_from, zone), "eta_to": to_iso(result.eta_to, zone)}
@@ -604,7 +634,11 @@ async def refresh_parcel(
         len(result.events),
         took(),
     )
-    return record_result(store, parcel, result, base, zone, now)
+    try:
+        return record_result(store, parcel, result, base, zone, now)
+    except Exception as error:  # an answer that cannot be stored must not stop the rest
+        log.exception("%s %s: the answer could not be stored", module.id, request.tracking_number)
+        return fail("invalid_response", type(error).__name__, max(base, 60))
 
 
 def periodic_notices(store: Store, registry: Registry) -> list[Notice]:
@@ -658,8 +692,11 @@ def reminder_due(parcel: dict[str, Any], settings: dict[str, Any], now: datetime
     if not start or not end or end <= start or end - start > timedelta(hours=12):
         return None
     lead = timedelta(minutes=int(settings["notifications"].get("reminder_minutes") or 30))
-    if not start - lead <= now < end:
-        return None
+    try:
+        if not start - lead <= now < end:
+            return None
+    except OverflowError:
+        return None  # a window at the very edge of what a date can hold
     return f"{start.astimezone(timezone(settings)):%H:%M}"
 
 

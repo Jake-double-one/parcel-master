@@ -258,13 +258,20 @@ def _in_order_card(store: Store, module: ImporterModule, item: ImportedShipment)
 
 
 def _replace_found(store: Store, item: ImportedShipment) -> None:
-    """A shipment a companion script came across steps aside once an order holds
-    the same parcel: the order is the fuller entry."""
+    """A shipment a companion script came across steps aside once an order that
+    is filed holds the same parcel: the order is the fuller entry."""
     for parcel in item.parcels:
         if not parcel.tracking_number:
             continue
         other = store.find_number(parcel.tracking_number)
-        if other and other["source"] == DISCOVERED:
+        if not other or other["source"] != DISCOVERED or other["deleted_at"]:
+            continue
+        held = store.get_shipment(other["id"]) or {"parcels": []}
+        if other["note"] or len(held["parcels"]) > 1:
+            # It holds more than the order does (a note, further parcels): into the
+            # bin, where the user finds it, rather than gone.
+            store.set_deleted(other["id"], True)
+        else:
             store.delete_shipment(other["id"])
 
 
@@ -308,7 +315,6 @@ def apply(
             if not wanted:
                 continue  # the user is done with this order
             store.set_archived(shipment["id"], False)
-        _replace_found(store, item)
         if shipment is None:
             if not wanted:
                 if [module.name, item.reference] in dismissed or (
@@ -333,6 +339,7 @@ def apply(
                 [],
             )
             shipment = store.get_shipment(shipment_id)
+        _replace_found(store, item)  # only now: the order is filed for sure
         if PART in item.reference:
             # A parcel that just got its number: it leaves the order's card with its history.
             for imported in item.parcels:
@@ -674,7 +681,9 @@ async def follow_deliveries(
             except Exception:
                 log.exception("importer %s failed", module.id)
                 continue
-            notices += apply(store, registry, module, [found], wanted=True)
+            # Not "wanted": a look in the background updates what is open and leaves
+            # the bin, the archive and what was deleted for good as the user left them.
+            notices += apply(store, registry, module, [found])
             log.info("%s %s: followed on its delivery day", module.id, reference)
     return notices
 

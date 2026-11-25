@@ -563,6 +563,10 @@ def shared_shipment(page: Any, link: str, today: date) -> ImportedShipment | Non
         return None
     headline = promise_line(page) or ""
     step = milestone_status(page)
+    # Only a page built like Amazon's delivery page is read. Words alone do not
+    # count: any page holds text, and some of it is written by other people.
+    if step is None and not headline:
+        return None
     status = step or parse_status(headline)
     found = SimpleNamespace(carrier=None, tracking_number=None, parsed=page)
     carrier, number = tracking_facts(found)
@@ -931,10 +935,16 @@ class AmazonDe(ImporterModule):
             shared_found = []
             for link in shared:
                 try:
-                    page = session.get(link).parsed
+                    got = session.get(link)
                 except AmazonOrdersError as error:
                     log.warning("amazon shared link: %s", _first_line(error))
                     continue
+                # A short link may lead anywhere; only Amazon's own pages are read.
+                landed = urlparse(str(getattr(getattr(got, "response", None), "url", "") or link))
+                if landed.hostname not in ("www.amazon.de", "amzn.eu"):
+                    log.warning("amazon shared link: led away to %s", landed.hostname)
+                    continue
+                page = got.parsed
                 read = shared_shipment(page, link, date.today())
                 if read is None:
                     log.warning("amazon shared link: nothing readable; %s", _page_clues(page))

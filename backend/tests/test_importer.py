@@ -1140,3 +1140,64 @@ def test_stops_the_shop_names_reach_the_card_and_quicken_the_following(world, mo
     clock[0] += 2
     follow()
     assert len(fetched) == 4
+
+
+def test_a_found_shipment_stays_when_the_order_is_not_filed(world):
+    store = world[0]
+    # The user deleted the order for good; a sync must not take the found twin away.
+    store.set_value(importer.DISMISSED_KEY, [["Amazon", "302-1"]])
+    store.save_shipment(
+        None,
+        {"title": "Kettle", "direction": "incoming", "note": "", "source": importer.DISCOVERED},
+        [{"carrier": "de.dhl", "tracking_number": "AB1", "extra": {}}],
+    )
+    sync(world, order(tracking_number="AB1"))
+    assert [s["title"] for s in store.list_shipments(False)] == ["Kettle"]
+
+
+def test_a_found_shipment_with_more_than_the_order_goes_to_the_bin(world):
+    store = world[0]
+    store.save_shipment(
+        None,
+        {"title": "Kettle", "direction": "incoming", "note": "mine", "source": importer.DISCOVERED},
+        [
+            {"carrier": "de.dhl", "tracking_number": "AB1", "extra": {}},
+            {"carrier": "de.dhl", "tracking_number": "AB2", "extra": {}},
+        ],
+    )
+    sync(world, order(tracking_number="AB1"))
+    assert [s["title"] for s in store.list_trash()] == ["Kettle"]
+
+
+def test_a_page_that_is_no_delivery_page_is_not_read_as_a_shared_delivery():
+    from bs4 import BeautifulSoup
+
+    from parcelmaster.carriers.de.amazon import shared_shipment
+
+    # Any page holds text; words that look like an order and a number are not enough.
+    page = BeautifulSoup(
+        "<p>Review: Bestellung 302-1234567-7654321, Sendungsnummer ZZ00000000001</p>",
+        "html.parser",
+    )
+    assert shared_shipment(page, "https://amzn.eu/d/01AbCdEf", date.today()) is None
+
+
+def test_following_a_delivery_is_not_a_wish_of_the_user(world, monkeypatch):
+    store, registry, shop, tmp_path = world
+    monkeypatch.setattr(importer, "_followed", {})
+    importer._set_state(store, shop.id, connected=True)
+    now = datetime.now()
+    window = {"eta_from": now - timedelta(minutes=5), "eta_to": now + timedelta(hours=1)}
+    sync(world, order(status=Status.OUT_FOR_DELIVERY, description="Arriving today", **window))
+    monkeypatch.setattr(shop, "fetch", lambda request, reference: order(), raising=False)
+    asked = []
+    real = importer.apply
+
+    def apply(*args, **kwargs):
+        asked.append(kwargs.get("wanted", args[4] if len(args) > 4 else False))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(importer, "apply", apply)
+    asyncio.run(importer.follow_deliveries(store, registry, shop, tmp_path))
+    # Nothing comes back from the bin or the archive because of a look in the background.
+    assert asked == [False]

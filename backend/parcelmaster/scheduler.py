@@ -66,21 +66,38 @@ class Scheduler:
         # During the saver's night rest nothing is asked; what is due waits for the morning.
         if not resting(settings):
             for parcel_id in self.store.due_parcels(now.isoformat(timespec="seconds"), BATCH):
-                notices = await refresh_parcel(self.store, self.registry, self.http, parcel_id)
-                await self.notifier.handle(notices)
+                # One parcel that fails must not keep the others from being asked.
+                try:
+                    notices = await refresh_parcel(self.store, self.registry, self.http, parcel_id)
+                    await self.notifier.handle(notices)
+                except Exception:
+                    log.exception("lookup of parcel %s failed", parcel_id)
                 await asyncio.sleep(PAUSE_BETWEEN_LOOKUPS)
             for module in importer.importers(self.registry):
-                if importer.due(self.store, module, settings["carriers"].get(module.id, {})):
-                    notices = await importer.run(self.store, self.registry, module, self.data_dir)
+                try:
+                    if importer.due(self.store, module, settings["carriers"].get(module.id, {})):
+                        notices = await importer.run(
+                            self.store, self.registry, module, self.data_dir
+                        )
+                    else:
+                        # Between two syncs: orders whose parcel is at the door about now.
+                        notices = await importer.follow_deliveries(
+                            self.store, self.registry, module, self.data_dir
+                        )
                     await self.notifier.handle(notices)
-                else:
-                    # Between two syncs: orders whose parcel is at the door about now.
-                    notices = await importer.follow_deliveries(
-                        self.store, self.registry, module, self.data_dir
-                    )
-                    await self.notifier.handle(notices)
+                except Exception:
+                    log.exception("importer %s failed", module.id)
+        # Each of the housekeeping steps runs whatever became of the one before.
+        for step in (self._periodic, self.notifier.flush_held, self._tidy_up):
+            try:
+                await step()
+            except Exception:
+                log.exception("scheduler step %s failed", step.__name__)
+        self.last_run = now
+
+    async def _periodic(self) -> None:
         await self.notifier.handle(periodic_notices(self.store, self.registry))
-        await self.notifier.flush_held()
+
+    async def _tidy_up(self) -> None:
         auto_archive(self.store)
         empty_trash(self.store)
-        self.last_run = now

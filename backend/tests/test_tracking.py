@@ -681,3 +681,48 @@ def test_the_van_at_the_door_is_told_once(world, monkeypatch):
     assert told[2] == [True]  # still there: not said again
     assert told[3][-1] is False  # it drove on
     assert told[4] == ["near", True]
+
+
+def test_a_time_that_cannot_be_true_is_dropped_and_stops_nothing(world, monkeypatch):
+    from datetime import timezone as tz
+
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    edge = datetime(1, 1, 1, tzinfo=tz(timedelta(hours=1)))
+    late = datetime(9999, 12, 31, 23, 59, tzinfo=tz(timedelta(hours=-1)))
+    module.answers = [
+        TrackingResult(
+            Status.IN_TRANSIT,
+            "On its way",
+            events=[
+                TrackingEvent(edge, Status.IN_TRANSIT, "Odd"),
+                TrackingEvent(late, Status.IN_TRANSIT, "Odder"),
+            ],
+            eta_from=edge,
+            eta_to=late,
+            van=(float("inf"), 1.0),
+            home=(1.0, 1.0),
+        )
+    ]
+    refresh(store, registry, parcel_id)
+    parcel = store.get_parcel(parcel_id)
+    assert parcel["status"] == "in_transit" and parcel["last_error"] is None
+    assert parcel["eta_from"] is None and parcel["next_check_at"]
+    assert [e["timestamp"] for e in store.parcel_events(parcel_id)] == [None, None]
+
+
+def test_an_answer_that_cannot_be_stored_counts_as_a_failed_lookup(world, monkeypatch):
+    import parcelmaster.tracking as tracking
+
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+
+    def broken(*args, **kwargs):
+        raise OverflowError("date value out of range")
+
+    monkeypatch.setattr(tracking, "record_result", broken)
+    module.answers = [TrackingResult(Status.IN_TRANSIT, "x")]
+    assert refresh(store, registry, parcel_id) == []
+    parcel = store.get_parcel(parcel_id)
+    assert parcel["last_error"]["code"] == "invalid_response"
+    assert parcel["next_check_at"] > datetime.now(UTC).isoformat()  # it steps back in line

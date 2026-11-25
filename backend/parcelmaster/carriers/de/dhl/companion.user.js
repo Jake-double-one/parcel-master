@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DHL live tracking
 // @namespace    parcel-master
-// @version      10
+// @version      11
 // @description  Passes on to your Parcel Master what DHL shows you: the live delivery window, the stops left and the parcels in your account.
 // @match        https://www.dhl.de/*/verfolgen.html*
 // @match        https://www.dhl.de/*/kundenkonto/*
@@ -115,7 +115,10 @@
       button.type = "button";
       button.dataset.parcelMaster = number;
       button.title = number;
-      button.addEventListener("click", () => take(number, button));
+      button.addEventListener("click", (event) => {
+        if (!event.isTrusted) return; // only a person takes a shipment
+        take(number, button);
+      });
     }
     if (card.lastElementChild !== button) card.appendChild(button);
     // In line with the card's heading, whatever stands left of it.
@@ -240,19 +243,18 @@
   page.fetch = function (...args) {
     const answer = original.apply(this, args);
     try {
-      const url = String(args[0] && args[0].url ? args[0].url : args[0]);
       // Any answer of dhl.de itself that carries shipments; which address the
       // page uses for them differs between tracking and the customer account.
-      const own = url.startsWith("/") || new URL(url, location.href).hostname.endsWith("dhl.de");
-      if (own) {
-        answer
-          .then((response) => {
-            const kind = response.headers.get("content-type") || "";
-            return kind.includes("json") ? response.clone().json() : null;
-          })
-          .then(passOn)
-          .catch(() => {});
-      }
+      // Whose answer it is, is read from the address it really came from.
+      answer
+        .then((response) => {
+          const host = new URL(response.url, location.href).hostname;
+          const own = host === "dhl.de" || host.endsWith(".dhl.de");
+          const kind = response.headers.get("content-type") || "";
+          return own && kind.includes("json") ? response.clone().json() : null;
+        })
+        .then(passOn)
+        .catch(() => {});
     } catch (error) {
       // Never get in the page's way.
     }

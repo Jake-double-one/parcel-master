@@ -663,3 +663,17 @@ def test_gls_live_map_places():
     for odd in ([52.51], [True, 1], ["52", "13"], [520, 13], "52,13", None):
         [(_, result)] = GLS.take_from_companion({"parcels": [{**parcel, "van": odd}]})
         assert result.van is None and result.home is None  # no van, no map
+
+
+def test_gls_page_text_is_cut_before_it_is_read():
+    import time
+
+    long = "paketshop " * 20000  # 200 000 characters
+    step = {"time": "2026-11-25 06:56:00", "text": long}
+    started = time.perf_counter()
+    [(_, result)] = GLS.take_from_companion(
+        {"parcels": [{"number": "10000000001", "events": [step]}]}
+    )
+    assert time.perf_counter() - started < 0.5
+    assert len(result.description) <= 300 and result.status is Status.IN_TRANSIT
+    assert gls_step("Im PaketShop Musterweg wurde das Paket abgegeben.") is Status.READY_FOR_PICKUP
