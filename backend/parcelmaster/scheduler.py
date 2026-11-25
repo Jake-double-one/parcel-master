@@ -67,12 +67,12 @@ class Scheduler:
     async def run_once(self) -> None:
         now = datetime.now(UTC)
         settings = self.store.get_settings()
-        # During the saver's night rest nothing is asked; what is due waits for the morning.
+        # During the night rest nothing is asked; what is due waits for the morning.
         # As the rest begins everything is asked once more, due or not, so the
         # night starts from what the carriers know by then.
         rest = resting(settings)
         last_call = (
-            rest and self._rested is False and settings["polling"]["saver"].get("last_call", True)
+            rest and self._rested is False and settings["polling"]["night"].get("last_call", True)
         )
         self._rested = rest
         if last_call:

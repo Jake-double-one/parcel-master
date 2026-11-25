@@ -161,7 +161,8 @@ export interface Settings {
     stale_days: number;
     auto_archive_days: number;
     /** Ask carriers less: night rest, slower lookups, later hand-over. */
-    saver: { enabled: boolean; from: string; to: string; last_call: boolean };
+    saver: { enabled: boolean };
+    night: { enabled: boolean; from: string; to: string; last_call: boolean };
   };
   carriers: Record<string, Record<string, string | number | null>>;
   /** What happens to parcels a companion script comes across. */

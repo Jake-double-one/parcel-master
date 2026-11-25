@@ -445,22 +445,39 @@
           >
             {settings.polling.saver.enabled ? t("settings.saver_on") : t("settings.saver_off")}
           </button>
-          <label class="time">
-            <span class="micro">{t("settings.saver_night")}</span>
-            <input type="time" bind:value={settings.polling.saver.from} />
-          </label>
-          <label class="time">
-            <span class="micro">{t("settings.quiet_to")}</span>
-            <input type="time" bind:value={settings.polling.saver.to} />
-          </label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="eyebrow">{t("settings.night")} <Help text={t("settings.night_help")} /></span>
+        <div class="row">
           <button
             type="button"
             class="chip"
-            aria-pressed={settings.polling.saver.last_call}
-            onclick={() => (settings!.polling.saver.last_call = !settings!.polling.saver.last_call)}
+            aria-pressed={settings.polling.night.enabled}
+            onclick={() => (settings!.polling.night.enabled = !settings!.polling.night.enabled)}
           >
-            {settings.polling.saver.last_call ? t("settings.saver_last_call_on") : t("settings.saver_last_call_off")}
+            {settings.polling.night.enabled ? t("settings.night_on") : t("settings.night_off")}
           </button>
+          <button
+            type="button"
+            class="chip"
+            aria-pressed={settings.polling.night.last_call}
+            disabled={!settings.polling.night.enabled}
+            onclick={() => (settings!.polling.night.last_call = !settings!.polling.night.last_call)}
+          >
+            {settings.polling.night.last_call ? t("settings.last_call_on") : t("settings.last_call_off")}
+          </button>
+        </div>
+        <div class="row hours">
+          <label class="time">
+            <span class="micro">{t("settings.quiet_from")}</span>
+            <input type="time" bind:value={settings.polling.night.from} />
+          </label>
+          <label class="time">
+            <span class="micro">{t("settings.quiet_to")}</span>
+            <input type="time" bind:value={settings.polling.night.to} />
+          </label>
         </div>
       </div>
 
@@ -844,10 +861,10 @@
           {#if status.scheduler.last_run}
             {t("settings.scheduler_last", { time: ago(status.scheduler.last_run, now) })}
           {/if}
-          {#if settings.polling.saver.enabled}
-            {t("settings.saver_status", {
-              from: settings.polling.saver.from,
-              to: settings.polling.saver.to,
+          {#if settings.polling.night.enabled}
+            {t("settings.night_status", {
+              from: settings.polling.night.from,
+              to: settings.polling.night.to,
             })}
           {/if}
         </span>
@@ -1201,6 +1218,11 @@
 
   .time input {
     width: auto;
+  }
+
+  .hours {
+    flex-wrap: nowrap;
+    margin-top: 8px;
   }
 
   .last {

@@ -93,8 +93,10 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         # Ask carriers less where it costs nothing: not at night, rarely while a
         # parcel is only announced or days away, and an importer's parcels only
         # once they are out for delivery.
-        # "last_call" asks everything once more as the night rest begins.
-        "saver": {"enabled": True, "from": "22:00", "to": "06:00", "last_call": True},
+        "saver": {"enabled": True},
+        # The night rest: nothing is asked on its own between these hours.
+        # "last_call" asks everything once more as the rest begins.
+        "night": {"enabled": True, "from": "22:00", "to": "06:00", "last_call": True},
     },
     "carriers": {},
     "notifications": {
@@ -204,7 +206,16 @@ class Store:
             )
 
     def get_settings(self) -> dict[str, Any]:
-        return merge(DEFAULT_SETTINGS, self.get_value("app") or {})
+        stored = self.get_value("app") or {}
+        polling = stored.get("polling")
+        saver = polling.get("saver") if isinstance(polling, dict) else None
+        if isinstance(saver, dict) and "from" in saver and "night" not in polling:
+            # The night rest was part of the saver once: it keeps its hours.
+            polling["night"] = {
+                key: saver[key] for key in ("enabled", "from", "to") if key in saver
+            }
+            polling["saver"] = {"enabled": bool(saver.get("enabled"))}
+        return merge(DEFAULT_SETTINGS, stored)
 
     def save_settings(self, settings: dict[str, Any]) -> None:
         self.set_value("app", settings)

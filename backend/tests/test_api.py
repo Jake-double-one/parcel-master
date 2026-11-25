@@ -158,17 +158,20 @@ def test_settings_are_validated_and_bounded(client):
         "interval_minutes": 15,
         "stale_days": 30,
         "auto_archive_days": 3,
-        # on unless switched off
-        "saver": {"enabled": True, "from": "22:00", "to": "06:00", "last_call": True},
+        "saver": {"enabled": True},  # on unless switched off
+        "night": {"enabled": True, "from": "22:00", "to": "06:00", "last_call": True},
     }
     off = {
-        "polling": {"saver": {"enabled": False, "from": "23:00", "to": "05:30", "last_call": False}}
+        "polling": {
+            "saver": {"enabled": False},
+            "night": {"enabled": False, "from": "23:00", "to": "05:30", "last_call": False},
+        }
     }
-    assert (
-        client.put("/api/settings", json=off).json()["polling"]["saver"] == off["polling"]["saver"]
-    )
-    bad = {"polling": {"saver": {"enabled": True, "from": "late", "to": "05:30"}}}
-    assert client.put("/api/settings", json=bad).json()["detail"]["error"] == "invalid_saver_hours"
+    answer = client.put("/api/settings", json=off).json()["polling"]
+    assert answer["saver"] == off["polling"]["saver"]
+    assert answer["night"] == off["polling"]["night"]
+    bad = {"polling": {"night": {"enabled": True, "from": "late", "to": "05:30"}}}
+    assert client.put("/api/settings", json=bad).json()["detail"]["error"] == "invalid_night_hours"
     assert client.put("/api/settings", json={"timezone": "Mars/Olympus"}).status_code == 422
     bad_quiet = {
         "notifications": {"quiet_hours": {"enabled": True, "from": "25:00", "to": "07:00"}}

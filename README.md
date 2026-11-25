@@ -136,8 +136,9 @@ A parcel that a carrier module tracks by its number:
 | Delivered, returned | never | |
 | After a failed lookup | 5, 15, 30, 60 min, then the interval (at least 60 min) | |
 
-The **saver** (on by default) also rests at night, 22:00 to 06:00: nothing is
-asked on its own then, and what became due waits for the morning.
+The **night rest** (on by default, 22:00 to 06:00) is a setting of its own:
+nothing is asked on its own then, and what became due waits for the morning.
+With its "last call" everything is asked once more as the rest begins.
 
 DHL on the day of delivery, while the parcel is out for delivery:
 

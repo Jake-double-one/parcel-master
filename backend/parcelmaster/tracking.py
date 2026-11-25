@@ -108,8 +108,8 @@ def saver_on(settings: dict[str, Any]) -> bool:
 
 
 def resting(settings: dict[str, Any], now: datetime | None = None) -> bool:
-    """Whether the saver's night rest applies right now: nothing is asked on its own."""
-    return in_window(settings["polling"].get("saver", {}), timezone(settings), now)
+    """Whether the night rest applies right now: nothing is asked on its own."""
+    return in_window(settings["polling"].get("night", {}), timezone(settings), now)
 
 
 #: What Hermes writes when the van is loaded. An earlier version read it as

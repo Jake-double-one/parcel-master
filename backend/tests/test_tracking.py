@@ -241,15 +241,25 @@ def test_the_saver_asks_less_while_little_can_happen():
     assert next_delay_minutes(Status.OUT_FOR_DELIVERY, 120, now, far, saver=True) == 30
 
 
-def test_night_rest_follows_the_saver_setting():
+def test_night_rest_follows_its_own_setting():
     def settings(enabled):
-        saver = {"enabled": enabled, "from": "22:00", "to": "06:00"}
-        return {"timezone": "UTC", "polling": {"saver": saver}}
+        night = {"enabled": enabled, "from": "22:00", "to": "06:00"}
+        return {"timezone": "UTC", "polling": {"saver": {"enabled": True}, "night": night}}
 
     assert resting(settings(True), datetime(2026, 1, 1, 23, 30))
     assert resting(settings(True), datetime(2026, 1, 1, 5, 59))
     assert not resting(settings(True), datetime(2026, 1, 1, 6, 0))
     assert not resting(settings(False), datetime(2026, 1, 1, 23, 30))
+
+
+def test_a_night_rest_set_with_the_saver_keeps_its_hours():
+    store = Store(None)
+    store.set_value(
+        "app", {"polling": {"saver": {"enabled": True, "from": "23:00", "to": "05:00"}}}
+    )
+    polling = store.get_settings()["polling"]
+    assert polling["saver"] == {"enabled": True}
+    assert polling["night"] == {"enabled": True, "from": "23:00", "to": "05:00", "last_call": True}
 
 
 def test_scheduler_asks_nobody_during_the_night_rest(world, monkeypatch):
@@ -300,7 +310,7 @@ def test_as_the_night_rest_begins_everything_is_asked_once_more(world, monkeypat
 
     async def run(nights, last_call=True):
         settings = store.get_settings()
-        settings["polling"]["saver"]["last_call"] = last_call
+        settings["polling"]["night"]["last_call"] = last_call
         store.save_settings(settings)
         module.calls = 0
         async with httpx.AsyncClient() as http:
@@ -322,7 +332,9 @@ def test_a_new_delivery_window_is_news(world):
     store, module, registry, _, parcel_id = world
     # Not a parcel the user added a moment ago.
     store._db.execute("UPDATE parcels SET created_at='2026-01-01T00:00:00+00:00'")
-    today = datetime.now().replace(hour=11, minute=30, second=0, microsecond=0)
+    # Today where the tracker lives, which near midnight is not the machine's day.
+    zone = ZoneInfo(store.get_settings()["timezone"])
+    today = datetime.now(zone).replace(hour=11, minute=30, second=0, microsecond=0, tzinfo=None)
     window = {"eta_from": today, "eta_to": today.replace(hour=13)}
     module.answers = [
         TrackingResult(Status.IN_TRANSIT, "On its way"),

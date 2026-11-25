@@ -65,6 +65,7 @@ def world(tmp_path):
     settings["carriers"] = {"test.shop": {"email": "me@example.org", "password": "pw"}}
     # Most tests here are about the hand-over itself, so it happens at once.
     settings["polling"]["saver"]["enabled"] = False
+    settings["polling"]["night"]["enabled"] = False
     store.save_settings(settings)
     return store, registry, shop, tmp_path
 

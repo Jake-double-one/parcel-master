@@ -1037,8 +1037,9 @@ def create_app(config: Config) -> FastAPI:
             "auto_archive_days": bounded(
                 polling.get("auto_archive_days"), 0, 90, defaults["auto_archive_days"]
             ),
-            "saver": daily_window(polling.get("saver") or defaults["saver"], "invalid_saver_hours")
-            | {"last_call": bool((polling.get("saver") or {}).get("last_call", True))},
+            "saver": {"enabled": bool((polling.get("saver") or {}).get("enabled"))},
+            "night": daily_window(polling.get("night") or defaults["night"], "invalid_night_hours")
+            | {"last_call": bool((polling.get("night") or {}).get("last_call", True))},
         }
         merged["discovery"] = {"mode": discovery.mode_of(merged)}
         notifications = merged["notifications"]
