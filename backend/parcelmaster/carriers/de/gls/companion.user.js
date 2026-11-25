@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: GLS
 // @namespace    parcel-master
-// @version      5
+// @version      6
 // @description  Passes the history GLS' tracking page shows you on to your Parcel Master and adds a button that takes the parcel.
 // @match        https://www.gls-pakete.de/*
 // @grant        GM_xmlhttpRequest
@@ -201,6 +201,8 @@
   // the seconds left next to it. A click on that note pauses and resumes.
   let left = 0; // seconds until the next press
   let paused = false;
+  let seen = ""; // what the page showed at the last press
+  let still = 0; // presses in a row that changed nothing
 
   function updateButton() {
     const button = document.querySelector('[data-testid="rtt-live-update"] button:not([data-parcel-master-refresh])');
@@ -249,6 +251,16 @@
     if (!paused) {
       left -= 1;
       if (left <= 0) {
+        // At the last stop GLS' button stops bringing news; the delivery only
+        // shows after loading the page anew. Two presses that moved nothing,
+        // not even the van, and the script does that for you.
+        const now = JSON.stringify([parcel && parcel.stops, parcel && parcel.window, spots.van]);
+        still = now === seen ? still + 1 : 0;
+        seen = now;
+        if (parcel && parcel.stops !== null && parcel.stops <= 1 && still >= 2) {
+          location.reload();
+          return;
+        }
         button.click();
         left = pace();
       }

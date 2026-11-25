@@ -110,7 +110,8 @@
     "map_home": "Destination",
     "map_at": "Position as of {time}",
     "remind_on": "Reminder on",
-    "remind_off": "Reminder off"
+    "remind_off": "Reminder off",
+    "near": "Any moment now"
   },
   "dialog": {
     "create_title": "Add shipment",
@@ -378,7 +379,8 @@
       "about": "{carrier}: a bit more than {count} stops before yours.",
       "one": "{carrier}: only 1 stop before yours.",
       "next": "{carrier}: you are the next stop.",
-      "lost": "{carrier}: the live view is gone; it was {count} stops last. Perhaps a break or a changed round."
+      "lost": "{carrier}: the live view is gone; it was {count} stops last. Perhaps a break or a changed round.",
+      "near": "{carrier}: delivery any moment now."
     },
     "discovered": {
       "body": "{carrier} announces a parcel. Take it in Parcel Master to track it.",

@@ -110,7 +110,8 @@
     "map_home": "Ziel",
     "map_at": "Standort von {time}",
     "remind_on": "Erinnerung an",
-    "remind_off": "Erinnerung aus"
+    "remind_off": "Erinnerung aus",
+    "near": "Jeden Moment"
   },
   "dialog": {
     "create_title": "Sendung anlegen",
@@ -378,7 +379,8 @@
       "about": "{carrier}: noch etwas mehr als {count} Stopps bis zu dir.",
       "one": "{carrier}: nur noch 1 Stopp bis zu dir.",
       "next": "{carrier}: Du bist der nächste Halt.",
-      "lost": "{carrier}: Die Live-Ansicht ist weg, zuletzt waren es {count} Stopps. Vielleicht eine Pause oder eine geänderte Tour."
+      "lost": "{carrier}: Die Live-Ansicht ist weg, zuletzt waren es {count} Stopps. Vielleicht eine Pause oder eine geänderte Tour.",
+      "near": "{carrier}: Zustellung jeden Moment."
     },
     "discovered": {
       "body": "{carrier} kündigt ein Paket an. Übernimm es in Parcel Master, um es zu verfolgen.",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
@@ -44,6 +45,8 @@ MIN_GAP_SECONDS = 10
 MIN_LIVE_MINUTES = 1
 #: Stops left at which a message goes out, each once on the way down.
 STOP_MARKS = (20, 10, 5, 2, 1, 0)
+#: The van this close to the destination counts as "any moment now".
+NEAR_METRES = 50
 #: How long live news of a delivery round stand against an ordinary answer.
 LIVE_STAYS = timedelta(minutes=10)
 #: A delivery window is reported again once its start or end has moved this far.
@@ -335,7 +338,7 @@ def record_result(
     before = extra.get("stops_left")
     stops = result.stops_left if status is Status.OUT_FOR_DELIVERY else None
     if not keep_live:
-        for note in ("stops_left", "stops_about", "live_at", "van", "home"):
+        for note in ("stops_left", "stops_about", "live_at", "van", "home", "near"):
             extra.pop(note, None)
     if status is not Status.OUT_FOR_DELIVERY:
         extra.pop("live_lost", None)
@@ -350,6 +353,18 @@ def record_result(
         extra["live_at"] = now_iso
         if result.home:
             extra["home"] = "{:.5f},{:.5f}".format(*result.home)
+    # The van within a few steps of the door: the last word before "delivered".
+    was_near = bool(parcel["extra"].get("near"))
+    near = (
+        status is Status.OUT_FOR_DELIVERY
+        and result.van is not None
+        and result.home is not None
+        and metres_between(result.van, result.home) <= NEAR_METRES
+    )
+    if near:
+        extra["near"] = "1"
+    elif result.van is not None:
+        extra.pop("near", None)  # it drove on
     if result.collect:
         extra["told"] = _told(result)
     if extra != parcel["extra"]:
@@ -357,7 +372,9 @@ def record_result(
 
     updated = store.get_parcel(parcel["id"])
     notices: list[Notice] = []
-    if stops is not None:
+    if near and not was_near:
+        notices.append(Notice("stops", updated, {"count": 0, "variant": "near"}))
+    elif stops is not None and not near:
         earlier = int(before) if before and before.isdigit() else None
         if any(stops <= mark and (earlier is None or earlier > mark) for mark in STOP_MARKS):
             variant = stops_variant(stops, result.stops_about)
@@ -391,6 +408,16 @@ def record_result(
     ):
         notices.append(Notice("step", updated, {"description": events[-1]["description"]}))
     return notices
+
+
+def metres_between(one: tuple[float, float], other: tuple[float, float]) -> float:
+    """The distance between two places given as (latitude, longitude)."""
+    lat1, lon1, lat2, lon2 = map(math.radians, (*one, *other))
+    half = (
+        math.sin((lat2 - lat1) / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+    )
+    return 2 * 6_371_000 * math.asin(math.sqrt(half))
 
 
 def stops_variant(stops: int, about: bool) -> str:

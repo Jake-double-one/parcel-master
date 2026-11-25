@@ -40,6 +40,8 @@ export interface Parcel {
   stops: { left: number; about: boolean } | null;
   /** The live view of the round vanished while the parcel is still on the van. */
   live_lost: boolean;
+  /** The van stands within a few steps of the destination. */
+  near: boolean;
   /** What is inside, where an importer knows it. */
   /** Where the van is and where it is headed, while the carrier's live view tells. */
   map: { van: [number, number]; home: [number, number] | null; at: string | null } | null;

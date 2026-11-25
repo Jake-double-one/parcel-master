@@ -294,6 +294,8 @@ def create_app(config: Config) -> FastAPI:
                 if parcel["extra"].get("stops_left", "").isdigit()
                 else None
             ),
+            # The van stands within a few steps of the destination.
+            "near": bool(parcel["extra"].get("near")),
             # Where the van is and where it is headed, while the carrier's live view tells.
             "map": live_map(parcel["extra"]),
             # Whose website the link below opens.

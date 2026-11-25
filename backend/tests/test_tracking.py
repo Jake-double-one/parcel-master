@@ -660,3 +660,24 @@ def test_a_reminder_is_wanted_whatever_the_settings_say(world):
     store = world[0]
     settings = store.get_settings()
     assert wanted(settings, "reminder")
+
+
+def test_the_van_at_the_door_is_told_once(world, monkeypatch):
+    store, module, registry, _, parcel_id = world
+    monkeypatch.setattr(type(module), "default_daily_budget", None)
+    home = (52.5, 13.4)
+
+    def van(north_metres, stops=1):
+        place = (home[0] + north_metres / 111_320, home[1])
+        return TrackingResult(Status.OUT_FOR_DELIVERY, "x", stops_left=stops, van=place, home=home)
+
+    module.answers = [van(400, stops=3), van(40), van(20), van(300), van(30)]
+    told = []
+    for _ in range(5):
+        notices = refresh(store, registry, parcel_id)
+        told.append([n.params.get("variant") for n in notices if n.kind == "stops"])
+        told[-1].append(bool(store.get_parcel(parcel_id)["extra"].get("near")))
+    assert told[1] == ["near", True]  # within fifty metres: said instead of "one stop"
+    assert told[2] == [True]  # still there: not said again
+    assert told[3][-1] is False  # it drove on
+    assert told[4] == ["near", True]

@@ -95,7 +95,9 @@
     {#if parcel.live_lost && !parcel.stops && !finished}
       <span class="warn">{t("shipment.live_lost")}</span>
     {/if}
-    {#if parcel.stops && !finished}
+    {#if parcel.near && !finished}
+      <span>{t("shipment.near")}</span>
+    {:else if parcel.stops && !finished}
       <span>
         {parcel.stops.left <= 0
           ? t("shipment.stops_next")
