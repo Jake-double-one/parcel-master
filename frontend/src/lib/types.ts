@@ -23,6 +23,8 @@ export interface Parcel {
   carrier_name: string;
   tracking_number: string;
   extra: Record<string, string>;
+  /** The bell: a reminder shortly before the delivery window opens. */
+  remind: boolean;
   status: Status;
   description: string;
   location: string | null;
@@ -165,6 +167,7 @@ export interface Settings {
   notifications: {
     apprise_urls: string[];
     push_enabled: boolean;
+    reminder_minutes: number;
     events: Record<string, boolean>;
     quiet_hours: { enabled: boolean; from: string; to: string };
   };

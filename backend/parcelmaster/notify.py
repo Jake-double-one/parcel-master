@@ -25,6 +25,8 @@ def in_quiet_hours(settings: dict[str, Any], now: datetime | None = None) -> boo
 
 
 def wanted(settings: dict[str, Any], kind: str) -> bool:
+    if kind == "reminder":
+        return True  # asked for with the bell on the parcel itself
     events = settings["notifications"]["events"]
     if kind in ("stale", "pickup_reminder", "delivery_window", "stops", "discovered", "step"):
         return bool(events.get(kind))
@@ -104,7 +106,8 @@ class Notifier:
             if notice.kind == "step" and notice.parcel["id"] in told:
                 continue
             message = self.compose(notice, settings["language"])
-            if in_quiet_hours(settings):
+            # A reminder held back until the quiet hours end would come too late.
+            if in_quiet_hours(settings) and notice.kind != "reminder":
                 self.store.hold_notification(message)
             else:
                 await self.send(message, settings)

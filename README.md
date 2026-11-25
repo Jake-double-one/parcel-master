@@ -11,7 +11,8 @@ with one small module per carrier.
   entry shows when it was last checked.
 - **Notifications.** Browser push (installable as an app) and
   [Apprise](https://github.com/caronc/apprise) for Gotify, ntfy, Telegram,
-  e-mail and many more. Quiet hours included.
+  e-mail and many more. Quiet hours included. A bell on each parcel sends a
+  short reminder before its delivery window opens.
 - **Careful with limits.** A daily lookup budget per carrier, and a saver that
   rests at night, asks rarely while a parcel is only announced or still days
   away, and speeds up on the delivery day.
@@ -26,7 +27,7 @@ with one small module per carrier.
 | --- | --- | --- | --- |
 | DE | DHL | Reads the public tracking of dhl.de; with an app's key and secret, the official "Parcel DE Tracking" API | Nothing. Optionally a free app at [developer.dhl.com](https://developer.dhl.com) with "Parcel DE Tracking" enabled; no business account needed |
 | DE | Hermes | Reads the public tracking of myhermes.de | Nothing |
-| DE | GLS | Reads the open status GLS gives for a parcel number: stage and delivery window. The history stands only on GLS' own tracking page; the companion script passes it on when you open that page, and in between Parcel Master notes each new stage itself | Nothing |
+| DE | GLS | Reads the open status GLS gives for a parcel number: stage and delivery window. The history, the live window and the stops left stand only on GLS' own tracking page; the companion script passes them on while you have that page open, and in between Parcel Master notes each new stage itself | Nothing |
 | DE | Amazon | Reads the order history of your account with [amazon-orders](https://github.com/alexdlaird/amazon-orders) | Account e-mail and password; the two-step secret key if two-step verification is on |
 
 A demo carrier (`DEMO` followed by digits) exists for the demo mode and for

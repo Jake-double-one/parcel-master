@@ -617,3 +617,46 @@ def test_a_history_brought_from_the_page_is_not_doubled_and_keeps_the_window(wor
     assert store.get_parcel(parcel_id)["eta_from"]  # the page says nothing against it
     refresh(store, registry, parcel_id)
     assert [e["description"] for e in store.parcel_events(parcel_id)][-1] == "On the van"
+
+
+def test_the_bell_rings_once_before_the_window_opens(world):
+    store, _, registry, _, parcel_id = world
+    now = datetime.now(UTC)
+
+    def window(start_in, hours=2):
+        start = now + timedelta(minutes=start_in)
+        store.update_parcel(
+            parcel_id,
+            status="out_for_delivery",
+            eta_from=start.isoformat(timespec="seconds"),
+            eta_to=(start + timedelta(hours=hours)).isoformat(timespec="seconds"),
+        )
+
+    def rings():
+        return [n for n in periodic_notices(store, registry) if n.kind == "reminder"]
+
+    window(20)
+    assert rings() == []  # the bell is off
+    store.update_parcel(parcel_id, remind=1)
+    window(90)
+    assert rings() == []  # too early
+    window(20, hours=20)
+    assert rings() == []  # a whole day is no window
+    window(20)
+    [notice] = rings()
+    assert len(notice.params["time"]) == 5
+    assert rings() == []  # only once
+    window(25)
+    assert rings() == []  # not again for a window that moved
+    store.update_parcel(parcel_id, reminded_for=None)
+    window(-30)
+    assert len(rings()) == 1  # switched on late, window still open: right away
+    store.update_parcel(parcel_id, reminded_for=None)
+    window(-300)
+    assert rings() == []  # over
+
+
+def test_a_reminder_is_wanted_whatever_the_settings_say(world):
+    store = world[0]
+    settings = store.get_settings()
+    assert wanted(settings, "reminder")

@@ -108,7 +108,9 @@
     "map_label": "Map with the delivery van's position",
     "map_van": "Delivery van",
     "map_home": "Destination",
-    "map_at": "Position as of {time}"
+    "map_at": "Position as of {time}",
+    "remind_on": "Reminder on",
+    "remind_off": "Reminder off"
   },
   "dialog": {
     "create_title": "Add shipment",
@@ -271,7 +273,10 @@
     "asked": "Last asked {time} · open parcels: {count}",
     "asked_none": "No open parcels.",
     "ask_started": "Asking · parcels: {count}",
-    "asked_never": "Not asked yet · open parcels: {count}"
+    "asked_never": "Not asked yet · open parcels: {count}",
+    "reminder_minutes": "Reminder before the delivery window",
+    "reminder_unit": "min before",
+    "reminder_help": "The bell on a parcel sends one short reminder this long before the day's delivery window opens. It also comes during quiet hours."
   },
   "login": {
     "password": "Password",
@@ -378,6 +383,9 @@
     "discovered": {
       "body": "{carrier} announces a parcel. Take it in Parcel Master to track it.",
       "taken": "{carrier} announces a parcel. It is tracked now."
+    },
+    "reminder": {
+      "body": "Reminder: {carrier} delivery from about {time}"
     }
   },
   "scanner": {

@@ -633,3 +633,22 @@ def test_gls_page_history_keeps_times_and_drops_what_is_not_a_step():
     ]
     assert result.events[0].timestamp == datetime(2026, 11, 24, 9, 27, 28)
     assert result.location == "Polen" and result.keep_window
+
+
+def test_gls_live_view_brings_window_and_stops():
+    live = {"from": "2026-11-25T12:51:00Z", "to": "2026-11-25T15:11:00Z"}
+    step = {"time": "2026-11-25 06:56:00", "text": "Das Paket ist in Zustellung."}
+    full = {"number": "10000000001", "events": [step], "window": live, "stops": 7}
+    [(_, result)] = GLS.take_from_companion({"parcels": [full]})
+    assert result.status is Status.OUT_FOR_DELIVERY and not result.live_only
+    assert result.eta_from.isoformat() == "2026-11-25T12:51:00+00:00"
+    assert result.stops_left == 7 and result.hold_minutes == 60 and not result.keep_window
+    # With the history folded away only the live view is news.
+    folded = {"number": "10000000001", "events": [], "window": live, "stops": None}
+    [(_, result)] = GLS.take_from_companion({"parcels": [folded]})
+    assert result.live_only and result.stops_left is None and result.eta_to is not None
+    # Neither history nor live view: nothing to pass on.
+    assert GLS.take_from_companion({"parcels": [{"number": "10000000001", "events": []}]}) == []
+    odd = {"number": "10000000001", "events": [step], "window": {"from": "x"}, "stops": "50+"}
+    [(_, result)] = GLS.take_from_companion({"parcels": [odd]})
+    assert result.stops_left is None and result.keep_window

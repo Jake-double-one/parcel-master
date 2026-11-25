@@ -108,7 +108,9 @@
     "map_label": "Karte mit dem Standort des Zustellfahrzeugs",
     "map_van": "Zustellfahrzeug",
     "map_home": "Ziel",
-    "map_at": "Standort von {time}"
+    "map_at": "Standort von {time}",
+    "remind_on": "Erinnerung an",
+    "remind_off": "Erinnerung aus"
   },
   "dialog": {
     "create_title": "Sendung anlegen",
@@ -271,7 +273,10 @@
     "asked": "Zuletzt abgefragt {time} · offene Sendungen: {count}",
     "asked_none": "Keine offenen Sendungen.",
     "ask_started": "Abfrage läuft · Sendungen: {count}",
-    "asked_never": "Noch nicht abgefragt · offene Sendungen: {count}"
+    "asked_never": "Noch nicht abgefragt · offene Sendungen: {count}",
+    "reminder_minutes": "Erinnerung vor dem Zustellfenster",
+    "reminder_unit": "Min. vorher",
+    "reminder_help": "Die Glocke an einer Sendung schickt einmal eine kurze Erinnerung, so lange bevor das Zustellfenster des Tages beginnt. Sie kommt auch in der Ruhezeit."
   },
   "login": {
     "password": "Passwort",
@@ -378,6 +383,9 @@
     "discovered": {
       "body": "{carrier} kündigt ein Paket an. Übernimm es in Parcel Master, um es zu verfolgen.",
       "taken": "{carrier} kündigt ein Paket an. Es wird jetzt verfolgt."
+    },
+    "reminder": {
+      "body": "Erinnerung: {carrier}-Zustellung ab ca. {time}"
     }
   },
   "scanner": {

@@ -608,7 +608,32 @@ def periodic_notices(store: Store, registry: Registry) -> list[Notice]:
             notices.append(
                 Notice("pickup_reminder", parcel, {"days": max(0, (deadline - now).days)})
             )
+        due = reminder_due(parcel, settings, now)
+        if due:
+            # Once per parcel: a window that moves later does not ring again.
+            store.update_parcel(parcel["id"], reminded_for=parcel["eta_from"])
+            notices.append(Notice("reminder", parcel, {"time": due}))
     return notices
+
+
+def reminder_due(parcel: dict[str, Any], settings: dict[str, Any], now: datetime) -> str | None:
+    """The start of the delivery window as "13:51" if the parcel's bell should ring now.
+
+    It rings once, so many minutes before the window of today opens, or right
+    away if the bell was switched on later than that; not for a whole day
+    without hours and not once the window is over.
+    """
+    if not parcel.get("remind") or parcel.get("reminded_for"):
+        return None
+    if Status(parcel["status"]) in FINAL or Status(parcel["status"]) is Status.READY_FOR_PICKUP:
+        return None
+    start, end = parse_iso(parcel["eta_from"]), parse_iso(parcel["eta_to"])
+    if not start or not end or end <= start or end - start > timedelta(hours=12):
+        return None
+    lead = timedelta(minutes=int(settings["notifications"].get("reminder_minutes") or 30))
+    if not start - lead <= now < end:
+        return None
+    return f"{start.astimezone(timezone(settings)):%H:%M}"
 
 
 def auto_archive(store: Store) -> int:

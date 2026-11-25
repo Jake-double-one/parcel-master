@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { api } from "../lib/api";
   import { ago, dayLabel, etaLabel, eventTime, pickupLabel } from "../lib/format";
   import { t, tOr } from "../lib/i18n.svelte";
   import { dayDistance } from "../lib/time";
@@ -17,6 +18,21 @@
   let copied = $state(false);
   // One panel at a time, so opening one never pushes the other button around.
   let panel = $state<"contents" | "history" | null>(null);
+
+  // The bell answers at once; the next load of the list confirms it.
+  let bell = $state<boolean | null>(null);
+  const remind = $derived(bell ?? parcel.remind);
+  const ongoing = $derived(!["delivered", "returned", "ready_for_pickup"].includes(parcel.status));
+
+  async function toggleBell() {
+    const wanted = !remind;
+    bell = wanted;
+    try {
+      await api.remind(parcel.id, wanted);
+    } catch {
+      bell = !wanted;
+    }
+  }
 
   function toggle(name: "contents" | "history") {
     panel = panel === name ? null : name;
@@ -168,6 +184,24 @@
       {t("shipment.history")}
       {#if parcel.events.length}<span class="count">{parcel.events.length}</span>{/if}
     </button>
+    {#if ongoing && parcel.remind !== undefined}
+      <button
+        type="button"
+        class="chip bell"
+        class:on={remind}
+        aria-pressed={remind}
+        title={remind ? t("shipment.remind_on") : t("shipment.remind_off")}
+        aria-label={remind ? t("shipment.remind_on") : t("shipment.remind_off")}
+        onclick={toggleBell}
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill={remind ? "currentColor" : "none"}
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          aria-hidden="true">
+          <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+          <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
+        </svg>
+      </button>
+    {/if}
   </div>
 
   {#if panel === "contents"}
@@ -226,6 +260,14 @@
     flex: 0 0 auto;
     align-items: center;
     gap: 6px;
+  }
+
+  /* Grey while off, green while on. */
+  .bell.on,
+  .bell.on:hover {
+    color: var(--ok);
+    border-color: var(--ok);
+    background: color-mix(in srgb, var(--ok) 14%, transparent);
   }
 
   .carrier .name {

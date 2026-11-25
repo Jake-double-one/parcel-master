@@ -791,6 +791,14 @@
         </div>
       </div>
 
+      <label class="field">
+        <span class="eyebrow">{t("settings.reminder_minutes")} <Help text={t("settings.reminder_help")} /></span>
+        <span class="inline-number">
+          <input type="number" min="5" max="240" bind:value={settings.notifications.reminder_minutes} />
+          <span class="mono muted">{t("settings.reminder_unit")}</span>
+        </span>
+      </label>
+
       <div class="field">
         <span class="eyebrow">{t("settings.quiet")} <Help text={t("settings.quiet_help")} /></span>
         <div class="row">

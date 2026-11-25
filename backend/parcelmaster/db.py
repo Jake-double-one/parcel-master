@@ -49,6 +49,8 @@ CREATE TABLE IF NOT EXISTS parcels (
     next_check_at TEXT,
     stale_notified_at TEXT,
     pickup_reminded_at TEXT,
+    remind INTEGER NOT NULL DEFAULT 0,
+    reminded_for TEXT,
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS parcels_by_shipment ON parcels(shipment_id);
@@ -97,6 +99,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "notifications": {
         "apprise_urls": [],
         "push_enabled": True,
+        # Minutes before the delivery window opens that a parcel's bell rings.
+        "reminder_minutes": 30,
         "events": {
             "any_change": False,
             "out_for_delivery": True,
@@ -135,6 +139,8 @@ PARCEL_UPDATE_COLUMNS = frozenset(
         "next_check_at",
         "stale_notified_at",
         "pickup_reminded_at",
+        "remind",
+        "reminded_for",
     }
 )
 
@@ -172,6 +178,10 @@ class Store:
             for column in ("deleted_at", "suggested_at"):
                 if column not in columns:  # a database from before the trash
                     self._db.execute(f"ALTER TABLE shipments ADD COLUMN {column} TEXT")
+            columns = {row["name"] for row in self._db.execute("PRAGMA table_info(parcels)")}
+            if "remind" not in columns:  # a database from before the reminder bell
+                self._db.execute("ALTER TABLE parcels ADD COLUMN remind INTEGER NOT NULL DEFAULT 0")
+                self._db.execute("ALTER TABLE parcels ADD COLUMN reminded_for TEXT")
 
     def close(self) -> None:
         with self._lock:

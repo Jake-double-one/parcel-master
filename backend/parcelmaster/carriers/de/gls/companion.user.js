@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: GLS
 // @namespace    parcel-master
-// @version      1
+// @version      2
 // @description  Passes the history GLS' tracking page shows you on to your Parcel Master and adds a button that takes the parcel.
 // @match        https://www.gls-pakete.de/*
 // @grant        GM_xmlhttpRequest
@@ -11,8 +11,10 @@
 
 // GLS shows a parcel's history only on this page. This script reads it from
 // what the page displays and hands it to your own server: the parcel number,
-// the steps and the sender's name. It asks GLS nothing by itself, leaves the
-// recipient out and sends nothing anywhere else.
+// the steps, the sender's name and, on the delivery day, the window and the
+// stops left. It asks GLS nothing by itself, leaves the recipient out and
+// sends nothing anywhere else. While the live view is open it presses the
+// page's own "Update" button for you.
 (function () {
   "use strict";
   const SERVER = "__SERVER__";
@@ -34,9 +36,18 @@
     const query = new URLSearchParams(location.search);
     const number = (shown || query.get("trackingNumber") || query.get("match") || "").replace(/\D/g, "");
     const list = document.querySelector('[data-testid="event-container"]');
-    if (!/^\d{11,12}$/.test(number) || !list) return null;
+    // The live view of the delivery day: the window as it moves, and the stops.
+    const times = [...document.querySelectorAll('[data-testid="heading"] time[datetime]')];
+    const live = !!document.querySelector('[data-testid="rtt-live-update"]');
+    const span = live && times.length === 2
+      ? { from: times[0].getAttribute("datetime"), to: times[1].getAttribute("datetime") }
+      : null;
+    // "50+" is no number worth passing on; only a real count is.
+    const count = /^(\d+)\s*Stopp/.exec(text(document.querySelector('[data-testid="subheading"]')));
+    const stops = live && count ? Number(count[1]) : null;
+    if (!/^\d{11,12}$/.test(number) || (!list && !span && stops === null)) return null;
     const events = [];
-    for (const time of list.querySelectorAll("time[datetime]")) {
+    for (const time of list ? list.querySelectorAll("time[datetime]") : []) {
       const block = time.parentElement.parentElement;
       const words = block && (block.querySelector('[class*="eventDescription"]') || block.children[1]);
       const place = time.parentElement.querySelector('[data-testid="event-location"]');
@@ -48,7 +59,14 @@
       });
     }
     const sender = document.querySelector('[data-testid="sender-information-label"] [class*="infoBlock"] span');
-    return { number: number, sender: text(sender), events: events };
+    const named = document.querySelector('[data-testid="sender-name"] abbr');
+    return {
+      number: number,
+      sender: text(sender) || (named && named.getAttribute("title")) || "",
+      events: events,
+      window: span,
+      stops: stops,
+    };
   }
 
   function send(take) {
@@ -123,6 +141,77 @@
       }
     }
     paint();
+  }
+
+  // -- pressing "Update" for the user ---------------------------------------
+  // The live view only moves when its button is pressed. While it is open the
+  // script presses it at a calm pace, faster as the van comes near, and shows
+  // the seconds left next to it. A click on that note pauses and resumes.
+  let left = 0; // seconds until the next press
+  let paused = false;
+
+  function updateButton() {
+    const button = document.querySelector('[data-testid="rtt-live-update"] button:not([data-parcel-master-refresh])');
+    return button && !button.disabled ? button : null;
+  }
+
+  function pace() {
+    const stops = parcel ? parcel.stops : null;
+    if (stops !== null && stops < 5) return 30;
+    if (stops !== null && stops < 10) return 60;
+    return 120;
+  }
+
+  function note(button) {
+    let label = button.parentElement.querySelector("[data-parcel-master-refresh]");
+    if (!label) {
+      label = document.createElement("button");
+      label.type = "button";
+      label.dataset.parcelMasterRefresh = "1";
+      label.style.cssText =
+        "display:block;margin-top:6px;padding:4px 10px;border-radius:999px;border:1px solid #888;" +
+        "background:transparent;color:inherit;font:inherit;font-size:12px;cursor:pointer;";
+      label.addEventListener("click", () => {
+        paused = !paused;
+        tick();
+      });
+      button.parentElement.appendChild(label);
+    }
+    const words = paused
+      ? german ? "Parcel Master: pausiert · weiter" : "Parcel Master: paused · resume"
+      : german ? "Parcel Master drückt in " + left + " s" : "Parcel Master presses in " + left + " s";
+    if (label.textContent !== words) label.textContent = words;
+  }
+
+  function tick() {
+    const button = updateButton();
+    if (!button) {
+      left = 0; // no live view open: start afresh when one appears
+      return;
+    }
+    left = left <= 0 ? pace() : Math.min(left, pace()); // sooner once the van is near
+    if (!paused) {
+      left -= 1;
+      if (left <= 0) {
+        button.click();
+        left = pace();
+      }
+    }
+    note(button);
+  }
+
+  // A worker keeps time in a tab that is not in front, where the page's own
+  // timers are slowed down; if the page does not allow one, a plain timer does.
+  try {
+    const code = "setInterval(() => postMessage(0), 1000);";
+    const worker = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })));
+    worker.onmessage = tick;
+    worker.onerror = () => {
+      worker.terminate();
+      setInterval(tick, 1000);
+    };
+  } catch (error) {
+    setInterval(tick, 1000);
   }
 
   // The page fills in after loading and redraws itself; look again when it does.

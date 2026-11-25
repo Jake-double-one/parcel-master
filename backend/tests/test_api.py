@@ -1116,3 +1116,20 @@ def test_the_gls_page_hands_over_its_history(client):
     assert taken.json()["tracked"] == ["10000000001"]
     [card] = client.get("/api/shipments").json()
     assert card["title"] == "Shop" and card["parcels"][0]["status"] == "in_transit"
+
+
+def test_the_bell_of_a_parcel_can_be_switched(client):
+    made = client.post(
+        "/api/shipments",
+        json={"title": "Bell", "parcels": [{"carrier": "demo", "tracking_number": "DEMO100"}]},
+    )
+    assert made.status_code == 201, made.text
+    parcel = made.json()["parcels"][0]
+    assert parcel["remind"] is False and "reminded_for" not in parcel
+    on = client.post(f"/api/parcels/{parcel['id']}/remind", json={"on": True}).json()
+    assert on["parcels"][0]["remind"] is True
+    off = client.post(f"/api/parcels/{parcel['id']}/remind", json={"on": False}).json()
+    assert off["parcels"][0]["remind"] is False
+    assert client.post("/api/parcels/99999/remind", json={"on": True}).status_code == 404
+    saved = client.put("/api/settings", json={"notifications": {"reminder_minutes": 1}}).json()
+    assert saved["notifications"]["reminder_minutes"] == 5

@@ -77,6 +77,8 @@ export const api = {
   remove: (id: number) => request<void>("DELETE", `/api/shipments/${id}`),
   archive: (id: number, archived: boolean) =>
     request<Shipment>("POST", `/api/shipments/${id}/archive`, { archived }),
+  remind: (parcelId: number, on: boolean) =>
+    request<Shipment>("POST", `/api/parcels/${parcelId}/remind`, { on }),
   refresh: (id: number) => request<Shipment>("POST", `/api/shipments/${id}/refresh`),
   settings: () => request<Settings>("GET", "/api/settings"),
   saveSettings: (settings: Partial<Settings>) => request<Settings>("PUT", "/api/settings", settings),

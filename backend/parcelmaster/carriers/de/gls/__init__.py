@@ -34,6 +34,11 @@ STATUS_URL = "https://gls-group.eu/app/service/open/rest/{place}/rstt029"
 PAGE_URL = "https://www.gls-pakete.de/reach-sendungsverfolgung"
 #: GLS turns away who asks in quick succession; this keeps well below that.
 DAILY_BUDGET = 300
+#: Below this many stops the page in the user's browser tells more than the
+#: open status, whose planned window would only undo the live one.
+FEW_STOPS = 10
+#: So long after the page's last news the open status is asked again.
+QUIET_AFTER_LIVE_MINUTES = 60
 
 #: The stage GLS names for the parcel.
 _STAGES = {
@@ -97,6 +102,20 @@ def _page_time(value: Any) -> datetime | None:
         return datetime.fromisoformat(value.strip()) if isinstance(value, str) else None
     except ValueError:
         return None
+
+
+def _live_window(value: Any) -> tuple[datetime | None, datetime | None]:
+    """The window of the page's live view: two times with their zone."""
+    if not isinstance(value, dict):
+        return None, None
+    try:
+        start = datetime.fromisoformat(str(value.get("from")).replace("Z", "+00:00"))
+        end = datetime.fromisoformat(str(value.get("to")).replace("Z", "+00:00"))
+    except ValueError:
+        return None, None
+    if start.tzinfo is None or end.tzinfo is None or end < start:
+        return None, None
+    return start, end
 
 
 def read_window(text: Any) -> tuple[datetime | None, datetime | None]:
@@ -214,21 +233,39 @@ class GlsDe(CarrierModule):
         return shown
 
     def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
-        """The history GLS' tracking page showed in the user's browser."""
-        return [
-            (
-                number,
-                TrackingResult(
+        """What GLS' tracking page showed in the user's browser: history, window, stops."""
+        found = []
+        for number, parcel, events in self._shown(payload):
+            eta_from, eta_to = _live_window(parcel.get("window"))
+            stops = parcel.get("stops")
+            if isinstance(stops, bool) or not isinstance(stops, int) or not 0 <= stops < 1000:
+                stops = None
+            if events:
+                result = TrackingResult(
                     status=events[0].status,
                     description=events[0].description,
                     location=events[0].location,
                     events=events,
-                    keep_window=True,  # the page's history names no window
-                ),
-            )
-            for number, _, events in self._shown(payload)
-            if events
-        ]
+                    eta_from=eta_from,
+                    eta_to=eta_to,
+                    keep_window=eta_from is None,  # the history alone names no window
+                    stops_left=stops,
+                )
+                if stops is not None and stops < FEW_STOPS:
+                    result.hold_minutes = QUIET_AFTER_LIVE_MINUTES
+            elif eta_from is not None or stops is not None:
+                # The history is folded away on the page: only the live view is news.
+                result = TrackingResult(
+                    status=Status.OUT_FOR_DELIVERY,
+                    eta_from=eta_from,
+                    eta_to=eta_to,
+                    stops_left=stops,
+                    live_only=True,
+                )
+            else:
+                continue
+            found.append((number, result))
+        return found
 
     def discover(self, payload: Any) -> list[Found]:
         return [
@@ -244,7 +281,8 @@ class GlsDe(CarrierModule):
     def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
         return [
             f"{number} ({'tracked' if number in known else 'not tracked'}), {len(events)} step(s)"
-            for number, _, events in self._shown(payload)
+            f", window {'yes' if parcel.get('window') else 'no'}, stops {parcel.get('stops')!r:.6}"
+            for number, parcel, events in self._shown(payload)
         ]
 
     async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:

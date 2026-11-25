@@ -261,9 +261,17 @@ def create_app(config: Config) -> FastAPI:
         def localized(text: str) -> str:
             return ctx.state.translations.localize(module, text, language) if module else text
 
-        hidden = ("position", "error_count", "stale_notified_at", "pickup_reminded_at")
+        hidden = (
+            "position",
+            "error_count",
+            "stale_notified_at",
+            "pickup_reminded_at",
+            "reminded_for",
+        )
         return {
             **{key: value for key, value in parcel.items() if key not in hidden},
+            # The bell: a reminder shortly before the delivery window opens.
+            "remind": bool(parcel.get("remind")),
             "description": localized(parcel["description"]),
             "events": [
                 {**event, "description": localized(event["description"])}
@@ -934,6 +942,18 @@ def create_app(config: Config) -> FastAPI:
             ctx.store.set_archived(other, archived)
         return present(ctx, ctx.store.get_shipment(shipment_id), language_of(ctx))
 
+    @app.post("/api/parcels/{parcel_id}/remind")
+    def remind_parcel(
+        ctx: Context, parcel_id: int, on: Annotated[bool, Body(embed=True)]
+    ) -> dict[str, Any]:
+        """Switch a parcel's bell: a reminder shortly before its delivery window opens."""
+        parcel = ctx.store.get_parcel(parcel_id)
+        if parcel is None:
+            raise fail(404, "not_found")
+        # Switched on anew it may ring again, even if it rang before.
+        ctx.store.update_parcel(parcel_id, remind=int(on), reminded_for=None)
+        return present(ctx, ctx.store.get_shipment(parcel["shipment_id"]), language_of(ctx))
+
     @app.post("/api/shipments/{shipment_id}/refresh")
     async def refresh_shipment(ctx: Context, shipment_id: int) -> dict[str, Any]:
         shipment = ctx.store.get_shipment(shipment_id)
@@ -1026,6 +1046,12 @@ def create_app(config: Config) -> FastAPI:
             else []
         )
         notifications["push_enabled"] = bool(notifications.get("push_enabled"))
+        notifications["reminder_minutes"] = bounded(
+            notifications.get("reminder_minutes"),
+            5,
+            240,
+            current["notifications"].get("reminder_minutes") or 30,
+        )
         notifications["events"] = {
             key: bool(notifications.get("events", {}).get(key))
             for key in current["notifications"]["events"]
