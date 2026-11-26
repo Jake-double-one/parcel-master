@@ -188,6 +188,9 @@ def parse_parcel_de(text: str) -> TrackingResult:
     )
     if piece is None or piece.get("error-status") not in (None, "", "0"):
         raise CarrierError("not_found")
+    if piece.get("piece-status") not in (None, "", "0"):
+        # "No information for this postal code": not DHL's parcel, or another address.
+        raise CarrierError("not_found", (piece.get("piece-status-desc") or "")[:100])
     events = [
         TrackingEvent(
             timestamp=_local_time(node.get("event-timestamp")),

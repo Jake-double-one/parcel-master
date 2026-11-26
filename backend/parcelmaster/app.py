@@ -294,6 +294,12 @@ def create_app(config: Config) -> FastAPI:
                 if parcel["extra"].get("stops_left", "").isdigit()
                 else None
             ),
+            # The shop names no carrier known here: these could have issued the number.
+            "choose_carrier": [
+                {"id": candidate.id, "name": candidate.name}
+                for ident in parcel["extra"].get("choose_carrier", "").split(",")
+                if (candidate := ctx.state.registry.get(ident)) is not None
+            ],
             # The van stands within a few steps of the destination.
             "near": bool(parcel["extra"].get("near")),
             # Where the van is and where it is headed, while the carrier's live view tells.
@@ -954,6 +960,33 @@ def create_app(config: Config) -> FastAPI:
             raise fail(404, "not_found")
         # Switched on anew it may ring again, even if it rang before.
         ctx.store.update_parcel(parcel_id, remind=int(on), reminded_for=None)
+        return present(ctx, ctx.store.get_shipment(parcel["shipment_id"]), language_of(ctx))
+
+    @app.post("/api/parcels/{parcel_id}/carrier")
+    def choose_carrier(
+        ctx: Context, parcel_id: int, carrier: Annotated[str, Body(embed=True, max_length=50)]
+    ) -> dict[str, Any]:
+        """Say whose parcel this is where the shop does not; "" leaves it with the shop."""
+        parcel = ctx.store.get_parcel(parcel_id)
+        if parcel is None:
+            raise fail(404, "not_found")
+        extra = dict(parcel["extra"])
+        offered = [ident for ident in extra.pop("choose_carrier", "").split(",") if ident]
+        taker = ctx.state.registry.get(carrier) if carrier else None
+        if not offered or (carrier and (carrier not in offered or taker is None)):
+            raise fail(422, "invalid_carrier")
+        # What the shop said before the parcel was held up for this question.
+        told = extra.pop("shop_status", "") or str(Status.IN_TRANSIT)
+        extra["chosen_carrier"] = carrier or "-"
+        number = taker.normalize(parcel["tracking_number"]) if taker else ""
+        if taker and not ctx.store.find_duplicate(taker.id, number, parcel["shipment_id"]):
+            own = ctx.store.get_settings()["carriers"].get(taker.id, {})
+            ctx.store.retarget_parcel(
+                parcel_id, taker.id, number, {**taker.parcel_defaults(own), **extra}
+            )
+        else:
+            ctx.store.set_parcel_extra(parcel_id, extra)
+        ctx.store.update_parcel(parcel_id, status=told)
         return present(ctx, ctx.store.get_shipment(parcel["shipment_id"]), language_of(ctx))
 
     @app.post("/api/shipments/{shipment_id}/refresh")

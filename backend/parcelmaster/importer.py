@@ -12,8 +12,6 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-import httpx
-
 from .carriers.base import (
     CarrierError,
     CarrierModule,
@@ -22,7 +20,6 @@ from .carriers.base import (
     SyncRequest,
     TrackingEvent,
     TrackingResult,
-    TrackRequest,
     switched_on,
 )
 from .carriers.registry import Registry
@@ -46,15 +43,8 @@ TRACKING_NOTES = (
     "live_lost",
     "van",
     "home",
-    "carrier_guess",
-    "probed_at",
-    "probes",
+    "chosen_carrier",
 )
-#: A service may name a carrier nobody here knows ("the seller's own carrier")
-#: with a number several carriers could have issued. Those are asked which of
-#: them knows it: at first sight, then this many hours apart, this many times.
-PROBE_HOURS = 6
-PROBE_TRIES = 4
 #: How the reference of a delivery begins that is only known through a shared link.
 SHARED = "share:"
 MAX_DISMISSED = 500
@@ -165,7 +155,7 @@ def carrier_for(
 ) -> CarrierModule | None:
     """The tracker module that can take over this parcel, if one is set up.
 
-    ``guess`` is the carrier that knew the number when several were asked.
+    ``guess`` is the carrier the user chose where several could have issued the number.
     """
     by_name, by_number = _takers(registry, name, number, carrier_settings)
     guessed = [m for m in by_number if m.id == guess]
@@ -395,17 +385,32 @@ def apply(
                 and imported.status in FINAL
             ):
                 continue  # arrived and filed: there is nothing left to bring in line
+            chosen = (parcel or {}).get("extra", {}).get("chosen_carrier")
             taker = (
                 carrier_for(
                     registry,
                     imported.carrier_name,
                     imported.tracking_number,
                     settings["carriers"],
-                    (parcel or {}).get("extra", {}).get("carrier_guess"),
+                    chosen,
                 )
                 if imported.tracking_number
                 else None
             )
+            # The service names no carrier known here, and the number could be
+            # from several: nobody is guessed, the user is asked to choose.
+            choices: list[CarrierModule] = []
+            if (
+                taker is None
+                and imported.tracking_number
+                and chosen is None
+                and imported.status not in FINAL
+            ):
+                named, possible = _takers(
+                    registry, imported.carrier_name, imported.tracking_number, settings["carriers"]
+                )
+                if not named and len(possible) > 1:
+                    choices = possible
             # A carrier whose lookups are scarce is, with the saver on, only asked
             # once its answer adds something: the delivery window on the day, or
             # help when things go wrong. Any other carrier takes over at once.
@@ -453,6 +458,9 @@ def apply(
                 number = imported.tracking_number or f"{item.reference}/{position}"
                 if imported.carrier_name:
                     extra["carrier_name"] = imported.carrier_name
+                if choices:
+                    extra["choose_carrier"] = ",".join(m.id for m in choices)
+                    extra["shop_status"] = str(imported.status)
 
             # What tracking itself noted on the parcel stays, whatever the service says.
             for own_note in TRACKING_NOTES:
@@ -493,7 +501,8 @@ def apply(
                             )
                         )
                 result = TrackingResult(
-                    status=imported.status,
+                    # A parcel nobody can follow until the user says whose it is.
+                    status=Status.PROBLEM if choices else imported.status,
                     description=imported.description,
                     events=events,
                     eta_from=imported.eta_from,
@@ -501,6 +510,10 @@ def apply(
                     stops_left=imported.stops_left,
                 )
                 heard = record_result(store, parcel, result, base, zone, now, poll=False)
+                if choices:
+                    for notice in heard:
+                        if notice.kind == Status.PROBLEM:
+                            notice.params = {"variant": "carrier"}
                 if imported.tracking_number and not shared_box:
                     # Several orders in one box that the service follows itself: the
                     # oldest of them speaks for the box.
@@ -737,79 +750,6 @@ def disconnect(store: Store, module: ImporterModule, data_dir: Path) -> None:
     states = store.get_value(STATE_KEY) or {}
     states.pop(module.id, None)
     store.set_value(STATE_KEY, states)
-
-
-async def find_carriers(store: Store, registry: Registry, http: httpx.AsyncClient) -> None:
-    """Find the carrier of parcels whose service does not name one known here.
-
-    Each carrier whose numbers look like the parcel's is asked about it. If
-    exactly one knows the number, the parcel goes to that carrier.
-    """
-    settings = store.get_settings()
-    carriers = settings["carriers"]
-    now = datetime.now(UTC)
-    for parcel in store.open_parcels():
-        service = registry.get(parcel["carrier"])
-        if service is None or service.kind != "importer" or Status(parcel["status"]) in FINAL:
-            continue
-        extra, number = parcel["extra"], parcel["tracking_number"]
-        if extra.get("carrier_guess"):
-            continue
-        by_name, by_number = _takers(registry, extra.get("carrier_name"), number, carriers)
-        candidates = [
-            m
-            for m in by_number
-            if m.is_configured(carriers.get(m.id, {})) and not m.scarce(carriers.get(m.id, {}))
-        ]
-        if by_name or len(by_number) < 2 or not candidates:
-            continue
-        tries = int(extra.get("probes") or 0) if str(extra.get("probes") or "0").isdigit() else 0
-        last = parse_iso(extra.get("probed_at"))
-        if tries >= PROBE_TRIES or (last and now - last < timedelta(hours=PROBE_HOURS)):
-            continue
-        knowing = []
-        for module in candidates:
-            own = carriers.get(module.id, {})
-            request = TrackRequest(
-                tracking_number=module.normalize(number),
-                extra=module.parcel_defaults(own),
-                settings=own,
-                language=settings["language"],
-                created_at=parse_iso(parcel["created_at"]) or now,
-            )
-            try:
-                result = await module.track(request, http)
-            except CarrierError:
-                continue  # not theirs, or no answer right now
-            except Exception:
-                log.exception("asking %s about a parcel of %s failed", module.id, service.id)
-                continue
-            if result.status is not Status.UNKNOWN:
-                knowing.append(module)
-        extra = {
-            **extra,
-            "probed_at": now.isoformat(timespec="seconds"),
-            "probes": str(tries + 1),
-        }
-        names = ", ".join(m.name for m in knowing) or "none"
-        log.info(
-            "%s names no carrier known here for %s: asked %d, known to %s",
-            service.name,
-            number,
-            len(candidates),
-            names,
-        )
-        if len(knowing) != 1:
-            store.set_parcel_extra(parcel["id"], extra)
-            continue
-        taker = knowing[0]
-        target = taker.normalize(number)
-        extra["carrier_guess"] = taker.id
-        if store.find_duplicate(taker.id, target, parcel["shipment_id"]):
-            store.set_parcel_extra(parcel["id"], extra)  # followed there already
-            continue
-        extra = {**taker.parcel_defaults(carriers.get(taker.id, {})), **extra}
-        store.retarget_parcel(parcel["id"], taker.id, target, extra)
 
 
 async def run(

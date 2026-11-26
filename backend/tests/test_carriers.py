@@ -285,6 +285,15 @@ def test_dhl_parcel_de_answer_is_mapped_to_the_common_model():
     with pytest.raises(CarrierError) as caught:
         parse_parcel_de('<data><data name="piece-status-public-list" code="100"/></data>')
     assert caught.value.code == "not_found"
+    # DHL answers, but only to say it has nothing for this number and postal code.
+    nothing = (
+        '<data><data name="piece-status-public-list" code="57"><data name="piece-status-public" '
+        'searched-piece-code="10000000000001" piece-status="57" piece-status-desc="Zur '
+        'vorgegebenen PLZ sind keine Informationen verfügbar" /></data></data>'
+    )
+    with pytest.raises(CarrierError) as caught:
+        parse_parcel_de(nothing)
+    assert caught.value.code == "not_found"
 
 
 @pytest.mark.anyio

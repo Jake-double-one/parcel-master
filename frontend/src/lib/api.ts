@@ -77,6 +77,8 @@ export const api = {
   remove: (id: number) => request<void>("DELETE", `/api/shipments/${id}`),
   archive: (id: number, archived: boolean) =>
     request<Shipment>("POST", `/api/shipments/${id}/archive`, { archived }),
+  chooseCarrier: (parcelId: number, carrier: string) =>
+    request<Shipment>("POST", `/api/parcels/${parcelId}/carrier`, { carrier }),
   remind: (parcelId: number, on: boolean) =>
     request<Shipment>("POST", `/api/parcels/${parcelId}/remind`, { on }),
   refresh: (id: number) => request<Shipment>("POST", `/api/shipments/${id}/refresh`),

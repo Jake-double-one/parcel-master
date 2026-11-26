@@ -25,6 +25,8 @@ export interface Parcel {
   extra: Record<string, string>;
   /** The bell: a reminder shortly before the delivery window opens. */
   remind: boolean;
+  /** The shop names no carrier known here: these could have issued the number. */
+  choose_carrier: { id: string; name: string }[];
   status: Status;
   description: string;
   location: string | null;

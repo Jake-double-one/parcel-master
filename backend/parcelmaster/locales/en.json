@@ -111,7 +111,9 @@
     "map_at": "Position as of {time}",
     "remind_on": "Reminder on",
     "remind_off": "Reminder off",
-    "near": "Any moment now"
+    "near": "Any moment now",
+    "choose_carrier": "Carrier unclear – who brings the parcel?",
+    "keep_with": "Leave with {service}"
   },
   "dialog": {
     "create_title": "Add shipment",
@@ -325,7 +327,8 @@
     "order_alone": "Add an order on its own; its parcels come with it.",
     "invalid_reference": "That does not look like an order number.",
     "invalid_night_hours": "Enter the night rest as hh:mm.",
-    "carrier_off": "This carrier is switched off."
+    "carrier_off": "This carrier is switched off.",
+    "invalid_carrier": "This carrier cannot be chosen here."
   },
   "carrier_error": {
     "not_configured": "No key set up for this carrier.",
@@ -361,7 +364,8 @@
       "body": "Delivered by {carrier}."
     },
     "problem": {
-      "body": "Problem at {carrier}: {description}"
+      "body": "Problem at {carrier}: {description}",
+      "carrier": "Carrier unclear: please choose in Parcel Master who brings the parcel."
     },
     "stale": {
       "body": "No movement for {days} days at {carrier}."

@@ -1144,3 +1144,40 @@ def test_the_bell_of_a_parcel_can_be_switched(client):
 def test_a_scanned_dpd_barcode_gives_the_parcel_number(client):
     found = client.post("/api/detect", json={"text": "%001234510000000000001327276"}).json()
     assert {"carrier": "de.dpd", "tracking_number": "10000000000001"} in found["matches"]
+
+
+def test_the_user_says_whose_parcel_it_is_where_the_shop_does_not(client):
+    store = client.app.state.pm.store
+
+    def held_up(number):
+        made = client.post(
+            "/api/shipments",
+            json={"title": "Shelf", "parcels": [{"carrier": "demo", "tracking_number": number}]},
+        ).json()["parcels"][0]
+        # As the importer files a parcel whose number several carriers could have issued.
+        extra = {"choose_carrier": "de.dhl,de.dpd,de.hermes", "shop_status": "in_transit"}
+        store.set_parcel_extra(made["id"], extra)
+        store.update_parcel(made["id"], status="problem")
+        return made["id"]
+
+    first = held_up("10000000000001")
+    shown = client.get("/api/shipments").json()
+    asked = next(p for s in shown for p in s["parcels"] if p["id"] == first)
+    assert [c["id"] for c in asked["choose_carrier"]] == ["de.dhl", "de.dpd", "de.hermes"]
+    assert asked["choose_carrier"][1]["name"] == "DPD"
+
+    wrong = client.post(f"/api/parcels/{first}/carrier", json={"carrier": "de.gls"})
+    assert wrong.status_code == 422 and wrong.json()["detail"]["error"] == "invalid_carrier"
+    taken = client.post(f"/api/parcels/{first}/carrier", json={"carrier": "de.dpd"}).json()
+    parcel = taken["parcels"][0]
+    assert (parcel["carrier"], parcel["status"]) == ("de.dpd", "in_transit")
+    assert parcel["choose_carrier"] == [] and parcel["extra"]["chosen_carrier"] == "de.dpd"
+    # Answered once: there is nothing left to choose.
+    assert (
+        client.post(f"/api/parcels/{first}/carrier", json={"carrier": "de.dhl"}).status_code == 422
+    )
+
+    second = held_up("10000000000002")
+    kept = client.post(f"/api/parcels/{second}/carrier", json={"carrier": ""}).json()["parcels"][0]
+    assert (kept["carrier"], kept["status"]) == ("demo", "in_transit")
+    assert kept["extra"]["chosen_carrier"] == "-"

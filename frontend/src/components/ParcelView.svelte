@@ -48,6 +48,20 @@
     }
   }
 
+  // Whose parcel it is, where the shop does not say: asked until answered.
+  let choosing = $state(false);
+  let chose = $state(false);
+
+  async function choose(carrier: string) {
+    choosing = true;
+    try {
+      await api.chooseCarrier(parcel.id, carrier);
+      chose = true; // the next load of the list shows the parcel at its carrier
+    } finally {
+      choosing = false;
+    }
+  }
+
   const finished = $derived(parcel.status === "delivered" || parcel.status === "returned");
   const errorText = $derived(
     parcel.last_error
@@ -131,6 +145,21 @@
     {/if}
   {/if}
 
+  {#if parcel.choose_carrier?.length && !chose}
+    <div class="hint alert choose">
+      <span>{t("shipment.choose_carrier")}</span>
+      <span class="row">
+        {#each parcel.choose_carrier as candidate}
+          <button type="button" class="chip" disabled={choosing} onclick={() => choose(candidate.id)}>
+            {candidate.name}
+          </button>
+        {/each}
+        <button type="button" class="chip" disabled={choosing} onclick={() => choose("")}>
+          {t("shipment.keep_with", { service: parcel.site_name })}
+        </button>
+      </span>
+    </div>
+  {/if}
   {#if errorText}
     <p class="hint alert">{errorText}</p>
   {/if}
@@ -447,5 +476,17 @@
       grid-template-columns: 1fr;
       gap: 2px;
     }
+  }
+
+  .choose {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .choose .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
   }
 </style>

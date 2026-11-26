@@ -111,7 +111,9 @@
     "map_at": "Standort von {time}",
     "remind_on": "Erinnerung an",
     "remind_off": "Erinnerung aus",
-    "near": "Jeden Moment"
+    "near": "Jeden Moment",
+    "choose_carrier": "Paketdienst unklar – wer bringt das Paket?",
+    "keep_with": "Bei {service} lassen"
   },
   "dialog": {
     "create_title": "Sendung anlegen",
@@ -325,7 +327,8 @@
     "order_alone": "Leg eine Bestellung einzeln an; ihre Pakete kommen von selbst mit.",
     "invalid_reference": "Das sieht nicht nach einer Bestellnummer aus.",
     "invalid_night_hours": "Gib die Nachtruhe als hh:mm ein.",
-    "carrier_off": "Dieser Paketdienst ist ausgeschaltet."
+    "carrier_off": "Dieser Paketdienst ist ausgeschaltet.",
+    "invalid_carrier": "Diesen Paketdienst kannst du hier nicht wählen."
   },
   "carrier_error": {
     "not_configured": "Für diesen Paketdienst ist kein Schlüssel eingerichtet.",
@@ -361,7 +364,8 @@
       "body": "Zugestellt von {carrier}."
     },
     "problem": {
-      "body": "Problem bei {carrier}: {description}"
+      "body": "Problem bei {carrier}: {description}",
+      "carrier": "Paketdienst unklar: Bitte wähle in Parcel Master, wer das Paket bringt."
     },
     "stale": {
       "body": "Seit {days} Tagen keine Bewegung bei {carrier}."
