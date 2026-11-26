@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Parcel Master: DPD
 // @namespace    parcel-master
-// @version      1
+// @version      2
 // @description  Passes what DPD's parcel page shows you on to your Parcel Master and adds a button that takes the parcel.
 // @match        https://my.dpd.de/*
 // @grant        GM_xmlhttpRequest
@@ -9,11 +9,11 @@
 // @run-at       document-idle
 // ==/UserScript==
 
-// DPD shows a parcel's state and, on the delivery day, the van on a map on this
-// page. This script reads from what the page displays and hands it to your own
-// server: the parcel number, the sender's name, the state in DPD's words, when
-// it was delivered, and where the van and the destination are while the van is
-// on its way. It asks DPD nothing by itself, leaves the recipient's name and
+// DPD shows a parcel's steps with their days on this page and, to who entered
+// the postal code, its state and the van on a map. This script reads from what
+// the page displays and hands it to your own server: the parcel number, the
+// steps, the sender's name, the state in DPD's words, when it was delivered,
+// and where the van and the destination are while the van is on its way. It asks DPD nothing by itself, leaves the recipient's name and
 // address out and sends nothing anywhere else.
 (function () {
   "use strict";
@@ -24,6 +24,7 @@
     ? { take: "In Parcel Master importieren", taken: "In Parcel Master ✓", wait: "Vorgeschlagen in Parcel Master · jetzt importieren" }
     : { take: "Import into Parcel Master", taken: "In Parcel Master ✓", wait: "Suggested in Parcel Master · import now" };
   let parcel = null; // what the page shows right now
+  let others = []; // the other parcels in the page's list
   let known = ""; // "tracked" | "suggested" | "unknown"
   let last = "";
 
@@ -44,8 +45,20 @@
 
   // The parcel as the page shows it, or null where it shows none.
   function read() {
-    const number = ((part("hidParcelNo") || {}).value || text(part("labParcelNo"))).replace(/\s/g, "");
+    const asked = new URLSearchParams(location.search).get("parcelno") || "";
+    const picked = document.querySelector('a.btnSelectParcel.active input[id*="hidParcelNo"]');
+    const number = ((part("hidParcelNo") || {}).value || text(part("labParcelNo")) || (picked || {}).value || asked).replace(/\s/g, "");
     if (!/^\d{14}$/.test(number)) return null;
+    // Before the postal code is entered the page lists the five steps of a
+    // parcel's way; those it has taken carry their day.
+    const steps = [];
+    for (const name of ["Start", "OnTheRoad", "DeliveryDepot", "CarLoad", "Delivered"]) {
+      const words = text(part("labStatus" + name));
+      const day = text(part("labStatus" + name + "Date"));
+      if (words && /^\d{1,2}\.\d{1,2}\.$/.test(day)) steps.push({ step: name, text: words, day: day });
+    }
+    const status = text(part("labDeliveryStatus")) || (steps.length ? steps[steps.length - 1].text : "");
+    if (!status) return null;
     // The driver's note: its first line is the news, the lines after it name
     // who took the parcel and when. Only the first line and the time are read.
     const note = part("labParcelMessageRating");
@@ -56,14 +69,15 @@
     const stage = /status_(\d+)\./.exec((part("imgDeliverStatus") || {}).src || "");
     const van = spot("Car");
     // Which parts the page shows, by name only: tells what else there is to read.
-    const box = part("panParcelInfo");
+    const box = part("panParcelInfo") || part("panNoAuthorization");
     const parts = box
       ? [...box.querySelectorAll('[id^="' + PREFIX + '"]')].map((node) => node.id.slice(PREFIX.length)).slice(0, 60)
       : [];
     return {
       number: number,
       sender: text(part("labParcelName")),
-      status: text(part("labDeliveryStatus")),
+      status: status,
+      steps: steps,
       stage: stage ? Number(stage[1]) : null,
       note: first,
       when: when ? when[3] + "-" + when[2].padStart(2, "0") + "-" + when[1].padStart(2, "0") + "T" + when[4].padStart(2, "0") + ":" + when[5] : "",
@@ -73,6 +87,19 @@
     };
   }
 
+  // The page's list of parcels: number and state of each, "Paket zugestellt - 26.11.2026".
+  function listed(except) {
+    const found = [];
+    for (const entry of document.querySelectorAll("a.btnSelectParcel")) {
+      const number = ((entry.querySelector('input[id*="hidParcelNo"]') || {}).value || "").replace(/\s/g, "");
+      const status = text(entry.querySelector(".parcelDeliveryStatus")).split(" - ")[0];
+      if (/^\d{14}$/.test(number) && number !== except && status && found.length < 9) {
+        found.push({ number: number, status: status });
+      }
+    }
+    return found;
+  }
+
   function send(take) {
     if (!parcel) return;
     const number = parcel.number;
@@ -80,7 +107,7 @@
       method: "POST",
       url: SERVER + "/api/companion/de.dpd",
       headers: { "Content-Type": "application/json" },
-      data: JSON.stringify({ payload: { parcels: [parcel] }, take: take ? [number] : [] }),
+      data: JSON.stringify({ payload: { parcels: [parcel, ...others] }, take: take ? [number] : [] }),
       onload: (response) => {
         try {
           const answer = JSON.parse(response.responseText);
@@ -112,7 +139,7 @@
         send(true);
       });
     }
-    const anchor = part("panParcelInfo");
+    const anchor = part("panParcelInfo") || part("panNoAuthorization");
     const look =
       "display:block;width:fit-content;margin:12px 0;padding:10px 18px;border:0;border-radius:999px;" +
       "background:#4b45a8;color:#fff;font:inherit;font-weight:700;" +
@@ -135,10 +162,12 @@
   function look() {
     const found = read();
     if (found) {
-      const body = JSON.stringify(found);
+      const rest = listed(found.number);
+      const body = JSON.stringify([found, rest]);
       if (body !== last) {
         last = body; // only what is new is passed on
         parcel = found;
+        others = rest;
         send(false);
       }
     }

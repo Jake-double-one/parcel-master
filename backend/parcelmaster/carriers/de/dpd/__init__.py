@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
@@ -31,7 +31,7 @@ from parcelmaster.status import Status
 log = logging.getLogger(__name__)
 
 STATUS_URL = "https://tracking.dpd.de/rest/plc/{locale}/{number}"
-PAGE_URL = "https://tracking.dpd.de/status/{locale}/parcel/{number}"
+PAGE_URL = "https://my.dpd.de/myParcel-tracking.aspx?parcelno={number}"
 #: DPD names no limit; this only keeps a mistake from asking without end.
 DAILY_BUDGET = 300
 #: Scans read from one answer at most, and the length kept of each text.
@@ -150,6 +150,50 @@ def _time(value: Any) -> datetime | None:
         return None
 
 
+#: The five steps DPD's page lists, by the names the page itself gives them.
+_PAGE_STEPS = {
+    "Start": Status.REGISTERED,
+    "OnTheRoad": Status.IN_TRANSIT,
+    "DeliveryDepot": Status.IN_TRANSIT,
+    "CarLoad": Status.OUT_FOR_DELIVERY,
+    "Delivered": Status.DELIVERED,
+}
+
+
+def _page_day(value: Any, today: date) -> date | None:
+    """A day as the page writes it, "24.11.": the latest such day that is not ahead."""
+    found = (
+        re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.", value.strip()) if isinstance(value, str) else None
+    )
+    if not found:
+        return None
+    for year in (today.year, today.year - 1):
+        try:
+            day = date(year, int(found.group(2)), int(found.group(1)))
+        except ValueError:
+            continue
+        if day <= today + timedelta(days=1):
+            return day
+    return None
+
+
+def page_steps(value: Any, today: date) -> list[TrackingEvent]:
+    """The steps DPD's page lists with their days, newest first.
+
+    The page names no time of day: the steps of one day keep their order by seconds.
+    """
+    events = []
+    for index, step in enumerate(value[:10] if isinstance(value, list) else []):
+        if not isinstance(step, dict) or step.get("step") not in _PAGE_STEPS:
+            continue
+        text, day = _words(step.get("text")), _page_day(step.get("day"), today)
+        if text and day:
+            when = datetime(day.year, day.month, day.day, 0, 0, index)
+            events.append(TrackingEvent(when, _PAGE_STEPS[step["step"]], text))
+    events.reverse()
+    return events
+
+
 def _spot(value: Any) -> tuple[float, float] | None:
     """A place as the page names it: latitude and longitude."""
     if not isinstance(value, list) or len(value) != 2:
@@ -258,12 +302,28 @@ class DpdDe(CarrierModule):
             # The driver's note says most; the label below the bar is the fallback.
             told = [_words(parcel.get(key)) for key in ("note", "status")]
             told = [words for words in told if words]
-            if not told:
+            steps = page_steps(parcel.get("steps"), datetime.now().date())
+            if not told and not steps:
                 continue
             status = next(
                 (s for s in map(step_status, told) if s is not Status.IN_TRANSIT),
-                Status.IN_TRANSIT,
+                steps[0].status if steps else Status.IN_TRANSIT,
             )
+            if steps:
+                # The page lists the way so far: that is the history, as far as it tells.
+                shown.append(
+                    (
+                        number,
+                        parcel,
+                        TrackingResult(
+                            status=steps[0].status,
+                            description=steps[0].description,
+                            events=steps,
+                            keep_window=True,
+                        ),
+                    )
+                )
+                continue
             van, home = _spot(parcel.get("van")), _spot(parcel.get("home"))
             going = status not in (Status.DELIVERED, Status.RETURNED)
             result = TrackingResult(
@@ -321,8 +381,7 @@ class DpdDe(CarrierModule):
         return number
 
     def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
-        locale = "de_DE" if language == "de" else "en_US"
-        return PAGE_URL.format(locale=locale, number=tracking_number)
+        return PAGE_URL.format(number=tracking_number)
 
     def extract_from_url(self, url: str) -> str | None:
         parsed = urlparse(url)

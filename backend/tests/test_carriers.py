@@ -722,10 +722,11 @@ def test_dpd_recognises_its_numbers_and_links():
     assert DPD.matches("0012 345 1000 0000 0000 01 327 276 V")
     # What a scanner reads from that barcode.
     assert DPD.normalize("%001234510000000000001327276") == "10000000000001"
-    page = "https://tracking.dpd.de/status/de_DE/parcel/10000000000001"
+    page = "https://my.dpd.de/myParcel-tracking.aspx?parcelno=10000000000001"
     assert DPD.tracking_url("10000000000001", {}, "de") == page
-    assert DPD.tracking_url("10000000000001", {}, "en").endswith("/en_US/parcel/10000000000001")
     assert DPD.extract_from_url(page) == "10000000000001"
+    old = "https://tracking.dpd.de/status/de_DE/parcel/10000000000001"
+    assert DPD.extract_from_url(old) == "10000000000001"
     query = "https://tracking.dpd.de/parcelstatus?query=10000000000001&locale=de_DE"
     assert DPD.extract_from_url(query) == "10000000000001"
     assert DPD.extract_from_url("https://my.dpd.de/x?parcelNumber=10000000000001") == (
@@ -834,3 +835,33 @@ def test_dpd_page_is_read_without_trusting_it():
     assert result.van is None and result.told_at is None
     [line] = DPD.describe_companion_news({"parcels": [{**odd, "parts": ["labA", 7]}]}, set())
     assert line.endswith("parts labA") and "not tracked" in line
+
+
+def test_dpd_page_lists_the_steps_with_their_days():
+    from datetime import date
+
+    from parcelmaster.carriers.de.dpd import page_steps
+
+    listed = [
+        {"step": "Start", "text": "Paketinfo an DPD übergeben", "day": "24.11."},
+        {"step": "OnTheRoad", "text": "Paket unterwegs", "day": "25.11."},
+        {"step": "CarLoad", "text": "Paket in Zustellung", "day": "26.11."},
+        {"step": "Delivered", "text": "Paket zugestellt", "day": "26.11."},
+        {"step": "Other", "text": "x", "day": "26.11."},
+        {"step": "Start", "text": "x", "day": "bald"},
+    ]
+    steps = page_steps(listed, date(2026, 11, 26))
+    assert [s.status for s in steps] == [
+        Status.DELIVERED,
+        Status.OUT_FOR_DELIVERY,
+        Status.IN_TRANSIT,
+        Status.REGISTERED,
+    ]
+    assert steps[0].timestamp > steps[1].timestamp  # the same day, kept in order
+    assert steps[-1].timestamp.date() == date(2026, 11, 24)
+    # Read in January, a day in December was last year's.
+    [late] = page_steps([{"step": "Start", "text": "x", "day": "30.12."}], date(2027, 1, 2))
+    assert late.timestamp.date() == date(2026, 12, 30)
+    page = {"number": "10000000000001", "status": "Paket zugestellt", "steps": listed}
+    [(_, result)] = DPD.take_from_companion({"parcels": [page]})
+    assert result.status is Status.DELIVERED and len(result.events) == 4 and not result.collect
