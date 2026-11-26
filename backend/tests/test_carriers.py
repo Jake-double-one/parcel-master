@@ -8,6 +8,10 @@ import pytest
 from parcelmaster.carriers.base import CarrierError, TrackRequest
 from parcelmaster.carriers.de.dhl import MODULE as DHL
 from parcelmaster.carriers.de.dhl import parse_parcel_de, parse_response, parse_web_response
+from parcelmaster.carriers.de.dpd import MODULE as DPD
+from parcelmaster.carriers.de.dpd import parse_response as dpd_parse
+from parcelmaster.carriers.de.dpd import read_window as dpd_window
+from parcelmaster.carriers.de.dpd import step_status as dpd_step
 from parcelmaster.carriers.de.gls import MODULE as GLS
 from parcelmaster.carriers.de.gls import parse_response as gls_parse
 from parcelmaster.carriers.de.gls import read_window as gls_window
@@ -677,3 +681,128 @@ def test_gls_page_text_is_cut_before_it_is_read():
     assert time.perf_counter() - started < 0.5
     assert len(result.description) <= 300 and result.status is Status.IN_TRANSIT
     assert gls_step("Im PaketShop Musterweg wurde das Paket abgegeben.") is Status.READY_FOR_PICKUP
+
+
+# -- DPD ------------------------------------------------------------------
+
+
+def dpd_answer(stage="ON_THE_ROAD", scans=None, **changes):
+    payload = json.loads((FIXTURES / "dpd_transit.json").read_text())
+    data = payload["parcellifecycleResponse"]["parcelLifeCycleData"]
+    reached = True
+    for step in data["statusInfo"]:
+        step["statusHasBeenReached"] = reached
+        step["isCurrentStatus"] = step["status"] == stage
+        if step["status"] == stage:
+            step.update(changes)
+            reached = False
+    if scans is not None:
+        data["scanInfo"]["scan"] = [
+            {"date": when, "scanData": {"location": "Musterstadt (DE)"}, "scanDescription": text}
+            for when, text in scans
+        ]
+    return payload
+
+
+def test_dpd_recognises_its_numbers_and_links():
+    assert DPD.matches("10000000000001")
+    assert not DPD.matches("1000000000000")
+    assert DPD.normalize("1000 0000 0000 01 X") == "10000000000001"
+    page = "https://tracking.dpd.de/status/de_DE/parcel/10000000000001"
+    assert DPD.tracking_url("10000000000001", {}, "de") == page
+    assert DPD.tracking_url("10000000000001", {}, "en").endswith("/en_US/parcel/10000000000001")
+    assert DPD.extract_from_url(page) == "10000000000001"
+    query = "https://tracking.dpd.de/parcelstatus?query=10000000000001&locale=de_DE"
+    assert DPD.extract_from_url(query) == "10000000000001"
+    assert DPD.extract_from_url("https://my.dpd.de/x?parcelNumber=10000000000001") == (
+        "10000000000001"
+    )
+    assert DPD.extract_from_url("https://notdpd.de/status/de_DE/parcel/10000000000001") is None
+
+
+def test_dpd_reads_the_scans_newest_first():
+    result = dpd_parse(dpd_answer())
+    assert result.status is Status.IN_TRANSIT
+    assert result.description == "Unterwegs."
+    assert result.location == "Beispielhausen (DE)"
+    assert [event.timestamp for event in result.events] == [
+        datetime(2026, 11, 24, 2, 15),
+        datetime(2026, 11, 23, 19, 44, 31),
+        datetime(2026, 11, 23, 16, 2, 10),
+    ]
+    assert result.events[-1].status is Status.REGISTERED
+    assert not result.collect and result.eta_from is None
+
+
+@pytest.mark.parametrize(
+    ("text", "status"),
+    [
+        ("Die Auftragsdaten wurden an DPD übermittelt.", Status.REGISTERED),
+        ("Das Paket ist im Paketsortierzentrum.", Status.IN_TRANSIT),
+        ("Paket im Zustelldepot.", Status.IN_TRANSIT),
+        ("Das Paket ist in Zustellung.", Status.OUT_FOR_DELIVERY),
+        ("Das Paket wird heute zugestellt.", Status.OUT_FOR_DELIVERY),
+        ("Das Paket wurde zugestellt.", Status.DELIVERED),
+        ("Zugestellt", Status.DELIVERED),
+        ("Das Paket konnte nicht zugestellt werden.", Status.PROBLEM),
+        ("Empfänger nicht angetroffen.", Status.PROBLEM),
+        (
+            "Bei Pickup Paketshop abgegeben, vom Empfänger noch nicht abgeholt.",
+            Status.READY_FOR_PICKUP,
+        ),
+        ("Das Paket geht zurück an den Absender.", Status.RETURNED),
+        ("Out for delivery.", Status.OUT_FOR_DELIVERY),
+        ("The parcel has been delivered.", Status.DELIVERED),
+        ("The parcel could not be delivered.", Status.PROBLEM),
+    ],
+)
+def test_dpd_sentences(text, status):
+    assert dpd_step(text) is status
+
+
+def test_dpd_stage_decides_without_scans_and_confirms_a_delivery():
+    assert dpd_parse(dpd_answer("ACCEPTED", scans=[])).status is Status.REGISTERED
+    announced = dpd_parse(dpd_answer("ACCEPTED", scans=[]))
+    assert announced.description == "Beispiel Shop hat uns die Paketdaten übermittelt."
+    # The bar says it arrived though the last scan's words are not known here.
+    handed = dpd_parse(dpd_answer("DELIVERED", scans=[("2026-11-25T11:02:00", "Übergabe erfolgt")]))
+    assert handed.status is Status.DELIVERED
+    # A parcel waiting in a shop stays ready for pickup even if the bar is at its end.
+    shop = [("2026-11-25T11:02:00", {"content": ["Im Pickup Paketshop zur Abholung bereit."]})]
+    assert dpd_parse(dpd_answer("DELIVERED", scans=shop)).status is Status.READY_FOR_PICKUP
+
+
+def test_dpd_reads_a_window_where_the_stage_names_one():
+    told = {"content": ["Zustellung am 26.11.2026 zwischen 10:15 und 11:15 Uhr."]}
+    result = dpd_parse(dpd_answer("AT_DELIVERY_DEPOT", description=told))
+    assert (result.eta_from, result.eta_to) == (
+        datetime(2026, 11, 26, 10, 15),
+        datetime(2026, 11, 26, 11, 15),
+    )
+    assert dpd_parse(dpd_answer("DELIVERED", description=told)).eta_from is None
+    assert dpd_window("irgendwann") == (None, None)
+    assert dpd_window("am 31.02.2026 zwischen 10:00 und 11:00") == (None, None)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"parcellifecycleResponse": {"parcelLifeCycleData": None}},
+        {"parcellifecycleResponse": {"parcelLifeCycleData": {"statusInfo": [], "scanInfo": {}}}},
+    ],
+)
+def test_dpd_without_a_parcel_is_not_found(payload):
+    with pytest.raises(CarrierError) as caught:
+        dpd_parse(payload)
+    assert caught.value.code == "not_found"
+
+
+def test_dpd_survives_an_answer_of_another_shape():
+    odd = {"parcellifecycleResponse": {"parcelLifeCycleData": {"statusInfo": "x", "scanInfo": 3}}}
+    with pytest.raises(CarrierError):
+        dpd_parse(odd)
+    scans = [("gestern", {"content": [5, "Das Paket ist unterwegs."]}), ("2026-11-25T08:00:00", 7)]
+    result = dpd_parse(dpd_answer(scans=scans))
+    assert [event.timestamp for event in result.events] == [None]
+    assert result.description == "Das Paket ist unterwegs."

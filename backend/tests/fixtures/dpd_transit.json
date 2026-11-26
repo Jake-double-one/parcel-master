@@ -1,0 +1,88 @@
+{
+  "parcellifecycleResponse": {
+    "parcelLifeCycleData": {
+      "shipmentInfo": {"parcelLabelNumber": "10000000000001", "productName": "DPD CLASSIC"},
+      "statusInfo": [
+        {
+          "status": "ACCEPTED",
+          "label": "Paketdaten übermittelt",
+          "description": {"content": ["Beispiel Shop hat uns die Paketdaten übermittelt."]},
+          "statusHasBeenReached": true,
+          "isCurrentStatus": false,
+          "normalItems": [],
+          "importantItems": [],
+          "errorItems": []
+        },
+        {
+          "status": "AT_SENDING_DEPOT",
+          "label": "Paket im Paketsortierzentrum",
+          "description": {"content": ["Das Paket ist im Paketsortierzentrum."]},
+          "statusHasBeenReached": true,
+          "isCurrentStatus": false,
+          "normalItems": [],
+          "importantItems": [],
+          "errorItems": []
+        },
+        {
+          "status": "ON_THE_ROAD",
+          "label": "Paket unterwegs",
+          "description": {"content": ["Das Paket ist unterwegs zum Zustelldepot."]},
+          "statusHasBeenReached": true,
+          "isCurrentStatus": true,
+          "normalItems": [],
+          "importantItems": [],
+          "errorItems": []
+        },
+        {
+          "status": "AT_DELIVERY_DEPOT",
+          "label": "Paket im Zustelldepot",
+          "description": {"content": [""]},
+          "statusHasBeenReached": false,
+          "isCurrentStatus": false,
+          "normalItems": [],
+          "importantItems": [],
+          "errorItems": []
+        },
+        {
+          "status": "DELIVERED",
+          "label": "Paket zugestellt",
+          "description": {"content": [""]},
+          "statusHasBeenReached": false,
+          "isCurrentStatus": false,
+          "normalItems": [],
+          "importantItems": [],
+          "errorItems": []
+        }
+      ],
+      "contactInfo": [],
+      "scanInfo": {
+        "scan": [
+          {
+            "date": "2026-11-23T16:02:10",
+            "scanData": {"location": "Musterstadt (DE)", "country": "DE"},
+            "scanDescription": {
+              "label": null,
+              "content": ["Die Auftragsdaten wurden an DPD übermittelt."]
+            },
+            "links": []
+          },
+          {
+            "date": "2026-11-23T19:44:31",
+            "scanData": {"location": "Musterstadt (DE)", "country": "DE"},
+            "scanDescription": {
+              "label": null,
+              "content": ["Das Paket ist im Paketsortierzentrum."]
+            },
+            "links": []
+          },
+          {
+            "date": "2026-11-24T02:15:00",
+            "scanData": {"location": "Beispielhausen (DE)", "country": "DE"},
+            "scanDescription": {"label": null, "content": ["Unterwegs."]},
+            "links": []
+          }
+        ]
+      }
+    }
+  }
+}
