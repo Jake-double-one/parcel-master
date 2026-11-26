@@ -12,6 +12,8 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
+import httpx
+
 from .carriers.base import (
     CarrierError,
     CarrierModule,
@@ -20,6 +22,7 @@ from .carriers.base import (
     SyncRequest,
     TrackingEvent,
     TrackingResult,
+    TrackRequest,
     switched_on,
 )
 from .carriers.registry import Registry
@@ -43,7 +46,15 @@ TRACKING_NOTES = (
     "live_lost",
     "van",
     "home",
+    "carrier_guess",
+    "probed_at",
+    "probes",
 )
+#: A service may name a carrier nobody here knows ("the seller's own carrier")
+#: with a number several carriers could have issued. Those are asked which of
+#: them knows it: at first sight, then this many hours apart, this many times.
+PROBE_HOURS = 6
+PROBE_TRIES = 4
 #: How the reference of a delivery begins that is only known through a shared link.
 SHARED = "share:"
 MAX_DISMISSED = 500
@@ -131,10 +142,10 @@ def shared_links(store: Store, module: ImporterModule) -> tuple[str, ...]:
     )
 
 
-def carrier_for(
+def _takers(
     registry: Registry, name: str | None, number: str, carrier_settings: dict[str, Any]
-) -> CarrierModule | None:
-    """The tracker module that can take over this parcel, if one is set up."""
+) -> tuple[list[CarrierModule], list[CarrierModule]]:
+    """The trackers in use that the service names, and those whose numbers look like this."""
     trackers = [
         m
         for m in registry.all()
@@ -142,8 +153,23 @@ def carrier_for(
     ]
     wanted = (name or "").casefold()
     by_name = [m for m in trackers if wanted and m.name.casefold() in wanted]
-    by_number = [m for m in trackers if m.matches(number)]
-    candidates = by_name or (by_number if len(by_number) == 1 else [])
+    return by_name, [m for m in trackers if m.matches(number)]
+
+
+def carrier_for(
+    registry: Registry,
+    name: str | None,
+    number: str,
+    carrier_settings: dict[str, Any],
+    guess: str | None = None,
+) -> CarrierModule | None:
+    """The tracker module that can take over this parcel, if one is set up.
+
+    ``guess`` is the carrier that knew the number when several were asked.
+    """
+    by_name, by_number = _takers(registry, name, number, carrier_settings)
+    guessed = [m for m in by_number if m.id == guess]
+    candidates = by_name or guessed or (by_number if len(by_number) == 1 else [])
     for module in candidates:
         if module.is_configured(carrier_settings.get(module.id, {})):
             return module
@@ -371,7 +397,11 @@ def apply(
                 continue  # arrived and filed: there is nothing left to bring in line
             taker = (
                 carrier_for(
-                    registry, imported.carrier_name, imported.tracking_number, settings["carriers"]
+                    registry,
+                    imported.carrier_name,
+                    imported.tracking_number,
+                    settings["carriers"],
+                    (parcel or {}).get("extra", {}).get("carrier_guess"),
                 )
                 if imported.tracking_number
                 else None
@@ -707,6 +737,79 @@ def disconnect(store: Store, module: ImporterModule, data_dir: Path) -> None:
     states = store.get_value(STATE_KEY) or {}
     states.pop(module.id, None)
     store.set_value(STATE_KEY, states)
+
+
+async def find_carriers(store: Store, registry: Registry, http: httpx.AsyncClient) -> None:
+    """Find the carrier of parcels whose service does not name one known here.
+
+    Each carrier whose numbers look like the parcel's is asked about it. If
+    exactly one knows the number, the parcel goes to that carrier.
+    """
+    settings = store.get_settings()
+    carriers = settings["carriers"]
+    now = datetime.now(UTC)
+    for parcel in store.open_parcels():
+        service = registry.get(parcel["carrier"])
+        if service is None or service.kind != "importer" or Status(parcel["status"]) in FINAL:
+            continue
+        extra, number = parcel["extra"], parcel["tracking_number"]
+        if extra.get("carrier_guess"):
+            continue
+        by_name, by_number = _takers(registry, extra.get("carrier_name"), number, carriers)
+        candidates = [
+            m
+            for m in by_number
+            if m.is_configured(carriers.get(m.id, {})) and not m.scarce(carriers.get(m.id, {}))
+        ]
+        if by_name or len(by_number) < 2 or not candidates:
+            continue
+        tries = int(extra.get("probes") or 0) if str(extra.get("probes") or "0").isdigit() else 0
+        last = parse_iso(extra.get("probed_at"))
+        if tries >= PROBE_TRIES or (last and now - last < timedelta(hours=PROBE_HOURS)):
+            continue
+        knowing = []
+        for module in candidates:
+            own = carriers.get(module.id, {})
+            request = TrackRequest(
+                tracking_number=module.normalize(number),
+                extra=module.parcel_defaults(own),
+                settings=own,
+                language=settings["language"],
+                created_at=parse_iso(parcel["created_at"]) or now,
+            )
+            try:
+                result = await module.track(request, http)
+            except CarrierError:
+                continue  # not theirs, or no answer right now
+            except Exception:
+                log.exception("asking %s about a parcel of %s failed", module.id, service.id)
+                continue
+            if result.status is not Status.UNKNOWN:
+                knowing.append(module)
+        extra = {
+            **extra,
+            "probed_at": now.isoformat(timespec="seconds"),
+            "probes": str(tries + 1),
+        }
+        names = ", ".join(m.name for m in knowing) or "none"
+        log.info(
+            "%s names no carrier known here for %s: asked %d, known to %s",
+            service.name,
+            number,
+            len(candidates),
+            names,
+        )
+        if len(knowing) != 1:
+            store.set_parcel_extra(parcel["id"], extra)
+            continue
+        taker = knowing[0]
+        target = taker.normalize(number)
+        extra["carrier_guess"] = taker.id
+        if store.find_duplicate(taker.id, target, parcel["shipment_id"]):
+            store.set_parcel_extra(parcel["id"], extra)  # followed there already
+            continue
+        extra = {**taker.parcel_defaults(carriers.get(taker.id, {})), **extra}
+        store.retarget_parcel(parcel["id"], taker.id, target, extra)
 
 
 async def run(

@@ -1139,3 +1139,8 @@ def test_the_bell_of_a_parcel_can_be_switched(client):
     assert client.post("/api/parcels/99999/remind", json={"on": True}).status_code == 404
     saved = client.put("/api/settings", json={"notifications": {"reminder_minutes": 1}}).json()
     assert saved["notifications"]["reminder_minutes"] == 5
+
+
+def test_a_scanned_dpd_barcode_gives_the_parcel_number(client):
+    found = client.post("/api/detect", json={"text": "%001234510000000000001327276"}).json()
+    assert {"carrier": "de.dpd", "tracking_number": "10000000000001"} in found["matches"]

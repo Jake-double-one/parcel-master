@@ -227,7 +227,8 @@ class DpdDe(CarrierModule):
     pickup_hold_days = 7
 
     def normalize(self, tracking_number: str) -> str:
-        number = super().normalize(tracking_number)
+        # A scanner reads the barcode with a "%" in front.
+        number = super().normalize(tracking_number).lstrip("%")
         # The label prints a check character after the fourteen digits.
         if re.fullmatch(r"\d{14}[0-9A-Z]", number):
             return number[:14]

@@ -14,6 +14,7 @@ from parcelmaster.carriers.base import (
     ImportedParcel,
     ImportedShipment,
     ImporterModule,
+    TrackingResult,
 )
 from parcelmaster.carriers.de.amazon import (
     MODULE as AMAZON,
@@ -1202,3 +1203,81 @@ def test_following_a_delivery_is_not_a_wish_of_the_user(world, monkeypatch):
     asyncio.run(importer.follow_deliveries(store, registry, shop, tmp_path))
     # Nothing comes back from the bin or the archive because of a look in the background.
     assert asked == [False]
+
+
+# -- a carrier the service does not name ------------------------------------
+
+
+class Guess(CarrierModule):
+    """A tracker whose numbers look like those of others: fourteen digits."""
+
+    patterns = (re.compile(r"\d{14}"),)
+
+    def __init__(self, ident, knows):
+        self.id, self.name, self.knows, self.calls = ident, ident.split(".")[1].title(), knows, 0
+
+    async def track(self, request, http):
+        self.calls += 1
+        if not self.knows:
+            raise CarrierError("not_found")
+        return TrackingResult(Status.IN_TRANSIT, "On its way")
+
+
+def guessing(world, *trackers):
+    store, registry, shop, tmp_path = world
+    registry = Registry([shop, *trackers], {})
+    seen = order(carrier_name="Vendors Own Carrier", tracking_number="10000000000001")
+    shop.answer = [seen]
+    asyncio.run(importer.run(store, registry, shop, tmp_path))
+    return store, registry, shop, tmp_path
+
+
+def parcel_of(store):
+    return store.list_shipments(False)[0]["parcels"][0]
+
+
+def test_an_unnamed_carrier_is_found_by_asking_who_knows_the_number(world):
+    red, blue = Guess("test.red", False), Guess("test.blue", True)
+    store, registry, shop, tmp_path = guessing(world, red, blue)
+    assert parcel_of(store)["carrier"] == "test.shop"  # two could have issued the number
+
+    asyncio.run(importer.find_carriers(store, registry, None))
+    found = parcel_of(store)
+    assert (found["carrier"], found["tracking_number"]) == ("test.blue", "10000000000001")
+    assert found["extra"]["carrier_guess"] == "test.blue"
+    assert (red.calls, blue.calls) == (1, 1)
+
+    # The next sync still names nobody: the parcel stays where it was found.
+    asyncio.run(importer.run(store, registry, shop, tmp_path))
+    assert parcel_of(store)["carrier"] == "test.blue"
+    asyncio.run(importer.find_carriers(store, registry, None))
+    assert (red.calls, blue.calls) == (1, 1)
+
+
+def test_nobody_or_several_knowing_the_number_leaves_it_with_the_service(world):
+    red, blue = Guess("test.red", True), Guess("test.blue", True)
+    store, registry, _, _ = guessing(world, red, blue)
+    for _ in range(3):
+        asyncio.run(importer.find_carriers(store, registry, None))
+    waiting = parcel_of(store)
+    assert waiting["carrier"] == "test.shop"
+    assert "carrier_guess" not in waiting["extra"]
+    assert (red.calls, blue.calls) == (1, 1)  # asked once, then not again for hours
+
+    # Hours later it is asked again, but not without end.
+    for _ in range(importer.PROBE_TRIES + 2):
+        extra = {**parcel_of(store)["extra"], "probed_at": "2026-01-01T00:00:00+00:00"}
+        store.set_parcel_extra(waiting["id"], extra)
+        asyncio.run(importer.find_carriers(store, registry, None))
+    assert red.calls == importer.PROBE_TRIES
+
+
+def test_a_carrier_the_service_names_is_not_asked_around(world):
+    red, blue = Guess("test.red", True), Guess("test.blue", False)
+    store, registry, shop, tmp_path = world
+    registry = Registry([shop, red, blue], {})
+    shop.answer = [order(carrier_name="Red", tracking_number="10000000000001")]
+    asyncio.run(importer.run(store, registry, shop, tmp_path))
+    assert parcel_of(store)["carrier"] == "test.red"
+    asyncio.run(importer.find_carriers(store, registry, None))
+    assert (red.calls, blue.calls) == (0, 0)

@@ -105,6 +105,10 @@ class Scheduler:
                     await self.notifier.handle(notices)
                 except Exception:
                     log.exception("importer %s failed", module.id)
+            try:
+                await importer.find_carriers(self.store, self.registry, self.http)
+            except Exception:
+                log.exception("finding carriers failed")
         # Each of the housekeeping steps runs whatever became of the one before.
         for step in (self._periodic, self.notifier.flush_held, self._tidy_up):
             try:
