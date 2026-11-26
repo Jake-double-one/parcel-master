@@ -229,7 +229,13 @@ class DpdDe(CarrierModule):
     def normalize(self, tracking_number: str) -> str:
         number = super().normalize(tracking_number)
         # The label prints a check character after the fourteen digits.
-        return number[:14] if re.fullmatch(r"\d{14}[0-9A-Z]", number) else number
+        if re.fullmatch(r"\d{14}[0-9A-Z]", number):
+            return number[:14]
+        # The line below the barcode: seven digits of the postal code, the parcel
+        # number, service and country, and a check character.
+        if re.fullmatch(r"\d{27}[0-9A-Z]?", number):
+            return number[7:21]
+        return number
 
     def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
         locale = "de_DE" if language == "de" else "en_US"

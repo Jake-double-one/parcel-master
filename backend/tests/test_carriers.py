@@ -708,6 +708,9 @@ def test_dpd_recognises_its_numbers_and_links():
     assert DPD.matches("10000000000001")
     assert not DPD.matches("1000000000000")
     assert DPD.normalize("1000 0000 0000 01 X") == "10000000000001"
+    # The line below the label's barcode holds the number in its middle.
+    assert DPD.normalize("0012 345 1000 0000 0000 01 327 276 V") == "10000000000001"
+    assert DPD.matches("0012 345 1000 0000 0000 01 327 276 V")
     page = "https://tracking.dpd.de/status/de_DE/parcel/10000000000001"
     assert DPD.tracking_url("10000000000001", {}, "de") == page
     assert DPD.tracking_url("10000000000001", {}, "en").endswith("/en_US/parcel/10000000000001")
