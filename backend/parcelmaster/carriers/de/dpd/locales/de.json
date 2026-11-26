@@ -10,6 +10,6 @@
     }
   },
   "companion": {
-    "help": "DPD gibt nur im Browser Auskunft: Nummer auf dpd.com eingeben und das Captcha lösen. Parcel Master ruft deshalb selbst nichts ab. Hast du das Paket auf my.dpd.de offen, reicht das Skript weiter, was die Seite zeigt: die Schritte mit ihrem Tag, den Stand, die Zustellzeit und am Zustelltag die Position des Fahrzeugs. Ein Knopf übernimmt die Sendung in Parcel Master."
+    "help": "DPD gibt nur im Browser Auskunft: über den Link der Sendung das Captcha lösen. Parcel Master ruft deshalb selbst nichts ab. Hast du das Paket auf my.dpd.de offen, reicht das Skript weiter, was die Seite zeigt: die Schritte mit ihrem Tag, den Stand, die Zustellzeit und am Zustelltag die Position des Fahrzeugs. Ein Knopf übernimmt die Sendung in Parcel Master."
   }
 }

@@ -702,8 +702,10 @@ def test_dpd_recognises_its_numbers_and_links():
     assert DPD.matches("0012 345 1000 0000 0000 01 327 276 V")
     # What a scanner reads from that barcode.
     assert DPD.normalize("%001234510000000000001327276") == "10000000000001"
-    # DPD wants the number typed in and a captcha solved: the link leads to that form.
-    assert DPD.tracking_url("10000000000001", {}, "de") == "https://www.dpd.com/de/de/empfangen/"
+    # DPD wants a captcha solved before it shows a parcel: the link leads there.
+    way_in = "https://my.dpd.de/redirect.aspx?action=1&pno=10000000000001"
+    assert DPD.tracking_url("10000000000001", {}, "de") == way_in
+    assert DPD.extract_from_url(way_in) == "10000000000001"
     assert not DPD.asks
     page = "https://my.dpd.de/myParcel-tracking.aspx?parcelno=10000000000001"
     assert DPD.extract_from_url(page) == "10000000000001"

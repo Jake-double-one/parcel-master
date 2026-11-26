@@ -1172,7 +1172,7 @@ def test_the_user_says_whose_parcel_it_is_where_the_shop_does_not(client):
     assert [c["id"] for c in asked["choose_carrier"]] == ["de.dhl", "de.dpd", "de.hermes"]
     assert asked["choose_carrier"][1]["name"] == "DPD"
     # Each choice links to the number on that carrier's own website, to look first.
-    assert asked["choose_carrier"][1]["url"] == "https://www.dpd.com/de/de/empfangen/"
+    assert asked["choose_carrier"][1]["url"].endswith("&pno=10000000000001")
     assert all(choice["url"].startswith("https://") for choice in asked["choose_carrier"])
 
     wrong = client.post(f"/api/parcels/{first}/carrier", json={"carrier": "de.gls"})

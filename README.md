@@ -28,7 +28,7 @@ with one small module per carrier.
 | DE | DHL | Reads the public tracking of dhl.de; with an app's key and secret, the official "Parcel DE Tracking" API | Nothing. Optionally a free app at [developer.dhl.com](https://developer.dhl.com) with "Parcel DE Tracking" enabled; no business account needed |
 | DE | Hermes | Reads the public tracking of myhermes.de | Nothing |
 | DE | GLS | Reads the open status GLS gives for a parcel number: stage and delivery window. The history, the live window and the stops left stand only on GLS' own tracking page; the companion script passes them on while you have that page open, and in between Parcel Master notes each new stage itself | Nothing |
-| DE | DPD | DPD tells about a parcel only in a browser, after a captcha, so nothing is looked up from the server. The companion script passes on what DPD's parcel page (my.dpd.de) shows while you have it open: the steps with their days, the state, the time of delivery and where the van is. The link on the card opens DPD's form for the number | Nothing |
+| DE | DPD | DPD tells about a parcel only in a browser, after a captcha, so nothing is looked up from the server. The companion script passes on what DPD's parcel page (my.dpd.de) shows while you have it open: the steps with their days, the state, the time of delivery and where the van is. The link on the card opens DPD's captcha page for the parcel | Nothing |
 | DE | Amazon | Reads the order history of your account with [amazon-orders](https://github.com/alexdlaird/amazon-orders) | Account e-mail and password; the two-step secret key if two-step verification is on |
 
 A demo carrier (`DEMO` followed by digits) exists for the demo mode and for

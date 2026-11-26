@@ -27,9 +27,9 @@ from parcelmaster.status import Status
 
 log = logging.getLogger(__name__)
 
-#: Where DPD asks for the parcel number. It then wants a captcha solved, so a
-#: parcel cannot be linked to directly, and no server can ask for it.
-PAGE_URL = "https://www.dpd.com/de/de/empfangen/"
+#: The way in to a parcel's page. DPD wants a captcha solved there first, so
+#: no server can ask for a parcel.
+PAGE_URL = "https://my.dpd.de/redirect.aspx?action=1&pno={number}"
 #: The length kept of each text.
 MAX_TEXT = 300
 
@@ -275,7 +275,7 @@ class DpdDe(CarrierModule):
         return number
 
     def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
-        return PAGE_URL
+        return PAGE_URL.format(number=tracking_number)
 
     def extract_from_url(self, url: str) -> str | None:
         parsed = urlparse(url)
