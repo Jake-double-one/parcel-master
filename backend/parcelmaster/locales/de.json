@@ -112,8 +112,10 @@
     "remind_on": "Erinnerung an",
     "remind_off": "Erinnerung aus",
     "near": "Jeden Moment",
-    "choose_carrier": "Paketdienst unklar – wer bringt das Paket?",
-    "keep_with": "Bei {service} lassen"
+    "choose_carrier": "Paketdienst unklar. Sieh nach, wer die Nummer kennt, und weise das Paket dann zu.",
+    "keep_with": "Bei {service} lassen",
+    "choose_look": "Nachsehen bei",
+    "choose_assign": "Zuweisen an"
   },
   "dialog": {
     "create_title": "Sendung anlegen",

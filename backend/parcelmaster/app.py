@@ -254,6 +254,32 @@ def create_app(config: Config) -> FastAPI:
             return None
         return {"van": van, "home": point(extra.get("home")), "at": extra.get("live_at")}
 
+    def carriers_to_choose(ctx: Ctx, parcel: dict[str, Any], language: str) -> list[dict]:
+        idents = [i for i in parcel["extra"].get("choose_carrier", "").split(",") if i]
+        if not idents:
+            return []
+        carriers = ctx.store.get_settings()["carriers"]
+        choices = []
+        for ident in idents:
+            candidate = ctx.state.registry.get(ident)
+            if candidate is None:
+                continue
+            number = candidate.normalize(parcel["tracking_number"])
+            try:
+                own = candidate.parcel_defaults(carriers.get(ident, {}))
+                url = candidate.tracking_url(number, own, language) or None
+            except NotImplementedError:
+                url = None
+            choices.append(
+                {
+                    "id": ident,
+                    "name": candidate.name,
+                    "url": url,
+                    "colour": candidate.colour or None,
+                }
+            )
+        return choices
+
     def present_parcel(ctx: Ctx, parcel: dict[str, Any], language: str) -> dict[str, Any]:
         module = ctx.state.registry.get(parcel["carrier"])
         deadline = pickup_deadline(parcel, module)
@@ -295,11 +321,8 @@ def create_app(config: Config) -> FastAPI:
                 else None
             ),
             # The shop names no carrier known here: these could have issued the number.
-            "choose_carrier": [
-                {"id": candidate.id, "name": candidate.name}
-                for ident in parcel["extra"].get("choose_carrier", "").split(",")
-                if (candidate := ctx.state.registry.get(ident)) is not None
-            ],
+            # Each comes with the link to this number on its own website, to look first.
+            "choose_carrier": carriers_to_choose(ctx, parcel, language),
             # The van stands within a few steps of the destination.
             "near": bool(parcel["extra"].get("near")),
             # Where the van is and where it is headed, while the carrier's live view tells.

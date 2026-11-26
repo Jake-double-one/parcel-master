@@ -112,8 +112,10 @@
     "remind_on": "Reminder on",
     "remind_off": "Reminder off",
     "near": "Any moment now",
-    "choose_carrier": "Carrier unclear – who brings the parcel?",
-    "keep_with": "Leave with {service}"
+    "choose_carrier": "Carrier unclear. See who knows the number, then assign the parcel.",
+    "keep_with": "Leave with {service}",
+    "choose_look": "Look at",
+    "choose_assign": "Assign to"
   },
   "dialog": {
     "create_title": "Add shipment",

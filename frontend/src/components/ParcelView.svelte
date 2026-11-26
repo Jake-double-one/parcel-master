@@ -148,6 +148,31 @@
   {#if parcel.choose_carrier?.length && !chose}
     <div class="hint alert choose">
       <span>{t("shipment.choose_carrier")}</span>
+      {#if parcel.choose_carrier.some((candidate) => candidate.url)}
+        <span class="micro">{t("shipment.choose_look")}</span>
+        <span class="row">
+          {#each parcel.choose_carrier as candidate}
+            {#if candidate.url}
+              <a
+                class="chip carrier"
+                class:tinted={!!candidate.colour}
+                style:--brand={candidate.colour}
+                href={candidate.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span class="name">{candidate.name}</span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M15 3h6v6" /><path d="M10 14 21 3" />
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                </svg>
+              </a>
+            {/if}
+          {/each}
+        </span>
+        <span class="micro">{t("shipment.choose_assign")}</span>
+      {/if}
       <span class="row">
         {#each parcel.choose_carrier as candidate}
           <button type="button" class="chip" disabled={choosing} onclick={() => choose(candidate.id)}>
