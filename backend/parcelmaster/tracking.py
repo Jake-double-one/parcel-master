@@ -232,7 +232,8 @@ def _collected(
     ]
     told = parcel["extra"].get("told")
     if result.description and told != _told(result) and (told is not None or not events):
-        events.append(TrackingEvent(now, result.status, result.description, result.location))
+        since = plausible(result.told_at) or now
+        events.append(TrackingEvent(since, result.status, result.description, result.location))
     return events
 
 

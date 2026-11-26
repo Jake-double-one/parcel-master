@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "live_map": {
+      "label": "Live-Karte",
+      "help": "Zeigt auf der Karte der Sendung, wo das Zustellfahrzeug gerade ist, solange das Begleit-Skript die Paketseite von DPD offen sieht. Dafür werden die Position des Fahrzeugs und die des Ziels bis zur Zustellung gespeichert, und dein Browser lädt den Kartenausschnitt von OpenStreetMap.",
+      "option": {
+        "on": "An",
+        "off": "Aus"
+      }
+    }
+  },
+  "companion": {
+    "help": "Öffnest du ein Paket auf my.dpd.de, reicht das Skript weiter, was die Seite dazu zeigt: den Stand, die Zustellzeit und am Zustelltag die Position des Fahrzeugs. Ein Knopf übernimmt die Sendung in Parcel Master."
+  }
+}

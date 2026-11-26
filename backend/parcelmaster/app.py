@@ -720,6 +720,15 @@ def create_app(config: Config) -> FastAPI:
         known = {p["tracking_number"] for p in ctx.store.open_parcels()}
         for line in module.describe_companion_news(payload, known):
             journal.debug("%s companion saw %s", module.id, line)
+        # A parcel a shop could not name the carrier of, seen on this carrier's own
+        # page: the question whose it is has answered itself.
+        shown = {number for number, _ in module.take_from_companion(payload)[:30]}
+        for parcel in ctx.store.open_parcels():
+            if module.id not in parcel["extra"].get("choose_carrier", "").split(","):
+                continue
+            if module.normalize(parcel["tracking_number"]) in shown:
+                importer.settle_carrier(ctx.store, parcel, module)
+                journal.info("%s: its page shows %s, so it is theirs", module.id, parcel["id"])
         found = module.discover(payload)
         wanted = frozenset(module.normalize(str(number)) for number in take or [])
         mode = discovery.mode_of(settings)
@@ -970,23 +979,9 @@ def create_app(config: Config) -> FastAPI:
         parcel = ctx.store.get_parcel(parcel_id)
         if parcel is None:
             raise fail(404, "not_found")
-        extra = dict(parcel["extra"])
-        offered = [ident for ident in extra.pop("choose_carrier", "").split(",") if ident]
         taker = ctx.state.registry.get(carrier) if carrier else None
-        if not offered or (carrier and (carrier not in offered or taker is None)):
+        if (carrier and taker is None) or not importer.settle_carrier(ctx.store, parcel, taker):
             raise fail(422, "invalid_carrier")
-        # What the shop said before the parcel was held up for this question.
-        told = extra.pop("shop_status", "") or str(Status.IN_TRANSIT)
-        extra["chosen_carrier"] = carrier or "-"
-        number = taker.normalize(parcel["tracking_number"]) if taker else ""
-        if taker and not ctx.store.find_duplicate(taker.id, number, parcel["shipment_id"]):
-            own = ctx.store.get_settings()["carriers"].get(taker.id, {})
-            ctx.store.retarget_parcel(
-                parcel_id, taker.id, number, {**taker.parcel_defaults(own), **extra}
-            )
-        else:
-            ctx.store.set_parcel_extra(parcel_id, extra)
-        ctx.store.update_parcel(parcel_id, status=told)
         return present(ctx, ctx.store.get_shipment(parcel["shipment_id"]), language_of(ctx))
 
     @app.post("/api/shipments/{shipment_id}/refresh")

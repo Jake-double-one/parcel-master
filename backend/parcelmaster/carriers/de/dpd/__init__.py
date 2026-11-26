@@ -2,6 +2,8 @@
 
 Reads the open answer of DPD's parcel tracking: the stage the parcel is in
 and every scan with its time and place. DPD answers in the language asked for.
+DPD's own parcel page (my.dpd.de) shows more to who is signed in: the
+companion script passes on its state and, on the delivery day, where the van is.
 """
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -17,6 +20,8 @@ import httpx
 from parcelmaster.carriers.base import (
     CarrierError,
     CarrierModule,
+    Field,
+    Found,
     TrackingEvent,
     TrackingResult,
     TrackRequest,
@@ -91,7 +96,8 @@ _STEPS = (
     (
         re.compile(
             r"\b(wurde|ist)\b(?:(?!\bwird\b)[^.]){0,80}?\b(zugestellt|abgeholt|übergeben)\b"
-            r"|^zugestellt\b|^abgeholt\b|\b(has|was) been (delivered|collected)\b"
+            r"|^(paket )?(zugestellt|abgeholt)\b|erfolgreich zugestellt"
+            r"|\b(has|was) been (delivered|collected)\b"
             r"|^delivered\b|^collected\b",
             re.I,
         ),
@@ -142,6 +148,15 @@ def _time(value: Any) -> datetime | None:
         return datetime.fromisoformat(value.strip()) if isinstance(value, str) else None
     except ValueError:
         return None
+
+
+def _spot(value: Any) -> tuple[float, float] | None:
+    """A place as the page names it: latitude and longitude."""
+    if not isinstance(value, list) or len(value) != 2:
+        return None
+    if not all(isinstance(part, int | float) and not isinstance(part, bool) for part in value):
+        return None
+    return float(value[0]), float(value[1])
 
 
 def parse_response(payload: Any) -> TrackingResult:
@@ -223,8 +238,75 @@ class DpdDe(CarrierModule):
     name = "DPD"
     colour = "#dc0032"
     patterns = (re.compile(r"\d{14}"),)
+    settings_fields = (Field("live_map", type="choice", options=("on", "off")),)
     default_daily_budget = DAILY_BUDGET
     pickup_hold_days = 7
+
+    def companion_script(self) -> str | None:
+        return (Path(__file__).parent / "companion.user.js").read_text(encoding="utf-8")
+
+    def _shown(self, payload: Any) -> list[tuple[str, dict[str, Any], TrackingResult]]:
+        """Number, entry and state for each parcel DPD's page handed on."""
+        parcels = payload.get("parcels") if isinstance(payload, dict) else None
+        shown = []
+        for parcel in (parcels if isinstance(parcels, list) else [])[:10]:
+            if not isinstance(parcel, dict) or not isinstance(parcel.get("number"), str):
+                continue
+            number = self.normalize(parcel["number"][:40])
+            if not self.matches(number):
+                continue
+            # The driver's note says most; the label below the bar is the fallback.
+            told = [_words(parcel.get(key)) for key in ("note", "status")]
+            told = [words for words in told if words]
+            if not told:
+                continue
+            status = next(
+                (s for s in map(step_status, told) if s is not Status.IN_TRANSIT),
+                Status.IN_TRANSIT,
+            )
+            van, home = _spot(parcel.get("van")), _spot(parcel.get("home"))
+            going = status not in (Status.DELIVERED, Status.RETURNED)
+            result = TrackingResult(
+                status=status,
+                description=told[0],
+                collect=True,  # the page shows the state, not the way there
+                told_at=_time(parcel.get("when")) if not going else None,
+                keep_window=True,
+                van=van if going else None,
+                home=home if going and van else None,
+            )
+            shown.append((number, parcel, result))
+        return shown
+
+    def take_from_companion(self, payload: Any) -> list[tuple[str, TrackingResult]]:
+        """What DPD's parcel page showed in the user's browser."""
+        return [(number, result) for number, _, result in self._shown(payload)]
+
+    def discover(self, payload: Any) -> list[Found]:
+        return [
+            Found(
+                number=number,
+                title=_words(parcel.get("sender"))[:200],
+                settled=result.status in (Status.DELIVERED, Status.RETURNED),
+            )
+            for number, parcel, result in self._shown(payload)
+        ]
+
+    def describe_companion_news(self, payload: Any, known: set[str]) -> list[str]:
+        lines = []
+        for number, parcel, result in self._shown(payload):
+            parts = parcel.get("parts")
+            names = (
+                [p[:40] for p in parts[:60] if isinstance(p, str)]
+                if isinstance(parts, list)
+                else []
+            )
+            lines.append(
+                f"{number} ({'tracked' if number in known else 'not tracked'}), {result.status}"
+                f", stage {parcel.get('stage')!r:.6}, van {'yes' if result.van else 'no'}"
+                f", parts {' '.join(names)}"
+            )
+        return lines
 
     def normalize(self, tracking_number: str) -> str:
         # A scanner reads the barcode with a "%" in front.

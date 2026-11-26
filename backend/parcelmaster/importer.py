@@ -166,6 +166,30 @@ def carrier_for(
     return None
 
 
+def settle_carrier(store: Store, parcel: dict[str, Any], taker: CarrierModule | None) -> bool:
+    """Answer the question whose parcel this is; None leaves it with the service.
+
+    False if the parcel asks no such question or ``taker`` was not among the choices.
+    """
+    extra = dict(parcel["extra"])
+    offered = [ident for ident in extra.pop("choose_carrier", "").split(",") if ident]
+    if not offered or (taker is not None and taker.id not in offered):
+        return False
+    # What the service said before the parcel was held up for this question.
+    told = extra.pop("shop_status", "") or str(Status.IN_TRANSIT)
+    extra["chosen_carrier"] = taker.id if taker else "-"
+    number = taker.normalize(parcel["tracking_number"]) if taker else ""
+    if taker and not store.find_duplicate(taker.id, number, parcel["shipment_id"]):
+        own = store.get_settings()["carriers"].get(taker.id, {})
+        store.retarget_parcel(
+            parcel["id"], taker.id, number, {**taker.parcel_defaults(own), **extra}
+        )
+    else:
+        store.set_parcel_extra(parcel["id"], extra)
+    store.update_parcel(parcel["id"], status=told)
+    return True
+
+
 def _same_parcel_elsewhere(
     store: Store, module: ImporterModule, item: ImportedShipment
 ) -> dict[str, Any] | None:

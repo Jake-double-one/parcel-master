@@ -7,6 +7,10 @@
     "sha256": "75756da76ec0b00f9c17a53264651100df3c3ffae61b34934cd333d624352f91",
     "version": 11
   },
+  "de.dpd": {
+    "sha256": "2338890eabea8d54694b79ce55b97209924e02bf9ca682933a9cee09ce8e8f51",
+    "version": 1
+  },
   "de.gls": {
     "sha256": "491f504c676f2d2d9d815a1eedb327a94600227cb622249775e877c0e5cd7275",
     "version": 6

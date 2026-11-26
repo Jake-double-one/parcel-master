@@ -1,0 +1,15 @@
+{
+  "settings": {
+    "live_map": {
+      "label": "Live map",
+      "help": "Shows on the shipment's card where the delivery van is, while the companion script sees DPD's parcel page open. For that the van's position and the destination's are kept until delivery, and your browser loads the map from OpenStreetMap.",
+      "option": {
+        "on": "On",
+        "off": "Off"
+      }
+    }
+  },
+  "companion": {
+    "help": "When you open a parcel on my.dpd.de, the script passes on what the page shows about it: its state, the time of delivery and, on the delivery day, where the van is. A button takes the shipment into Parcel Master."
+  }
+}

@@ -820,3 +820,17 @@ def test_dpd_survives_an_answer_of_another_shape():
     result = dpd_parse(dpd_answer(scans=scans))
     assert [event.timestamp for event in result.events] == [None]
     assert result.description == "Das Paket ist unterwegs."
+
+
+def test_dpd_page_is_read_without_trusting_it():
+    page = {"number": "10000000000001", "status": "Paket zugestellt", "note": "x" * 900}
+    [(number, result)] = DPD.take_from_companion({"parcels": [page, {"number": 5}, "x"]})
+    assert number == "10000000000001" and len(result.description) == 300
+    assert result.status is Status.DELIVERED and result.collect
+    assert DPD.take_from_companion({"parcels": [{"number": "10000000000001"}]}) == []
+    assert DPD.take_from_companion("x") == []
+    odd = {"number": "10000000000001", "status": "Unterwegs", "van": ["a", 2], "when": "bald"}
+    [(_, result)] = DPD.take_from_companion({"parcels": [odd]})
+    assert result.van is None and result.told_at is None
+    [line] = DPD.describe_companion_news({"parcels": [{**odd, "parts": ["labA", 7]}]}, set())
+    assert line.endswith("parts labA") and "not tracked" in line

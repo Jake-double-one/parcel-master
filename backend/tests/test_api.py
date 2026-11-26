@@ -977,7 +977,13 @@ def test_all_companion_scripts_come_as_one_that_updates_itself(client):
     assert script.count("// ==UserScript==") == 1
     assert "// @updateURL    http://testserver/api/companion/parcel-master.user.js" in script
     assert "// @connect      testserver" in script
-    for page in ("www.dhl.de", "www.amazon.de", "www.myhermes.de", "www.gls-pakete.de"):
+    for page in (
+        "www.dhl.de",
+        "www.amazon.de",
+        "www.myhermes.de",
+        "www.gls-pakete.de",
+        "my.dpd.de",
+    ):
         assert f'["{page}"].includes(location.hostname)' in script
     assert "__SERVER__" not in script and "__HOST__" not in script
 
@@ -1181,3 +1187,71 @@ def test_the_user_says_whose_parcel_it_is_where_the_shop_does_not(client):
     kept = client.post(f"/api/parcels/{second}/carrier", json={"carrier": ""}).json()["parcels"][0]
     assert (kept["carrier"], kept["status"]) == ("demo", "in_transit")
     assert kept["extra"]["chosen_carrier"] == "-"
+
+
+def dpd_page(**changes):
+    parcel = {
+        "number": "10000000000001",
+        "sender": "Beispiel Shop",
+        "status": "Paket zugestellt",
+        "stage": 6,
+        "note": "Ich habe Ihr Paket erfolgreich zugestellt.",
+        "when": "2026-11-26T13:49",
+        "van": None,
+        "home": None,
+        "parts": ["labParcelName", "labDeliveryStatus"],
+        **changes,
+    }
+    return {"payload": {"parcels": [parcel]}}
+
+
+def test_the_dpd_page_hands_over_state_and_time_of_delivery(client):
+    on_the_way = dpd_page(status="Paket in Zustellung", stage=5, note="", when="")
+    taken = client.post("/api/companion/de.dpd", json={**on_the_way, "take": ["10000000000001"]})
+    assert taken.json()["tracked"] == ["10000000000001"]
+    [card] = client.get("/api/shipments").json()
+    assert card["title"] == "Beispiel Shop"
+    assert card["parcels"][0]["status"] == "out_for_delivery"
+
+    client.post("/api/companion/de.dpd", json=dpd_page())
+    [card] = (
+        client.get("/api/shipments", params={"archived": "true"}).json()
+        or client.get("/api/shipments").json()
+    )
+    parcel = card["parcels"][0]
+    assert parcel["status"] == "delivered"
+    assert parcel["description"] == "Ich habe Ihr Paket erfolgreich zugestellt."
+    # The time the page names, not the moment the page was looked at.
+    arrived = next(event for event in parcel["events"] if event["status"] == "delivered")
+    assert arrived["timestamp"].startswith("2026-11-26T12:49")
+
+
+def test_the_dpd_page_shows_the_van_only_while_it_is_on_its_way(client):
+    live = dpd_page(
+        status="Paket in Zustellung", note="", when="", van=[50.1, 8.1], home=[50.2, 8.2]
+    )
+    client.post("/api/companion/de.dpd", json={**live, "take": ["10000000000001"]})
+    [card] = client.get("/api/shipments").json()
+    assert card["parcels"][0]["map"]["van"] == [50.1, 8.1]
+
+
+def test_a_parcel_of_unclear_carrier_seen_on_dpds_page_is_dpds(client):
+    store = client.app.state.pm.store
+    made = client.post(
+        "/api/shipments",
+        json={
+            "title": "Shelf",
+            "parcels": [{"carrier": "demo", "tracking_number": "10000000000001"}],
+        },
+    ).json()["parcels"][0]
+    extra = {"choose_carrier": "de.dhl,de.dpd,de.hermes", "shop_status": "in_transit"}
+    store.set_parcel_extra(made["id"], extra)
+    store.update_parcel(made["id"], status="problem")
+
+    client.post(
+        "/api/companion/de.dpd", json=dpd_page(status="Paket in Zustellung", note="", when="")
+    )
+    [card] = client.get("/api/shipments").json()  # no second card for the same parcel
+    parcel = card["parcels"][0]
+    assert (parcel["carrier"], parcel["status"]) == ("de.dpd", "out_for_delivery")
+    assert parcel["choose_carrier"] == []
