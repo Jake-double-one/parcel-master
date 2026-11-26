@@ -127,6 +127,9 @@ class CarrierModule:
     #: A setting named "default_<key>" pre-fills the parcel field "<key>".
     settings_fields: tuple[Field, ...] = ()
     parcel_fields: tuple[Field, ...] = ()
+    #: Whether the carrier can be asked about a number at all. Where it answers
+    #: only a person in a browser, news come with its companion script alone.
+    asks: bool = True
     #: Lookups per day the carrier allows by default; None means unlimited.
     default_daily_budget: int | None = None
     #: Days a parcel waits at a pickup point before it is sent back.

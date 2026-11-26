@@ -1,9 +1,10 @@
 """DPD (Germany).
 
-Reads the open answer of DPD's parcel tracking: the stage the parcel is in
-and every scan with its time and place. DPD answers in the language asked for.
-DPD's own parcel page (my.dpd.de) shows more to who is signed in: the
-companion script passes on its state and, on the delivery day, where the van is.
+DPD tells about a parcel only to a person in a browser: who enters the number
+on its website and solves a captcha. So nothing is asked from here. The
+companion script passes on what DPD's parcel page (my.dpd.de) shows the user:
+the steps with their days, the state, the time of delivery and, on the
+delivery day, where the van is.
 """
 
 from __future__ import annotations
@@ -15,39 +16,24 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-import httpx
-
 from parcelmaster.carriers.base import (
-    CarrierError,
     CarrierModule,
     Field,
     Found,
     TrackingEvent,
     TrackingResult,
-    TrackRequest,
 )
 from parcelmaster.status import Status
 
 log = logging.getLogger(__name__)
 
-STATUS_URL = "https://tracking.dpd.de/rest/plc/{locale}/{number}"
-PAGE_URL = "https://my.dpd.de/myParcel-tracking.aspx?parcelno={number}"
-#: DPD names no limit; this only keeps a mistake from asking without end.
-DAILY_BUDGET = 300
-#: Scans read from one answer at most, and the length kept of each text.
-MAX_SCANS = 100
+#: Where DPD asks for the parcel number. It then wants a captcha solved, so a
+#: parcel cannot be linked to directly, and no server can ask for it.
+PAGE_URL = "https://www.dpd.com/de/de/empfangen/"
+#: The length kept of each text.
 MAX_TEXT = 300
 
-#: The five stages of DPD's progress bar.
-_STAGES = {
-    "ACCEPTED": Status.REGISTERED,
-    "AT_SENDING_DEPOT": Status.IN_TRANSIT,
-    "ON_THE_ROAD": Status.IN_TRANSIT,
-    "AT_DELIVERY_DEPOT": Status.IN_TRANSIT,
-    "DELIVERED": Status.DELIVERED,
-}
-
-# The sentences of the scans, German and English. "Delivered" ends the tracking,
+# The sentences DPD uses, German and English. "Delivered" ends the tracking,
 # so it is asked last and never for what is about to happen or did not happen.
 _STEPS = (
     (
@@ -105,32 +91,13 @@ _STEPS = (
     ),
 )
 
-# "… am 26.11.2026 zwischen 10:15 und 11:15 …", "… on 26.11.2026 between 10:15 and 11:15 …"
-_WINDOW = re.compile(
-    r"(\d{1,2})\.(\d{1,2})\.(\d{4})\D{1,40}?(\d{1,2}):(\d{2})\D{1,12}?(\d{1,2}):(\d{2})"
-)
-
 
 def step_status(text: str) -> Status:
-    """The status one sentence of a scan stands for."""
+    """The status one sentence of DPD stands for."""
     for words, status in _STEPS:
         if words.search(text):
             return status
     return Status.IN_TRANSIT
-
-
-def read_window(text: str) -> tuple[datetime | None, datetime | None]:
-    """The delivery window a sentence names, if it names a day and two times."""
-    found = _WINDOW.search(text)
-    if not found:
-        return None, None
-    day, month, year, hour, minute, to_hour, to_minute = (int(part) for part in found.groups())
-    try:
-        start = datetime(year, month, day, hour, minute)
-        end = start.replace(hour=to_hour, minute=to_minute)
-    except ValueError:
-        return None, None
-    return (start, end) if end >= start else (None, None)
 
 
 def _words(value: Any) -> str:
@@ -143,7 +110,7 @@ def _words(value: Any) -> str:
 
 
 def _time(value: Any) -> datetime | None:
-    """A scan's time: "2026-11-24T18:03:11", local."""
+    """A time as the script notes it: "2026-11-26T13:49", local."""
     try:
         return datetime.fromisoformat(value.strip()) if isinstance(value, str) else None
     except ValueError:
@@ -203,79 +170,6 @@ def _spot(value: Any) -> tuple[float, float] | None:
     return float(value[0]), float(value[1])
 
 
-def parse_response(payload: Any) -> TrackingResult:
-    """Turn DPD's answer about one parcel number into a tracking result."""
-    data = payload.get("parcellifecycleResponse") if isinstance(payload, dict) else None
-    data = data.get("parcelLifeCycleData") if isinstance(data, dict) else None
-    if not isinstance(data, dict):
-        raise CarrierError("not_found")
-
-    stages = data.get("statusInfo")
-    stages = [s for s in stages if isinstance(s, dict)] if isinstance(stages, list) else []
-    current = next((s for s in stages if s.get("isCurrentStatus") is True), None)
-    if current is None:
-        reached = [s for s in stages if s.get("statusHasBeenReached") is True]
-        current = reached[-1] if reached else None
-
-    scans = data.get("scanInfo")
-    scans = scans.get("scan") if isinstance(scans, dict) else None
-    events = []
-    for scan in scans[:MAX_SCANS] if isinstance(scans, list) else []:
-        if not isinstance(scan, dict):
-            continue
-        text = _words(scan.get("scanDescription"))
-        if not text:
-            continue
-        place = scan.get("scanData")
-        place = place.get("location") if isinstance(place, dict) else None
-        events.append(
-            TrackingEvent(
-                timestamp=_time(scan.get("date")),
-                status=step_status(text),
-                description=text,
-                location=place.strip()[:100] or None if isinstance(place, str) else None,
-            )
-        )
-    # Newest first, whichever way DPD lists them; scans without a time go last.
-    events.sort(key=lambda e: (e.timestamp is not None, e.timestamp or datetime.min), reverse=True)
-
-    if current is None and not events:
-        raise CarrierError("not_found")  # unknown, or not yet announced to DPD
-    stage = str(current.get("status") or "").upper() if current else ""
-    staged = _STAGES.get(stage)
-    if current is not None and staged is None:
-        log.info("DPD names a stage not known here: %s", stage or "none")
-
-    if events:
-        status = events[0].status
-        description = events[0].description
-        location = events[0].location
-        # The bar says "delivered" in plain words even where the scan's sentence does not.
-        if staged is Status.DELIVERED and status in (Status.IN_TRANSIT, Status.OUT_FOR_DELIVERY):
-            status = Status.DELIVERED
-    else:
-        status = staged or Status.IN_TRANSIT
-        description = _words(current.get("description")) or _words(current.get("label"))
-        location = None
-
-    eta_from = eta_to = None
-    if current is not None and status not in (Status.DELIVERED, Status.RETURNED):
-        told = " ".join(
-            _words(current.get(key)) if key == "description" else _words({"content": items})
-            for key in ("description", "importantItems", "normalItems")
-            if (items := current.get(key))
-        )
-        eta_from, eta_to = read_window(told)
-    return TrackingResult(
-        status=status,
-        description=description,
-        location=location,
-        events=events,
-        eta_from=eta_from,
-        eta_to=eta_to,
-    )
-
-
 class DpdDe(CarrierModule):
     id = "de.dpd"
     country = "de"
@@ -283,7 +177,7 @@ class DpdDe(CarrierModule):
     colour = "#dc0032"
     patterns = (re.compile(r"\d{14}"),)
     settings_fields = (Field("live_map", type="choice", options=("on", "off")),)
-    default_daily_budget = DAILY_BUDGET
+    asks = False
     pickup_hold_days = 7
 
     def companion_script(self) -> str | None:
@@ -381,7 +275,7 @@ class DpdDe(CarrierModule):
         return number
 
     def tracking_url(self, tracking_number: str, extra: dict[str, str], language: str) -> str:
-        return PAGE_URL.format(number=tracking_number)
+        return PAGE_URL
 
     def extract_from_url(self, url: str) -> str | None:
         parsed = urlparse(url)
@@ -400,29 +294,6 @@ class DpdDe(CarrierModule):
             if self.matches(number):
                 return number
         return None
-
-    async def track(self, request: TrackRequest, http: httpx.AsyncClient) -> TrackingResult:
-        locale = "de_DE" if request.language == "de" else "en_US"
-        try:
-            response = await http.get(
-                STATUS_URL.format(locale=locale, number=request.tracking_number),
-                headers={"Accept": "application/json"},
-            )
-        except httpx.HTTPError as error:
-            raise CarrierError("unavailable", type(error).__name__) from error
-        if response.status_code == 404:
-            raise CarrierError("not_found")
-        if response.status_code == 429:
-            raise CarrierError("rate_limited")
-        if response.status_code >= 300:
-            raise CarrierError("unavailable", f"HTTP {response.status_code}")
-        log.debug("DPD: %s", response.text[:4000])
-        try:
-            payload = response.json()
-        except ValueError as error:
-            log.warning("DPD answered something else than JSON: %s", response.text[:300])
-            raise CarrierError("invalid_response", "not JSON") from error
-        return parse_response(payload)
 
 
 MODULE = DpdDe()

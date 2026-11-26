@@ -1172,7 +1172,7 @@ def test_the_user_says_whose_parcel_it_is_where_the_shop_does_not(client):
     assert [c["id"] for c in asked["choose_carrier"]] == ["de.dhl", "de.dpd", "de.hermes"]
     assert asked["choose_carrier"][1]["name"] == "DPD"
     # Each choice links to the number on that carrier's own website, to look first.
-    assert asked["choose_carrier"][1]["url"].endswith("?parcelno=10000000000001")
+    assert asked["choose_carrier"][1]["url"] == "https://www.dpd.com/de/de/empfangen/"
     assert all(choice["url"].startswith("https://") for choice in asked["choose_carrier"])
 
     wrong = client.post(f"/api/parcels/{first}/carrier", json={"carrier": "de.gls"})
@@ -1258,3 +1258,18 @@ def test_a_parcel_of_unclear_carrier_seen_on_dpds_page_is_dpds(client):
     parcel = card["parcels"][0]
     assert (parcel["carrier"], parcel["status"]) == ("de.dpd", "out_for_delivery")
     assert parcel["choose_carrier"] == []
+
+
+def test_a_dpd_parcel_is_not_looked_up_from_here(client):
+    made = client.post(
+        "/api/shipments",
+        json={
+            "title": "Shelf",
+            "parcels": [{"carrier": "de.dpd", "tracking_number": "10000000000001"}],
+        },
+    ).json()
+    refreshed = client.post(f"/api/shipments/{made['id']}/refresh").json()
+    parcel = refreshed["parcels"][0]
+    assert parcel["last_error"] is None and parcel["last_checked_at"] is None
+    store = client.app.state.pm.store
+    assert store.due_parcels("2100-01-01", 10) == []  # only DPD's page brings news

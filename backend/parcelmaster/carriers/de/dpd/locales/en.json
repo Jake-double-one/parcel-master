@@ -10,6 +10,6 @@
     }
   },
   "companion": {
-    "help": "When you open a parcel on my.dpd.de, the script passes on what the page shows about it: its state, the time of delivery and, on the delivery day, where the van is. A button takes the shipment into Parcel Master."
+    "help": "DPD only answers in a browser: enter the number on dpd.com and solve the captcha. So Parcel Master looks nothing up itself. While you have the parcel open on my.dpd.de, the script passes on what the page shows: the steps with their days, the state, the time of delivery and, on the delivery day, where the van is. A button takes the shipment into Parcel Master."
   }
 }

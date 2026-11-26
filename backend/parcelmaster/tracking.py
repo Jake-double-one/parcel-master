@@ -562,8 +562,9 @@ async def refresh_parcel(
     if not switched_on(settings["carriers"].get(module.id, {})):
         # The user turned this carrier off: nothing is asked, and the parcel says why.
         return fail("carrier_off", "", 60, count_error=False)
-    if module.kind == "importer":
-        # Its status comes with the service's sync, not from a lookup by number.
+    if module.kind == "importer" or not module.asks:
+        # Its status comes with the service's sync or with its companion script,
+        # not from a lookup by number.
         store.update_parcel(parcel_id, next_check_at=NEVER)
         return []
     carrier_settings = settings["carriers"].get(module.id, {})
